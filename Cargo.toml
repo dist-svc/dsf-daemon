@@ -20,6 +20,7 @@ tracing = "0.1.10"
 tracing-futures = "0.2.0"
 futures_codec = "0.3.4"
 async-trait = "0.1.21"
+bytes = "0.5.3"
 
 
 [dependencies.dsf-core]

@@ -4,11 +4,16 @@ use std::io::Error as IoError;
 
 use std::collections::HashMap;
 
-
 use futures::prelude::*;
+use futures::{select};
+use futures::channel::mpsc;
 
 use async_std::task::{self, JoinHandle};
 use async_std::net::{TcpListener, TcpStream, UdpSocket};
+
+use tracing::{span, Level};
+
+use bytes::Bytes;
 
 pub const UDP_BUFF_SIZE: usize = 4096;
 
@@ -25,6 +30,13 @@ pub enum NetKind {
 pub enum NetCommand {
     Bind(NetKind, SocketAddr),
     Unbind(NetKind, SocketAddr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetMessage {
+    interface: u32,
+    address: SocketAddr,
+    data: Bytes,
 }
 
 pub struct Net {
@@ -74,7 +86,10 @@ impl Net {
         let listener = TcpListener::bind(addr).await?;
         let index = self.index;
 
+        debug!("Starting TCP listener {}: {}", index, addr);
+
         let handle = task::spawn(async move {
+            
             let mut incoming = listener.incoming();
 
             while let Some(stream) = incoming.next().await {
@@ -99,16 +114,42 @@ impl Net {
 
     async fn listen_udp(&mut self, addr: SocketAddr) -> Result<(), IoError> {
         let socket = UdpSocket::bind(addr).await?;
-        let index = self.index;
+        let interface = self.index;
 
+        let (mut rx_sink, mut rx_stream) = mpsc::channel::<NetMessage>(0);
+        let (mut tx_sink, mut tx_stream) = mpsc::channel::<NetMessage>(0);
+
+        debug!("Starting UDP listener {}: {}", interface, addr);
 
         let handle = task::spawn(async move {
             let mut buff = vec![0u8; UDP_BUFF_SIZE];
 
             loop {
-                let (n, peer) = socket.recv_from(&mut buff).await?;
-
-                // TODO: something here
+                select! {
+                    res = socket.recv_from(&mut buff).fuse() => {
+                        trace!("receive: {:?}", res);
+                        match res {
+                            Ok((n, address)) => {
+                                let msg = NetMessage{
+                                    interface,
+                                    address,
+                                    data: Bytes::copy_from_slice(&buff[..n]),
+                                };
+                                rx_sink.send(msg).await.unwrap()
+                            },
+                            Err(e) => error!("recieve error: {:?}", e),
+                        }
+                    },
+                    res = tx_stream.next() => {
+                        trace!("send: {:?}", res);
+                        match res {
+                            Some(d) => {
+                                socket.send_to(&d.data, &d.address).await.unwrap();
+                            },
+                            None => (),
+                        }
+                    }
+                }
             }
 
             Ok(())
@@ -116,7 +157,7 @@ impl Net {
 
         let binding = Binding{ handle, info: Info::new(addr, NetKind::Udp) };
 
-        self.bindings.insert(index, binding);
+        self.bindings.insert(interface, binding);
         self.index += 1;
 
         Ok(())
