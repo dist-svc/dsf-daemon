@@ -32,10 +32,22 @@ pub struct Net {
     index: u32,
 }
 
+#[derive(Debug)]
 struct Binding {
     handle: JoinHandle<Result<(), IoError>>,
+    info: Info,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Info {
     kind: NetKind,
     addr: SocketAddr,
+}
+
+impl Info {
+    pub fn new(addr: SocketAddr, kind: NetKind) -> Self {
+        Self{addr, kind}
+    }
 }
 
 impl Net {
@@ -77,7 +89,7 @@ impl Net {
             Ok(())
         });
 
-        let binding = Binding{ handle, addr, kind: NetKind::Tcp };
+        let binding = Binding{ handle, info: Info::new(addr, NetKind::Tcp) };
 
         self.bindings.insert(index, binding);
         self.index += 1;
@@ -102,7 +114,7 @@ impl Net {
             Ok(())
         });
 
-        let binding = Binding{ handle, addr, kind: NetKind::Udp };
+        let binding = Binding{ handle, info: Info::new(addr, NetKind::Udp) };
 
         self.bindings.insert(index, binding);
         self.index += 1;
