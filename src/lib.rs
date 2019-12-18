@@ -13,6 +13,7 @@ extern crate dsf_rpc;
 #[macro_use]
 extern crate tracing;
 extern crate tracing_futures;
+extern crate tracing_subscriber;
 
 pub mod daemon;
 pub mod error;

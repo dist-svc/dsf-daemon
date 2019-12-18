@@ -1,136 +1,93 @@
 
-use std::io;
+use std::io::Error as IoError;
+use std::collections::HashMap;
 
-use bytes::Bytes;
+use futures::prelude::*;
+use futures::{select};
+use futures::channel::mpsc;
 
+use async_std::task::{self, JoinHandle};
+use async_std::os::unix::net::{UnixListener, UnixStream};
 
-use futures::{Stream, Sink, Future};
-use futures::stream::{SplitSink};
+use tracing::{span, Level};
+use tracing_futures::Instrument;
 
-use actix::prelude::*;
+use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnixError {
 
-
-use tokio::codec::Framed;
-
-#[cfg(unix)]
-use tokio_uds::{UnixListener, UnixStream};
-
-#[cfg(windows)]
-use tokio_uds_windows::{UnixListener, UnixStream};
-
-use daemon_engine::JsonCodec;
-
-
-use crate::rpc;
-
-use super::{Engine, RpcRequest, RpcResponse};
-
-/// UnixActor sends and receives UnixPacket objects over the internal socket
-pub struct UnixActor {
-    path: String,
-    id: usize,
-    engine: Addr<Engine>,
 }
 
-#[derive(Debug, Message)]
-struct UnixConnect(pub Framed<UnixStream, JsonCodec::<rpc::Response, rpc::Request>>);
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnixMessage {
+    
+}
 
-/// UnixTx for transmitted Unix messages
-#[derive(Clone, Debug, Message)]
-pub struct UnixTx(pub usize, pub Bytes);
+pub struct Unix {
+    index: u32,
+    connections: HashMap<u32, ()>,
+    handle: JoinHandle<Result<(), IoError>>,
 
-impl UnixActor {
-    /// Create a new incoming UDP actor on the provided address
-    pub fn new(path: String, engine: Addr<Engine>) -> Result<Addr<Self>, io::Error> {
-        debug!("Creating UnixActor with path: {:?}", path);
-        
+    rx_sink: mpsc::Sender<RpcRequest>,
+    rx_stream: mpsc::Receiver<RpcRequest>,
+}
+
+struct Connection {
+    handle: JoinHandle<Result<(), IoError>>,
+
+}
+
+impl Unix {
+
+    /// Create a new unix socket IO connector
+    pub async fn new(path: &str) -> Result<Self, IoError> {
+        debug!("Creating UnixActor with path: {}", path);
+
         let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).await?;
 
-        let listener = UnixListener::bind(&path)?;
+        let (rx_sink, rx_stream) = mpsc::channel::<RpcRequest>(0);
 
-        Ok(UnixActor::create(move |ctx| {
-            // On incoming connections
-            ctx.add_stream(listener.incoming().map(|stream| {
-                // Create a framed stream
-                let framed = Framed::new(stream, JsonCodec::<rpc::Response, rpc::Request>::new());
-                // And bind it to a connection object
-                UnixConnect(framed)
-            }));
-            UnixActor{ path, id: 0, engine }
-        }))
-    }
-}
+        let handle = task::spawn(async move {
+            let mut incoming= listener.incoming();
 
-impl Actor for UnixActor {
-    type Context = Context<Self>;
+            while let Some(stream) = incoming.next().await {
+                let stream = stream?;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        debug!("Started UnixActor with path: {:?}", self.path);
+                Unix::new_connection(stream);
+            }
 
-        //self.subscribe_sync::<ArbiterBroker, RpcResponse>(ctx);
-    }
-
-    fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
-        debug!("Stopped UnixActor with path: {:?}", self.path);
-
-        Running::Stop
-    }
-}
-
-/// Handler for new connections
-impl StreamHandler<UnixConnect, io::Error> for UnixActor {
-    fn handle(&mut self, conn: UnixConnect, _: &mut Context<Self>) {
-        trace!("Unix {:?} connect from: {:?})", self.path, conn);
-        
-        // Assign socket connnection ID
-        let id = self.id;
-        self.id += 1;
-        let engine = self.engine.clone();
-
-        // Create an actor to manage a connected RPC session
-        UnixSession::create(move |ctx| {
-            let (w, r) = conn.0.split();
-            let stream = r.map_err(|e| {
-                     error!("{:?}", e);
-                     io::Error::new(io::ErrorKind::InvalidData, "")
-                } );
-                
-            UnixSession::add_stream(stream, ctx);
-            UnixSession{id, sink: w, engine }
+            Ok(())
         });
+
+        Ok(Self{index: 0, connections: HashMap::new(), handle, rx_stream, rx_sink})
     }
-}
 
-/// Session actor attached to a specific connection instance
-pub struct UnixSession {
-    id: usize,
-    sink: SplitSink<Framed<UnixStream, JsonCodec<rpc::Response, rpc::Request>>>,
-    engine: Addr<Engine>,
-}
+    fn new_connection(stream: UnixStream) -> Connection {
 
-impl Actor for UnixSession {
-    type Context = Context<Self>;
-}
-
-/// Handler for received data from a given session
-impl StreamHandler<rpc::Request, io::Error> for UnixSession {
-    fn handle(&mut self, req: rpc::Request, ctx: &mut Context<Self>) {
-        trace!("Unix socket session {} rx: {:?})", self.id, req);
-        
-        // Send request to engine
-        self.engine.do_send(RpcRequest(req, ctx.address()));
+        unimplemented!();
     }
+
 }
 
-/// Handler for sending data directly to a given session
-impl Handler<RpcResponse> for UnixSession {
-    type Result = ();
+#[cfg(test)]
+mod test {
+    use super::*;
 
-    fn handle(&mut self, resp: RpcResponse, _: &mut Context<Self>) -> Self::Result {
-        trace!("Unix socket session {} tx: {:?})", self.id, resp);
-        
-        // Forward response to socket instance
-        (&mut self.sink).send(resp.0).wait().unwrap();
+    use tracing_subscriber::FmtSubscriber;
+
+    #[test]
+    fn test_unix() {
+
+        let _ = FmtSubscriber::builder().with_max_level(Level::DEBUG).try_init();
+
+        task::block_on( async {
+            let mut unix = Unix::new("/tmp/dsf-unix-test").await
+                .expect("Error creating unix socket listener");
+            
+        })
     }
+
 }
+
