@@ -13,7 +13,7 @@ use tracing_subscriber::FmtSubscriber;
 use tracing_subscriber::filter::LevelFilter;
 
 
-use dsf_daemon::daemon::{Daemon, Options};
+use dsf_daemon::engine::{Engine, Options};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "DSF Daemon")]
@@ -38,7 +38,7 @@ fn main() {
     // Create async task
     let res = task::block_on(async move {
         // Initialise daemon
-        let mut d = match Daemon::new(opts.daemon_opts).await {
+        let mut d = match Engine::new(opts.daemon_opts).await {
             Ok(d) => d,
             Err(e) => {
                 error!("Error initialising daemon: {:?}", e);

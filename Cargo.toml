@@ -1,8 +1,10 @@
 [package]
 name = "dsf-daemon"
+repository = "https://github.com/dist-svc/dsf-daemon"
 version = "0.1.0"
 authors = ["ryan <ryan@kurte.nz>"]
 edition = "2018"
+license = "GPL-3.0"
 publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -23,7 +25,9 @@ futures_codec = "0.3.4"
 async-trait = "0.1.21"
 bytes = "0.5.3"
 derive_builder = "0.9.0"
-
+serde_json = "1.0.44"
+base64 = "0.11.0"
+chrono-humanize = "0.0.11"
 
 [dependencies.dsf-core]
 version = "0.1.0"
@@ -36,6 +40,10 @@ path = "../dsf-rpc"
 [dependencies.log]
 features = ["max_level_trace", "release_max_level_info"]
 version = "0.4.6"
+
+[dependencies.diesel]
+features = [ "sqlite" ]
+version = "1.4.3"
 
 [dependencies.serde]
 features = ["derive"]

@@ -1,8 +1,7 @@
 
 use std::net::SocketAddr;
-use std::io::{self, Error as IoError};
+use std::io;
 use std::pin::Pin;
-
 
 use std::collections::HashMap;
 

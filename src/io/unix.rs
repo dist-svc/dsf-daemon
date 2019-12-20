@@ -1,6 +1,6 @@
 
 use std::sync::{Arc, Mutex};
-use std::io::{self, Error as IoError};
+use std::io;
 use std::collections::HashMap;
 use std::pin::Pin;
 
@@ -42,13 +42,20 @@ impl From<mpsc::SendError> for UnixError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnixMessage {
-    connection_id: u32,
-    data: Bytes,
+    pub connection_id: u32,
+    pub data: Bytes,
 }
 
 impl UnixMessage {
     pub fn new(connection_id: u32, data: Bytes) -> Self {
         Self{connection_id, data}
+    }
+
+    pub fn response(&self, data: Bytes) -> Self {
+        Self{
+            connection_id: self.connection_id,
+            data,
+        }
     }
 }
 
@@ -100,7 +107,7 @@ impl Unix {
     }
 
     /// Send a network message
-    async fn send(&mut self, msg: UnixMessage) -> Result<(), UnixError> {
+    pub async fn send(&mut self, msg: UnixMessage) -> Result<(), UnixError> {
         let mut connections = self.connections.lock().unwrap();
         let interface = match connections.get_mut(&msg.connection_id) {
             Some(v) => v,
@@ -152,10 +159,7 @@ impl Connection {
 
                                 debug!("rx: {:?}", &buff[..n]);
 
-                                let u = UnixMessage{
-                                    connection_id: index,
-                                    data: Bytes::copy_from_slice(&buff[..n]),
-                                };
+                                let u = UnixMessage::new(index, Bytes::copy_from_slice(&buff[..n]));
                                 rx_sink.send(u).await?;
                             },
                             Err(e) => {
