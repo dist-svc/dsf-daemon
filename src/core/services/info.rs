@@ -6,7 +6,7 @@ use colored::*;
 
 use dsf_core::prelude::*;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Queryable)]
 pub struct ServiceInfo {
     pub id: Id,
     pub index: usize,

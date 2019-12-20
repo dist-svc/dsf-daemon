@@ -21,7 +21,7 @@ use super::data::Data;
 
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Queryable)]
 pub struct ServiceInst {
     pub(crate) service: Service,
     pub(crate) state: ServiceState,
