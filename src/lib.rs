@@ -5,6 +5,9 @@ extern crate async_std;
 extern crate async_trait;
 extern crate bytes;
 
+#[macro_use]
+extern crate derive_builder;
+
 extern crate colored;
 
 extern crate dsf_core;

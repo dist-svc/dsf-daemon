@@ -1,15 +1,18 @@
 
 use std::net::SocketAddr;
-use std::io::Error as IoError;
+use std::io::{self, Error as IoError};
+use std::pin::Pin;
+
 
 use std::collections::HashMap;
 
 use futures::prelude::*;
-use futures::{select};
+use futures::{select, Stream};
 use futures::channel::mpsc;
+use futures::task::{Poll, Context};
 
 use async_std::task::{self, JoinHandle};
-use async_std::net::{TcpListener, TcpStream, UdpSocket};
+use async_std::net::{UdpSocket};
 
 use tracing::{span, Level};
 use tracing_futures::Instrument;
@@ -47,10 +50,26 @@ impl NetMessage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub enum NetError {
+    Io(io::Error),
+    Sender(mpsc::SendError),
     NoMatchingInterface,
 }
+
+impl From<io::Error> for NetError {
+    fn from(e: io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+
+impl From<mpsc::SendError> for NetError {
+    fn from(e: mpsc::SendError) -> Self {
+        Self::Sender(e)
+    }
+}
+
+impl Unpin for Net {}
 
 /// Network manager object
 pub struct Net {
@@ -63,7 +82,7 @@ pub struct Net {
 
 #[derive(Debug)]
 struct Binding {
-    handle: JoinHandle<Result<(), IoError>>,
+    handle: JoinHandle<Result<(), NetError>>,
     sink: mpsc::Sender<NetMessage>,
     info: NetInfo,
 }
@@ -86,6 +105,8 @@ impl Net {
     pub fn new() -> Self {
         let (rx_sink, rx_stream) = mpsc::channel::<NetMessage>(0);
 
+        //let rx_stream = Box::pin(rx_stream);
+
         Net{ bindings: HashMap::new(), index: 0, rx_sink, rx_stream }
     }
 
@@ -95,15 +116,17 @@ impl Net {
     }
 
     /// Bind to a new interface
-    pub async fn bind(&mut self, kind: NetKind, addr: SocketAddr) -> Result<(), IoError> {
+    pub async fn bind(&mut self, kind: NetKind, addr: SocketAddr) -> Result<(), NetError> {
         match kind {
-            NetKind::Udp => self.listen_udp(addr).await,
+            NetKind::Udp => self.listen_udp(addr).await?,
             NetKind::Tcp => unimplemented!(),
         }
+
+        Ok(())
     }
 
     /// Unbind from an existing interface
-    pub fn unbind(&mut self, interface: u32) -> Result<(), NetError> {
+    pub async fn unbind(&mut self, interface: u32) -> Result<(), NetError> {
         let _interface = match self.bindings.remove(&interface) {
             Some(v) => v,
             None => return Err(NetError::NoMatchingInterface),
@@ -113,31 +136,24 @@ impl Net {
     }
 
     /// Send a network message
-    async fn send(&mut self, msg: NetMessage) -> Result<(), NetError> {
+    pub async fn send(&mut self, msg: NetMessage) -> Result<(), NetError> {
         let interface = match self.bindings.get_mut(&msg.interface) {
             Some(v) => v,
             None => return Err(NetError::NoMatchingInterface),
         };
 
-        interface.sink.send(msg).await;
+        interface.sink.send(msg).await?;
 
         Ok(())
     }
 
-    /// Receive a network message
-    async fn receive(&mut self) -> Option<NetMessage> {
-        let res = self.rx_stream.next().await;
-
-        res
-    }
-
     /// Start listening on the provided UDP address
-    async fn listen_udp(&mut self, address: SocketAddr) -> Result<(), IoError> {
+    async fn listen_udp(&mut self, address: SocketAddr) -> Result<(), NetError> {
         let socket = UdpSocket::bind(address).await?;
         let interface = self.index;
 
         let mut rx_sink = self.rx_sink.clone();
-        let (mut tx_sink, mut tx_stream) = mpsc::channel::<NetMessage>(0);
+        let (tx_sink, mut tx_stream) = mpsc::channel::<NetMessage>(0);
 
         debug!("Starting UDP listener {}: {}", interface, address);
 
@@ -157,9 +173,12 @@ impl Net {
                                     address,
                                     data,
                                 };
-                                rx_sink.send(msg).await.unwrap()
+                                rx_sink.send(msg).await?;
                             },
-                            Err(e) => error!("recieve error: {:?}", e),
+                            Err(e) => {
+                                error!("recieve error: {:?}", e);
+                                break
+                            },
                         }
                     },
                     res = tx_stream.next() => {
@@ -167,7 +186,7 @@ impl Net {
                             Some(d) => {
                                 event!(Level::TRACE, kind="UDP transmit", address = %d.address, data = ?d.data);
 
-                                socket.send_to(&d.data, &d.address).await.unwrap();
+                                socket.send_to(&d.data, &d.address).await?;
                             },
                             None => debug!("tx stream closed"),
                         }
@@ -185,9 +204,15 @@ impl Net {
 
         Ok(())
     }
-
 }
 
+impl Stream for Net {
+    type Item = NetMessage;
+
+    fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.rx_stream).poll_next(ctx)
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -221,7 +246,7 @@ mod test {
             net.send(NetMessage::new(0, addr_b, data.clone())).await
                 .expect("Error sending net message");
 
-            let res = net.receive().await
+            let res = net.next().await
                 .expect("Error awaiting net message");
             
             assert_eq!(res, NetMessage::new(1, addr_a, data.clone()));
@@ -229,14 +254,14 @@ mod test {
             net.send(NetMessage::new(1, addr_a, data.clone())).await
             .expect("Error sending net message");
 
-            let res = net.receive().await
+            let res = net.next().await
                 .expect("Error awaiting net message");
             
             assert_eq!(res, NetMessage::new(0, addr_b, data.clone()));
 
             // Unbind from UDP port
-            net.unbind(0).unwrap();
-            net.unbind(1).unwrap();
+            net.unbind(0).await.unwrap();
+            net.unbind(1).await.unwrap();
             assert_eq!(net.list().len(), 0);
         })
     }
