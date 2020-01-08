@@ -37,6 +37,11 @@ features = [ "serde" ]
 version = "*"
 path = "../dsf-rpc"
 
+
+[dependencies.kad]
+version = "*"
+path = "../rust-kad"
+
 [dependencies.log]
 features = ["max_level_trace", "release_max_level_info"]
 version = "0.4.6"

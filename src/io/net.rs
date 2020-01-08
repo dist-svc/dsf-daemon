@@ -135,6 +135,7 @@ impl Net {
     }
 
     /// Send a network message
+    /// TODO: what if you don't know what interface to send on??
     pub async fn send(&mut self, msg: NetMessage) -> Result<(), NetError> {
         let interface = match self.bindings.get_mut(&msg.interface) {
             Some(v) => v,

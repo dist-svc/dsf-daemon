@@ -1,4 +1,5 @@
-
+//! Wire adaptor implements wire encoding/decoding for DSF messages
+//! 
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -67,7 +68,7 @@ impl Wire {
         Ok((&buff[..n]).to_vec())
     }
 
-    pub fn decode<PK>(&self, data: &[u8], find_pub_key: &PK) -> Result<NetMessage, Error> 
+    pub fn decode<PK>(&self, data: &[u8], find_pub_key: PK) -> Result<NetMessage, Error> 
     where 
         PK: Fn(&Id) -> Option<PublicKey>,
     {
@@ -78,12 +79,12 @@ impl Wire {
 
         // Parse out base object
         // TODO: pass secret keys for encode / decode here
-        let (base, _n) = Base::parse(&data, find_pub_key, |_id| None )?;
+        let (base, _n) = Base::parse(&data, &find_pub_key, |_id| None )?;
 
         // TODO: use n here?
 
         // Convert into message type
-        let message = NetMessage::convert(base, find_pub_key )?;
+        let message = NetMessage::convert(base, &find_pub_key )?;
 
         Ok(message)
     }
@@ -119,6 +120,7 @@ impl Stream for Wire {
 }
 
 // WireConnector provides a Connector implementation for DSF use
+#[derive(Clone)]
 pub struct WireConnector {
     sink: mpsc::Sender<NetMessage>,
 
@@ -129,7 +131,7 @@ pub struct WireConnector {
 impl Connector for WireConnector {
         // Send a request and receive a response or error at some time in the future
         async fn request(
-            &mut self, req_id: RequestId, target: Address, req: NetRequest, t: Duration,
+            &self, req_id: RequestId, target: Address, req: NetRequest, t: Duration,
         ) -> Result<NetResponse, Error> {            
             // Create per-request channel
             let (tx, mut rx) = mpsc::channel(0);
@@ -138,7 +140,8 @@ impl Connector for WireConnector {
             self.requests.lock().unwrap().insert(req_id, tx);
 
             // Send message
-            self.sink.send(NetMessage::Request(req)).await.unwrap();
+            let mut sink = self.sink.clone();
+            sink.send(NetMessage::Request(req)).await.unwrap();
 
             // Await and return message
             let res = timeout(t, rx.next() ).await;
@@ -167,7 +170,7 @@ impl Connector for WireConnector {
     
         // Send a response message
         async fn respond(
-            &mut self, req_id: RequestId, target: Address, resp: NetResponse,
+            &self, req_id: RequestId, target: Address, resp: NetResponse,
         ) -> Result<(), Error> {
             unimplemented!()
         }

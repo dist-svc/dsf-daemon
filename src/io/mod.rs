@@ -29,11 +29,11 @@ use crate::error::Error;
 pub trait Connector {
     // Send a request and receive a response or error at some time in the future
     async fn request(
-        &mut self, req_id: RequestId, target: Address, req: NetRequest, timeout: Duration,
+        &self, req_id: RequestId, target: Address, req: NetRequest, timeout: Duration,
     ) -> Result<NetResponse, Error>;
 
     // Send a response message
     async fn respond(
-        &mut self, req_id: RequestId, target: Address, resp: NetResponse,
+        &self, req_id: RequestId, target: Address, resp: NetResponse,
     ) -> Result<(), Error>;
 }

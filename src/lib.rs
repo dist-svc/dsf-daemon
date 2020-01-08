@@ -31,7 +31,7 @@ extern crate tracing_subscriber;
 
 extern crate dsf_core;
 extern crate dsf_rpc;
-
+extern crate kad;
 
 pub mod core;
 pub mod daemon;
@@ -41,4 +41,5 @@ pub mod engine;
 
 
 mod io;
+
 mod store;

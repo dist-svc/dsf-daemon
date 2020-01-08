@@ -15,9 +15,14 @@ use bytes::Bytes;
 use dsf_core::service::{Service, ServiceBuilder};
 use dsf_rpc::{Request as RpcRequest, Response as RpcResponse, ResponseKind as RpcResponseKind};
 
+use kad::{Config as DhtConfig};
+
 use crate::error::Error;
 use crate::io::*;
 use crate::store::*;
+use crate::daemon::*;
+
+use crate::daemon::{Options as DaemonOptions};
 
 pub struct Engine {
     net: Net,
@@ -29,7 +34,8 @@ pub struct Engine {
 }
 
 pub const DEFAULT_UNIX_SOCKET: &str = "/tmp/dsf.sock";
-pub const DEFAULT_DATABASE: &str = "/tmp/dsf.sock";
+pub const DEFAULT_DATABASE: &str = "/tmp/dsf.db";
+pub const DEFAULT_DATABASE_DIR: &str = "/tmp/dsf/";
 pub const DEFAULT_SERVICE: &str = "/tmp/dsf.svc";
 
 #[derive(StructOpt, Builder, Debug, Clone, PartialEq)]
@@ -41,7 +47,7 @@ pub struct Options {
     pub bind_addresses: Vec<SocketAddr>,
 
     #[structopt(long = "database-file", default_value = "/var/dsf/dsf.db", env="DSF_DB")]
-    /// Unix socket for communication with the daemon
+    /// Database file for storage by the daemon
     pub database: String,
 
     #[structopt(long = "service-file", default_value = "/var/dsf/dsf.svc", env="DSF_SVC")]
@@ -51,6 +57,9 @@ pub struct Options {
     #[structopt(short = "s", long = "daemon-socket", default_value = "/tmp/dsf.sock", env="DSF_SOCK")]
     /// Unix socket for communication with the daemon
     pub daemon_socket: String,
+
+    #[structopt(flatten)]
+    daemon_options: DaemonOptions,
 }
 
 impl Default for Options {
@@ -60,6 +69,10 @@ impl Default for Options {
             daemon_socket: DEFAULT_UNIX_SOCKET.to_string(),
             database: DEFAULT_DATABASE.to_string(),
             service_file: DEFAULT_SERVICE.to_string(),
+            daemon_options: DaemonOptions{
+                database_dir: DEFAULT_DATABASE_DIR.to_string(),
+                dht: DhtConfig::default(),
+            }
         }
     }
 }
@@ -71,9 +84,8 @@ impl Engine {
 
         // Create or load service
         let s = ServiceBuilder::default().peer().build().unwrap();
-        // TODO: use service file storage here
 
-
+        // TODO: persist storage here
 
         // Create new network connector
         let mut net = Net::new();
@@ -91,6 +103,9 @@ impl Engine {
         let mut wire = Wire::new(s.private_key().unwrap());
 
 
+        // Create new DSF instance
+        let mut dsf = Dsf::new(options.daemon_options, s, wire.connector());
+
 
         Ok(Self{net, unix, store, wire})
     }
@@ -98,6 +113,7 @@ impl Engine {
     /// Run a daemon instance
     /// 
     /// This blocks forever
+    /// TODO: catch exit signal..?
     pub async fn run(&mut self) -> Result<(), Error> {
 
         loop {
@@ -112,7 +128,7 @@ impl Engine {
                 // Outgoing network messages
                 net_tx = self.wire.next().fuse() => {
                     if let Some(m) = net_tx {
-
+                        
                     }
                 }
                 // Incoming RPC messages, response is inline
@@ -129,7 +145,15 @@ impl Engine {
     }
 
     async fn handle_net(&mut self, msg: NetMessage) -> Result<(), Error> {
-        // TODO: decode
+        // TODO: decode network message to DSF message
+        let decode = match self.wire.decode(&msg.data, |id| None ) {
+            Ok(v) => v,
+            Err(e) => {
+                debug!("Error decoding message from: {:?}", msg.address);
+                // TODO: feed back decoding error to stats / rate limiting
+                return Ok(())
+            }
+        };
 
         // TODO: switch on request and responses
 
