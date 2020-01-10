@@ -35,6 +35,7 @@ extern crate kad;
 
 pub mod core;
 pub mod daemon;
+pub mod rpc;
 pub mod error;
 
 pub mod engine;

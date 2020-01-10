@@ -17,6 +17,7 @@ pub enum Error {
     Base(BaseError),
 
     Timeout,
+    Unknown,
 }
 
 impl From<NetError> for Error {

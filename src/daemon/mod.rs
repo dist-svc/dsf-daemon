@@ -9,6 +9,7 @@ use crate::core::peers::{Peer, PeerManager};
 use crate::core::services::{ServiceManager};
 
 use crate::io::Connector;
+use crate::error::Error;
 
 pub mod dht;
 use dht::{DhtAdaptor, dht_reducer};
@@ -22,6 +23,9 @@ pub struct Options {
     #[structopt(flatten)]
     pub dht: DhtConfig,
 }
+
+/// Re-export of Dht type used for DSF
+pub type Dht<C> = StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, ()>;
 
 pub struct Dsf<C> {
     /// Inernal storage for daemon service 
@@ -43,8 +47,6 @@ pub struct Dsf<C> {
     connector: C,
 }
 
-/// Re-export of Dht type used for DSF
-pub type Dht<C> = StandardDht<Id, Peer, Data, RequestId, C, ()>;
 
 impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 {
@@ -87,5 +89,42 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     pub fn service(&self) -> &Service {
         &self.service
     }
+
+    pub(crate) fn peers(&self) -> PeerManager {
+        self.peers.clone()
+    }
+
+    pub(crate) fn dht(&mut self) -> &mut Dht<C> {
+        &mut self.dht
+    }
+
+
+    /// Initialise a DSF instance
+    pub async fn bootstrap(&mut self) -> Result<(), Error> {
+        
+        unimplemented!();
+    }
+
+    /// Store pages in the database at the provided ID
+    pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    /// Find pages in the database at the provided ID
+    pub async fn find(&mut self, id: &Id) -> Result<Vec<Page>, Error> {
+        unimplemented!();
+    }
+
+    /// Look up a peer in the database
+    pub async fn lookup(&mut self, id: &Id) -> Result<Peer, Error> {
+        unimplemented!();
+    }
+
+    /// Run an update of the daemom and all managed services
+    pub async fn update(&mut self, force: bool) -> Result<(), Error> {
+        unimplemented!();
+    }
 }
+
+
 
