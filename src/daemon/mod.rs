@@ -1,9 +1,14 @@
 
+use std::time::Duration;
+
 use structopt::StructOpt;
 
 use dsf_core::prelude::*;
 
 use kad::prelude::*;
+
+use async_std::future::timeout;
+use tracing::{Level, span};
 
 use crate::core::peers::{Peer, PeerManager};
 use crate::core::services::{ServiceManager};
@@ -13,6 +18,9 @@ use crate::error::Error;
 
 pub mod dht;
 use dht::{DhtAdaptor, dht_reducer};
+
+pub mod net;
+
 
 #[derive(Clone, Debug, PartialEq, StructOpt)]
 pub struct Options {
@@ -94,6 +102,14 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         self.peers.clone()
     }
 
+    pub(crate) fn services(&mut self) -> ServiceManager {
+        self.services.clone()
+    }
+
+    pub(crate) fn connector(&mut self) -> &mut C {
+        &mut self.connector
+    }
+
     pub(crate) fn dht(&mut self) -> &mut Dht<C> {
         &mut self.dht
     }
@@ -107,22 +123,110 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
     /// Store pages in the database at the provided ID
     pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
-        unimplemented!();
+
+        let span = span!(Level::DEBUG, "store", "{}", self.id());
+        let _enter = span.enter();
+
+        // Pre-sign new pages so encoding works
+        // TODO: this should not be here
+        let mut pages = pages.clone();
+        for p in &mut pages {
+            if p.id() != &self.id() {
+                continue
+            }
+            if let Some(_s) = p.signature() {
+                continue
+            }
+
+            let mut b = Base::from(&*p);
+            let mut buff = vec![0u8; 4096];
+            let _n = b.encode(None, None, &mut buff).unwrap();
+            p.set_signature(b.signature().clone().unwrap());
+        }
+
+        match timeout(Duration::from_secs(20), self.dht.store(id.clone().into(), pages, ())).await? {
+            Ok(n) => {
+                debug!("Store complete ({} peers)", n);
+                // TODO: use search results
+                Ok(())
+            },
+            Err(e) => {
+                error!("Store failed: {:?}", e);
+                Err(Error::NotFound)
+            }
+        }
     }
 
-    /// Find pages in the database at the provided ID
-    pub async fn find(&mut self, id: &Id) -> Result<Vec<Page>, Error> {
-        unimplemented!();
+    /// Search for pages in the database at the provided ID
+    pub async fn search(&mut self, id: &Id) -> Result<Vec<Page>, Error> {
+
+        let span = span!(Level::DEBUG, "search", "{}", self.id());
+        let _enter = span.enter();
+        
+        match timeout(Duration::from_secs(20), self.dht.find(id.clone().into(), ())).await? {
+            Ok(d) => {
+                let data = dht_reducer(&d);
+
+                info!("Search complete ({} entries found)", data.len());
+                // TODO: use search results
+                if data.len() > 0 {
+                    Ok(data)
+                } else {
+                    Err(Error::NotFound)
+                }
+            },
+            Err(e) => {
+                error!("Search failed: {:?}", e);
+                    return Err(Error::NotFound)
+            }
+        }        
     }
 
     /// Look up a peer in the database
     pub async fn lookup(&mut self, id: &Id) -> Result<Peer, Error> {
-        unimplemented!();
+        let span = span!(Level::DEBUG, "lookup", "{}", self.id());
+        let _enter = span.enter();
+
+        match timeout(Duration::from_secs(20), self.dht.lookup(id.clone().into(), ())).await? {
+            Ok(n) => {
+                debug!("Lookup complete: {:?}", n.info());
+                // TODO: use search results
+                Ok(n.info().clone())
+            },
+            Err(e) => {
+                error!("Lookup failed: {:?}", e);
+                Err(Error::NotFound)
+            }
+        }
     }
 
     /// Run an update of the daemom and all managed services
     pub async fn update(&mut self, force: bool) -> Result<(), Error> {
-        unimplemented!();
+        use crate::core::services::ServiceState;
+        
+        let interval = Duration::from_secs(10 * 60);
+
+        // Sync data storage
+        self.services.sync();
+
+        // Fetch instance lists for each operation
+        let register_ops = self.services.updates_required(ServiceState::Registered, interval, force);
+        for o in &register_ops {
+            //self.register(rpc::RegisterOptions{service: rpc::ServiceIdentifier{id: Some(inst.id), index: None}, no_replica: false })
+        }
+
+        let update_ops = self.services.updates_required(ServiceState::Located, interval, force);
+        for o in &update_ops {
+            //self.locate(rpc::LocateOptions{id: inst.id}).await;
+        }
+
+        let subscribe_ops = self.services.updates_required(ServiceState::Subscribed, interval, force);
+        for o in &subscribe_ops {
+            //self.locate(rpc::LocateOptions{id: inst.id}).await;
+            //self.subscribe(rpc::SubscribeOptions{service: rpc::ServiceIdentifier{id: Some(inst.id), index: None}}).await;
+        }
+
+        Ok(())
     }
 }
 

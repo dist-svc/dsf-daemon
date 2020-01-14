@@ -22,7 +22,6 @@
 
 
 use futures::prelude::*;
-use futures::future::ok;
 
 use dsf_core::prelude::*;
 use dsf_core::net;
@@ -31,8 +30,11 @@ use crate::error::Error;
 use crate::io::Connector;
 use crate::daemon::Dsf;
 
+pub mod connect;
+
 impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 {
+    /// Execute an RPC command
     pub async fn exec() -> Result<(), Error> {
         unimplemented!()
     }

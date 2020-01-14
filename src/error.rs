@@ -1,5 +1,6 @@
 
 use futures::channel::mpsc::SendError;
+use async_std::future::TimeoutError;
 
 use dsf_core::types::{Error as CoreError};
 use dsf_core::base::BaseError;
@@ -18,6 +19,8 @@ pub enum Error {
 
     Timeout,
     Unknown,
+    Unimplemented,
+    NotFound,
 }
 
 impl From<NetError> for Error {
@@ -55,3 +58,10 @@ impl From<BaseError> for Error {
         Self::Base(e)
     }
 }
+
+impl From<TimeoutError> for Error {
+    fn from(_e: TimeoutError) -> Self {
+        Self::Timeout
+    }
+}
+

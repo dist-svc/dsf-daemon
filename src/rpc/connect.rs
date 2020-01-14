@@ -2,6 +2,8 @@
 use std::time::Duration;
 
 use futures::prelude::*;
+use async_std::future::timeout;
+use tracing::{span, Level};
 
 use kad::prelude::{DhtEntry};
 
@@ -23,7 +25,10 @@ use crate::daemon::dht::TryAdapt;
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
 {
     pub async fn connect(&mut self, options: ConnectOptions) -> Result<ConnectInfo, DsfError> {
-        info!("[DSF ({:?})] Connect: {:?}", self.id(), options.address);
+        let span = span!(Level::DEBUG, "connect", "{}", self.id());
+        let _enter = span.enter();
+
+        info!("Connect: {:?}", options.address);
 
 //        if self.bind_address() == options.address {
 //            warn!("[DSF ({:?})] Cannot connect to self", self.id);
@@ -34,12 +39,15 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
         let mut req = net::Request::new(self.id(), net::RequestKind::FindNode(self.id()), flag);
 
         let service = self.service();
-        req.common.remote_address = Some(self.ext_address());
+
+        //TODO: forward address here
+        //req.common.remote_address = Some(self.ext_address());
+        
         req.common.public_key = Some(service.public_key());
 
         let our_id = self.id();
-        let mut peers = self.peers.clone();
-        let mut dht = self.dht.clone();
+        let mut peers = self.peers();
+        let mut dht = self.dht();
 
         let address = options.address.clone();
 
@@ -49,11 +57,11 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
         // Execute request
         // TODO: could this just be a DHT::connect?
 
-        let timeout = options.timeout.or(Some(Duration::from_secs(3))).unwrap();
-        let res = future::timeout(timeout, self.request(ctx.clone(), address, req)).await;
+        let d = options.timeout.or(Some(Duration::from_secs(3))).unwrap();
+        let res = timeout(d, self.request(address, req)).await?;
 
         // Handle errors
-        let (resp, _ctx_in) = match res {
+        let resp = match res {
             Ok(r) => r,
             Err(e) => {
                 warn!("[DSF ({:?})] Connect error: {:?}", our_id, e);
@@ -70,7 +78,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
 
         // Pass response to DHT to finish connecting
         let data = resp.data.try_to((our_id, self.peers())).unwrap();
-        match self.dht().handle_connect_response(DhtEntry::new(resp.from, peer), data, ctx).await {
+        match self.dht().handle_connect_response(DhtEntry::new(resp.from, peer), data, ()).await {
             Ok(nodes) => {
                 // Nodes already added to PeerManager in WireAdaptor
                 info.peers = nodes.len();
