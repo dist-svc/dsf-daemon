@@ -77,3 +77,8 @@ required-features = [ "cli" ]
 
 [patch.crates-io]
 futures_codec = { git = "https://github.com/ryankurte/futures-codec", branch = "feature/json-cbor-codecs" }
+
+[dev-dependencies]
+tempdir = "0.3.7"
+rr-mux = "0.10.1"
+rand = "0.7.3"

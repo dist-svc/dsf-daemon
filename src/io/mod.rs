@@ -21,6 +21,8 @@ pub use unix::{Unix, UnixError, UnixMessage};
 pub mod wire;
 pub use wire::{Wire, WireConnector};
 
+pub mod mock;
+
 use dsf_core::prelude::*;
 
 use crate::error::Error;

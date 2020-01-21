@@ -26,7 +26,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
         let id = match self.resolve_identifier(&options.service) {
             Ok(id) => id,
-            Err(e) => return Err(e))
+            Err(e) => return Err(e)
         };
 
         let own_id = self.id.clone();

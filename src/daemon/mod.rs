@@ -21,6 +21,8 @@ use dht::{DhtAdaptor, dht_reducer};
 
 pub mod net;
 
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone, Debug, PartialEq, StructOpt)]
 pub struct Options {
@@ -30,6 +32,15 @@ pub struct Options {
 
     #[structopt(flatten)]
     pub dht: DhtConfig,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            database_dir: "/var/dsf/".to_string(),
+            dht: DhtConfig::default(),
+        }
+    }
 }
 
 /// Re-export of Dht type used for DSF
