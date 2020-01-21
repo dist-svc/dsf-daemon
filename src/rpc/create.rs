@@ -4,8 +4,8 @@ use std::time::SystemTime;
 
 use futures::prelude::*;
 use futures::future::{ok, Either};
+use tracing::{span, Level};
 
-use rr_mux::Connector;
 use kad::store::Datastore;
 
 use dsf_core::prelude::*;
@@ -13,40 +13,45 @@ use dsf_core::service::Publisher;
 use dsf_core::net;
 use dsf_core::options::Options;
 
+use dsf_rpc::{CreateOptions, RegisterOptions, ServiceIdentifier};
 
-use crate::core::ctx::Ctx;
 use crate::core::services::*;
-use crate::daemon::dsf::Dsf;
-use crate::rpc::{CreateOptions, RegisterOptions, ServiceIdentifier};
+use crate::daemon::Dsf;
+use crate::io;
 
 
-impl <C> Dsf <C> 
-where
-    C: Connector<RequestId, Address, net::Request, net::Response, DsfError, Ctx> + Clone + Sync + Send + 'static,
-{
+impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
+
     /// Create (and publish) a new service
-    pub fn create(&mut self, options: CreateOptions) -> impl Future<Item=ServiceInfo, Error=DsfError> {
-        let _services = self.services.clone();
+    pub async fn create(&mut self, options: CreateOptions) -> Result<ServiceInfo, DsfError> {
+        let span = span!(Level::DEBUG, "create", "{}", self.id());
+        let _enter = span.enter();
+
+        let _services = self.services();
 
         info!("Creating service: {:?}", options);
         let mut sb = ServiceBuilder::default();
 
         sb.generic();
 
+        // Attach a body if provided
         if let Some(body) = options.body {
             sb.body(Body::Cleartext(body.data));
         } else {
             sb.body(Body::None);
         }
 
+        // Append addresses as private options
         for a in options.addresses {
             sb.append_private_option(Options::address(a));
         }
 
+        // TODO: append metadata
         for _m in options.metadata {
             //TODO
         }   
 
+        // If the service is not public, encrypt the object
         if !options.public {
             sb.encrypt();
         }
@@ -62,25 +67,28 @@ where
 
         // Register service in local database
         info!("Storing service information");
-        let service = self.services.register(service, &primary_page, ServiceState::Created, None).unwrap();
+        let service = self.services().register(service, &primary_page, ServiceState::Created, None).unwrap();
 
         let pages = vec![primary_page];
         
         // Register service in distributed database
         if !options.register {
-            self.store.store(&id, &pages);
-            Either::A(ok(service.read().unwrap().info()))
+            // Write the service to the database
+            self.datastore().store(&id, &pages);
+            
         } else {
             info!("Registering and replicating service");
-            Either::B(
-                self.register(RegisterOptions{service: ServiceIdentifier{id: Some(id.clone()), index: None}, no_replica: false })
-                .map(move |_| {
-                    let mut s = service.write().unwrap();
-                    s.state = ServiceState::Registered;
-                    s.last_updated = Some(SystemTime::now());
-                    s.info()
-                } )
-            )
+            // TODO URGENT: re-enable this when register is back
+            //self.register(RegisterOptions{service: ServiceIdentifier{id: Some(id.clone()), index: None}, no_replica: false }).await?;
+
+            // Update local service state
+            let mut s = service.write().unwrap();
+            s.state = ServiceState::Registered;
+            s.last_updated = Some(SystemTime::now());
         }
+
+        // Return service info
+        let s = service.read().unwrap();
+        Ok(s.info())
     }
 }

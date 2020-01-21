@@ -2,42 +2,38 @@
 
 use futures::prelude::*;
 use futures::future::{err};
-
-use rr_mux::{Connector};
-
+use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 use dsf_core::types::Kind;
 
 use dsf_core::net;
 use dsf_core::service::publisher::{Publisher, DataOptionsBuilder};
+use dsf_rpc::{PublishOptions, PublishInfo};
 
-use crate::rpc::{PublishOptions, PublishInfo};
-use crate::core::ctx::Ctx;
-use crate::daemon::dsf::Dsf;
+use crate::daemon::Dsf;
+use crate::error::Error;
+use crate::io;
 
 
-impl <C> Dsf <C> 
-where
-    C: Connector<RequestId, Address, net::Request, net::Response, DsfError, Ctx> + Clone + Sync + Send + 'static,
-{
+impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
     /// Register a locally known service
-    pub fn publish(&mut self, options: PublishOptions) -> Box<dyn Future<Item=PublishInfo, Error=DsfError> + Send> {
-        let id = match self.resolve_identifier(&options.service) {
-            Ok(id) => id,
-            Err(e) => return Box::new(err(e)),
-        };
+    pub async fn publish(&mut self, options: PublishOptions) -> Result<PublishInfo, Error> {
+        let span = span!(Level::DEBUG, "publish", "{}", self.id());
+        let _enter = span.enter();
 
-        info!("[DSF ({:?})] Publish: {:?}", self.id, &id);
-        let _services = self.services.clone();
+        // Resolve ID from ID or Index options
+        let id = self.resolve_identifier(&options.service)?;
+
+        let mut services = self.services();
 
         // Fetch the known service from the service list
-        let service_arc = match self.services.find(&id) {
+        let service_arc = match services.find(&id) {
             Some(s) => s,
             None => {
                 // Only known services can be registered
                 error!("unknown service (id: {})", id);
-                return Box::new(err(DsfError::UnknownService))
+                return Err(Error::UnknownService)
             }
         };
 
@@ -50,7 +46,7 @@ where
             None => {
                 // Only known services can be registered
                 error!("no service private key (id: {})", id);
-                return Box::new(err(DsfError::NoPrivateKey))
+                return Err(Error::NoPrivateKey)
             }
         };
 
@@ -81,23 +77,19 @@ where
         
         info!("Storing data page");
         // Store data against service
-        match service_inst.add_data(&page) {
-            Ok(_) => (),
-            Err(e) => return Box::new(err(e)),
-        }
-        self.services.sync_inst(&service_inst);
+        service_inst.add_data(&page)?;
+        services.sync_inst(&service_inst);
 
         // TODO: send data to subscribers
-        let req = net::Request::new(self.id.clone(), net::RequestKind::PushData(service_id, vec![page]), Flags::default());
+        let req = net::Request::new(self.id(), net::RequestKind::PushData(service_id, vec![page]), Flags::default());
         let addresses: Vec<_> = service_inst.subscribers.iter().map(|(_id, s)| {
             s.peer.address()
         }).collect();
 
         info!("Sending data push messages");
-        Box::new(self.request_all(Ctx::default(), &addresses, req)
-            .map(move |_| {
-                info
-            }))
+        self.request_all(&addresses, req).await;
+            
+        Ok(info)
     }
 
 }

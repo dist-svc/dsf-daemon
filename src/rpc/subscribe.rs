@@ -3,31 +3,30 @@
 
 use futures::prelude::*;
 use futures::future::{ok, err, join_all};
-
-use rr_mux::Connector;
-
-
+use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 use dsf_core::net;
+use dsf_rpc::{SubscribeOptions, SubscribeInfo};
+
+use crate::core::services::ServiceState;
+use crate::daemon::Dsf;
+use crate::io;
 
 
-use crate::core::{ctx::Ctx, services::ServiceState};
-use crate::daemon::dsf::Dsf;
-use crate::rpc::{SubscribeOptions, SubscribeInfo};
+impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
-
-impl <C> Dsf <C> 
-where
-    C: Connector<RequestId, Address, net::Request, net::Response, DsfError, Ctx> + Clone + Sync + Send + 'static,
-{
     // Subscribe to data from a given service
-    pub fn subscribe(&mut self, options: SubscribeOptions) -> Box<dyn Future<Item=SubscribeInfo, Error=DsfError> + Send> { 
-        info!("[DSF ({:?})] Subscribe: {:?}", self.id, &options.service);
+    pub async fn subscribe(&mut self, options: SubscribeOptions) -> Result<SubscribeInfo, DsfError> { 
+
+        let span = span!(Level::DEBUG, "register", "{}", self.id());
+        let _enter = span.enter();
+
+        info!("Subscribe: {:?}", &options.service);
 
         let id = match self.resolve_identifier(&options.service) {
             Ok(id) => id,
-            Err(e) => return Box::new(err(e)),
+            Err(e) => return Err(e))
         };
 
         let own_id = self.id.clone();
@@ -37,8 +36,8 @@ where
             Some(s) => s,
             None => {
                 // Only known services can be registered
-                error!("[DSF ({:?})]unknown service (id: {})", self.id, id);
-                return Box::new(err(DsfError::UnknownService))
+                error!("unknown service (id: {})", id);
+                return Err(DsfError::UnknownService)
             }
         };
 
@@ -61,71 +60,69 @@ where
 
         drop(service_inst);
 
-        info!("[DSF ({:?})] Searching for viable replicas", own_id);
+        info!("Searching for viable replicas");
         let mut s = self.clone();
 
-        Box::new(join_all(searches)
-            .and_then(move |mut responses| {
-                // Filter successful responses
-                let ok: Vec<_> = responses.drain(..).filter_map(|r| r.ok() ).collect();
-                info!("[DSF ({:?})] Searches complete, found {} viable replicas", s.id, ok.len());
+        let search_responses = join_all(searches).await;
 
-                // TODO: limited subset of replicas
-                let addrs: Vec<_> = ok.iter().filter(|_v| true).map(|v| v.address() ).collect();
-                
-                // Issue subscription requests                
-                let req = net::Request::new(s.id.clone(), net::RequestKind::Subscribe(service_id), Flags::default());
+        // Filter successful responses
+        let ok: Vec<_> = search_responses.drain(..).filter_map(|r| r.ok() ).collect();
+        info!("Searches complete, found {} viable replicas", ok.len());
 
-                info!("[DSF ({:?})] Sending subscribe messages to {} peers", s.id, addrs.len());
-                s.request_all(Ctx::default(), &addrs, req)
-            })
-            .and_then(move |res| {
-                let mut service = service_arc.write().unwrap();
-                let mut count = 0;
-                
-                for r in &res {
-                    
-                    let response = match r {
-                        Ok(v) => v,
-                        Err(e) => {
-                            warn!("[DSF ({:?})] Subscribe request error: {:?}", own_id, e);
-                            continue
-                        }
-                    };
+        // TODO: limited subset of replicas
+        let addrs: Vec<_> = ok.iter().filter(|_v| true).map(|v| v.address() ).collect();
+        
+        // Issue subscription requests                
+        let req = net::Request::new(s.id.clone(), net::RequestKind::Subscribe(service_id), Flags::default());
+        info!("Sending subscribe messages to {} peers", addrs.len());
+        
+        let subscribe_responses = s.request_all(&addrs, req).await;
 
-                    match response.data {
-                        net::ResponseKind::Status(net::Status::Ok) => {
-                            debug!("[DSF ({:?})] Subscription ack from: {:?}", own_id, response.from);
-
-                            service.update_replica(response.from, |mut r| {
-                                r.active = true;
-                            });
-
-                            count += 1;
-                        },
-                        net::ResponseKind::Status(net::Status::InvalidRequest) => {
-                            debug!("[DSF ({:?})] Subscription denied from: {:?}", own_id, response.from);
-                        },
-                        _ => {
-                            warn!("[DSF ({:?})] Unhandled response from: {:?}", own_id, response.from);
-                        }
-                    }
+        let mut service = service_arc.write().unwrap();
+        let mut count = 0;
+        
+        for r in &subscribe_responses {
+            
+            let response = match r {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("[DSF ({:?})] Subscribe request error: {:?}", own_id, e);
+                    continue
                 }
+            };
 
-                if count > 0 {
-                    info!("[DSF ({:?})] Subscription complete, updating service state", own_id);
-                    service.update(|s| {
-                        if s.state == ServiceState::Located {
-                            s.state = ServiceState::Subscribed;
-                        }
+            match response.data {
+                net::ResponseKind::Status(net::Status::Ok) => {
+                    debug!("[DSF ({:?})] Subscription ack from: {:?}", own_id, response.from);
+
+                    service.update_replica(response.from, |mut r| {
+                        r.active = true;
                     });
-                } else {
-                    warn!("[DSF ({:?})] Subscription failed, no viable replicas found", own_id);
-                    return err(DsfError::NoReplicasFound)
-                }
 
-                ok(SubscribeInfo{count})
-            }))
+                    count += 1;
+                },
+                net::ResponseKind::Status(net::Status::InvalidRequest) => {
+                    debug!("[DSF ({:?})] Subscription denied from: {:?}", own_id, response.from);
+                },
+                _ => {
+                    warn!("[DSF ({:?})] Unhandled response from: {:?}", own_id, response.from);
+                }
+            }
+        }
+
+        if count > 0 {
+            info!("[DSF ({:?})] Subscription complete, updating service state", own_id);
+            service.update(|s| {
+                if s.state == ServiceState::Located {
+                    s.state = ServiceState::Subscribed;
+                }
+            });
+        } else {
+            warn!("[DSF ({:?})] Subscription failed, no viable replicas found", own_id);
+            return Err(Error::NoReplicasFound)
+        }
+
+        Ok(SubscribeInfo{count})
 
     }
 }

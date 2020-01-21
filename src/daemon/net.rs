@@ -90,6 +90,35 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         Ok(resp)
     }
 
+    /// Internal function to send a series of requests
+    pub(crate) async fn request_all(&mut self, addresses: &[Address], req: net::Request) -> Vec<Result<net::Response, Error>> {
+        
+        let mut f = Vec::with_capacity(addresses.len());
+
+        let c = self.connector();
+
+        // Build requests
+        for a in addresses {
+            let mut req = req.clone();
+            req.common.id = RequestId::default();
+
+            let req_future = c.request(req.id, a.clone(), req, Duration::from_secs(10))
+                .map(move |resp| (resp, a.clone()) );
+
+            f.push(req_future);
+        }
+
+        let mut responses = future::join_all(f).await;
+
+        for (r, a) in &responses {
+            if let Ok(resp) = r {
+                self.handle_base(&resp.from, a, &resp.common, Some(SystemTime::now()));
+            }
+        }
+
+        responses.drain(..).map(|(resp, addr)| resp ).collect()
+    }
+
     /// Internal function to send a response
     /// This MUST be used in place of self.connector.clone.respond for correct system behavior
     pub(crate) async fn respond(&mut self, address: Address, resp: net::Response) -> Result<(), Error> {

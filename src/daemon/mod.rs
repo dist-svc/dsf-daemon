@@ -94,8 +94,8 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     }
 
     /// Fetch a reference to the daemon service
-    pub fn service(&self) -> &Service {
-        &self.service
+    pub fn service(&mut self) -> &mut Service {
+        &mut self.service
     }
 
     pub(crate) fn peers(&self) -> PeerManager {
@@ -114,6 +114,9 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         &mut self.dht
     }
 
+    pub(crate) fn datastore(&mut self) -> &mut HashMapStore<Id, Data> {
+        &mut self.store
+    }
 
     /// Initialise a DSF instance
     pub async fn bootstrap(&mut self) -> Result<(), Error> {

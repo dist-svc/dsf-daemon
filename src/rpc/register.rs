@@ -3,22 +3,18 @@ use std::time::SystemTime;
 
 use futures::prelude::*;
 use futures::future::{err};
-
-use rr_mux::Connector;
-
-
+use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 
 use dsf_core::net;
-
-
+use dsf_rpc::{RegisterOptions, RegisterInfo};
 
 use crate::core::services::ServiceState;
 
-use crate::core::ctx::Ctx;
-use crate::daemon::dsf::Dsf;
-use crate::rpc::{RegisterOptions, RegisterInfo};
+use crate::daemon::Dsf;
+use crate::error::Error;
+use crate::io;
 
 #[derive(Debug, Clone)]
 pub enum RegisterError {
@@ -27,28 +23,26 @@ pub enum RegisterError {
     Inner(DsfError),
 }
 
-impl <C> Dsf <C> 
-where
-    C: Connector<RequestId, Address, net::Request, net::Response, DsfError, Ctx> + Clone + Sync + Send + 'static,
-{
+
+impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
     /// Register a locally known service
-    pub fn register(&mut self, options: RegisterOptions) -> Box<dyn Future<Item=RegisterInfo, Error=DsfError> + Send> {
-        info!("[DSF ({:?})] Register: {:?}", self.id, &options.service);
+    pub async fn register(&mut self, options: RegisterOptions) -> Result<RegisterInfo, Error> {
+        let span = span!(Level::DEBUG, "register", "{}", self.id());
+        let _enter = span.enter();
 
-        let id = match self.resolve_identifier(&options.service) {
-            Ok(id) => id,
-            Err(e) => return Box::new(err(e)),
-        };
+        info!("Register: {:?}", &options.service);
 
-        let mut services = self.services.clone();
+        let id = self.resolve_identifier(&options.service)?;
+
+        let mut services = self.services();
 
         // Fetch the known service from the service list
-        let service = match self.services.find(&id) {
+        let service = match services.find(&id) {
             Some(s) => s,
             None => {
                 // Only known services can be registered
                 error!("unknown service (id: {})", id);
-                return Box::new(err(DsfError::UnknownService))
+                return Err(Error::UnknownService.into())
             }
         };
         let mut s = service.try_write().unwrap();
@@ -56,7 +50,7 @@ where
         debug!("Generating service page");
         let primary_page = match s.publish(false) {
             Ok(v) => v,
-            Err(e) => return Box::new(err(e)),
+            Err(e) => return Err(e.into()),
         };
         drop(s);
 
@@ -73,19 +67,16 @@ where
 
             // Generate a replica page
             let mut s = service.try_write().unwrap();
-            let peer_service = self.service.clone();
-            let mut peer_service = peer_service.write().unwrap();
 
-            let replica_page = match s.replicate(&mut peer_service, false) {
+            let replica_page = match s.replicate(self.service(), false) {
                 Ok(v) => v,
-                Err(e) => return Box::new(err(e)),
+                Err(e) => return Err(e.into()),
             };
 
             info.replica_version = Some(replica_page.version());
 
             pages.push(replica_page);
 
-            drop(peer_service);
             drop(s);
         }
         
@@ -95,13 +86,16 @@ where
 
         info!("Registering service");
         trace!("Pages: {:?}", pages);
-        Box::new(self.store(&id, pages, Ctx::default()).map(move |_n| {
-            services.update_inst(&id, |s| {
-                s.state = ServiceState::Registered;
-                s.last_updated = Some(SystemTime::now());
-            });
-            info
-        } ))
-    }
 
+        // Store pages
+        self.store(&id, pages).await?;
+        
+        // Update local storage info
+        services.update_inst(&id, |s| {
+            s.state = ServiceState::Registered;
+            s.last_updated = Some(SystemTime::now());
+        });
+
+        Ok(info)
+    }
 }
