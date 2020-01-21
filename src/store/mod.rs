@@ -10,7 +10,7 @@ pub struct Store {
     conn: SqliteConnection,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum StoreError {
     Connection(ConnectionError),
 }

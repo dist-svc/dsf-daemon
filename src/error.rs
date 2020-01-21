@@ -2,13 +2,13 @@
 use futures::channel::mpsc::SendError;
 use async_std::future::TimeoutError;
 
-use dsf_core::types::{Error as CoreError};
-use dsf_core::base::BaseError;
+pub use dsf_core::types::{Error as CoreError};
+pub use dsf_core::base::BaseError;
 
-use crate::io::{NetError, UnixError};
-use crate::store::StoreError;
+pub use crate::io::{NetError, UnixError};
+pub use crate::store::StoreError;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     Net(NetError),
     Unix(UnixError),

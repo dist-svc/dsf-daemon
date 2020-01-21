@@ -21,16 +21,16 @@ use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
 
 pub const UNIX_BUFF_LEN: usize = 10 * 1024;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum UnixError {
-    Io(io::Error),
+    Io(io::ErrorKind),
     Sender(mpsc::SendError),
     NoMatchingConnection
 }
 
 impl From<io::Error> for UnixError {
     fn from(e: io::Error) -> Self {
-        Self::Io(e)
+        Self::Io(e.kind())
     }
 }
 

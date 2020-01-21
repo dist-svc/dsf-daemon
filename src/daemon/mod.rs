@@ -4,6 +4,7 @@ use std::time::Duration;
 use structopt::StructOpt;
 
 use dsf_core::prelude::*;
+use dsf_core::service::Publisher;
 
 use kad::prelude::*;
 
@@ -21,7 +22,7 @@ use dht::{DhtAdaptor, dht_reducer};
 
 pub mod net;
 
-#[cfg(test)]
+//#[cfg(test)]
 mod tests;
 
 #[derive(Clone, Debug, PartialEq, StructOpt)]
@@ -127,6 +128,15 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
     pub(crate) fn datastore(&mut self) -> &mut HashMapStore<Id, Data> {
         &mut self.store
+    }
+    
+    pub(crate) fn pub_key(&self) -> PublicKey {
+        self.service.public_key()
+    }
+
+    pub(crate) fn primary<T: AsRef<[u8]> + AsMut<[u8]>>(&mut self, buff: T) -> Result<(usize, Page), Error> {
+        // TODO: this should generate a peer page / contain peer contact info
+        self.service.publish_primary(buff).map_err(|e| e.into() )
     }
 
     /// Initialise a DSF instance

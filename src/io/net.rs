@@ -49,16 +49,16 @@ impl NetMessage {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum NetError {
-    Io(io::Error),
+    Io(io::ErrorKind),
     Sender(mpsc::SendError),
     NoMatchingInterface,
 }
 
 impl From<io::Error> for NetError {
     fn from(e: io::Error) -> Self {
-        Self::Io(e)
+        Self::Io(e.kind())
     }
 }
 
