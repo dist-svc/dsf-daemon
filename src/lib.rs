@@ -1,5 +1,5 @@
 #![recursion_limit="256"]
-
+#![allow(dead_code)]
 
 extern crate async_std;
 

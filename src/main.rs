@@ -23,7 +23,7 @@ struct Config {
     #[structopt(flatten)]
     daemon_opts: Options,
 
-    #[structopt(long = "log-level", default_value = "info")]
+    #[structopt(long = "log-level", default_value = "debug")]
     /// Enable verbose logging
     level: LevelFilter,
 }

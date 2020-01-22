@@ -73,7 +73,7 @@ pub struct Dsf<C> {
 impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 {
     /// Create a new daemon
-    pub fn new(config: Options, service: Service, connector: C) -> Result<Self, ()> {
+    pub fn new(config: Options, service: Service, connector: C) -> Result<Self, Error> {
 
         debug!("Creating new DSF instance");
 
@@ -81,13 +81,15 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         let peers = PeerManager::new(&format!("{}/peers", config.database_dir));
         let services = ServiceManager::new(&format!("{}/services", config.database_dir));
 
+        let id = service.id();
+
         // Create DHT components
         let dht_conn = DhtAdaptor::new(service.id(), service.public_key(), peers.clone(), connector.clone());
-        let table = KNodeTable::new(service.id(), config.dht.k, config.dht.hash_size);
+        let table = KNodeTable::new(service.id(), config.dht.k, id.max_bits());
         let store = HashMapStore::new_with_reducer(Box::new(dht_reducer));
 
         // Instantiate DHT
-        let dht = StandardDht::<Id, Peer, Data, RequestId, _, Ctx>::new(service.id(), config.dht, table, dht_conn, store.clone());
+        let dht = StandardDht::<Id, Peer, Data, RequestId, _, Ctx>::new(id, config.dht, table, dht_conn, store.clone());
 
         // Create DSF object
         let s = Self {
