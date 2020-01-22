@@ -56,22 +56,24 @@ fn test_manager() {
 
     task::block_on(async {
 
-        println!("Responds to pings");
+        info!("Responds to pings");
 
         assert_eq!(
             dsf.handle(a2, Request::new(s2.id(), RequestKind::Ping, Flags::ADDRESS_REQUEST)).unwrap(),
             Response::new(id1.clone(), rand::random(), ResponseKind::NoResult, Flags::default()),
         );
 
-        println!("Connect function");
+        info!("Connect function");
 
         mux.expect(vec![
+            // Initial connect, returns list of nodes
             MockTransaction::request(a2, 
                 Request::new(id1.clone(), RequestKind::FindNode(id1.clone()), Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST).with_public_key(dsf.pub_key()),
                 Ok( Response::new(s2.id(), rand::random(), ResponseKind::NodesFound(id1.clone(), vec![(s3.id(), a3, s3.public_key())]), Flags::default()).with_public_key(s2.public_key()) )
             ),
+            // Second connect, using provided node
             MockTransaction::request(a3, 
-                Request::new(id1.clone(), RequestKind::FindNode(id1.clone()), Flags::PUB_KEY_REQUEST).with_public_key(dsf.pub_key()),
+                Request::new(id1.clone(), RequestKind::FindNode(id1.clone()), Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST).with_public_key(dsf.pub_key()),
                 Ok( Response::new(s3.id(), rand::random(), ResponseKind::NodesFound(id1.clone(), vec![]), Flags::default()) )
             ),
         ]);
@@ -92,7 +94,7 @@ fn test_manager() {
         // TODO: seen not updated because MockConnector bypasses .handle() :-/
         //assert!(!peer.seen().is_none());
 
-        println!("Responds to find_nodes");
+        info!("Responds to find_nodes");
 
         let mut nodes = vec![(s2.id(), a2, s2.public_key()), (s3.id(), a3, s3.public_key())];
         nodes.sort_by_key(|(id, _, _)| { DhtDatabaseId::xor(&s4.id(), &id) });
@@ -102,7 +104,7 @@ fn test_manager() {
             Response::new(id1.clone(), rand::random(), ResponseKind::NodesFound(s4.id().clone(), nodes), Flags::default()),
         );
 
-        println!("Handles store requests");
+        info!("Handles store requests");
 
         let (_n, p4) = s4.publish_primary(&mut buff).unwrap();
 
@@ -111,14 +113,14 @@ fn test_manager() {
             Response::new(id1.clone(), rand::random(), ResponseKind::ValuesFound(s4.id().clone(), vec![p4.clone()]), Flags::default()),
         );
 
-        println!("Responds to page requests");
+        info!("Responds to page requests");
 
         assert_eq!(
             dsf.handle(a4, Request::new(s4.id().clone(), RequestKind::FindValue(s4.id().clone()), Flags::default())).unwrap(),
             Response::new(id1.clone(), rand::random(), ResponseKind::ValuesFound(s4.id().clone(), vec![p4.clone()]), Flags::default()),
         );
 
-        println!("Register function");
+        info!("Register function");
 
         let (_n, p1) = dsf.primary(&mut buff).unwrap();
 
@@ -156,7 +158,7 @@ fn test_manager() {
         mux.finalise();
 
 
-        println!("Generates services");
+        info!("Generates services");
 
         mux.expect(vec![]);
         let info = dsf.create(rpc::CreateOptions::default()).await.expect("error creating service");
@@ -165,7 +167,7 @@ fn test_manager() {
         let pages = dsf.store.find(&info.id).expect("no internal store entry found");
         let page = &pages[0];
 
-        println!("Registers services");
+        info!("Registers services");
         
         peers.sort_by_key(|(_addr, id, _pk)| { DhtDatabaseId::xor(&info.id, &id) });
 
@@ -191,13 +193,13 @@ fn test_manager() {
         dsf.register(rpc::RegisterOptions{service: rpc::ServiceIdentifier{id: Some(info.id.clone()), index: None}, no_replica: true}).await.expect("Registration error");
         mux.finalise();
 
-        println!("Publishes data");
+        info!("Publishes data");
 
         mux.expect(vec![]);
         dsf.publish(rpc::PublishOptions::new(info.id.clone())).await.expect("publishing error");
         mux.finalise();
 
-        println!("Responds to subscribe requests");
+        info!("Responds to subscribe requests");
 
         assert_eq!(
             dsf.handle(a4, Request::new(s4.id().clone(), RequestKind::Subscribe(info.id.clone()), Flags::default())).unwrap(),
@@ -210,7 +212,7 @@ fn test_manager() {
         let _subscriber = service_inst.subscribers.get(&s4.id()).expect("subscriber entry not found for service");
 
 
-        println!("Publishes data to subscribers");
+        info!("Publishes data to subscribers");
 
         mux.expect(vec![
             MockTransaction::request(a4.clone(), 

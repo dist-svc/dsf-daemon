@@ -18,7 +18,7 @@ use crate::io::Connector;
 use crate::error::Error;
 
 pub mod dht;
-use dht::{DhtAdaptor, dht_reducer};
+use dht::{Ctx, DhtAdaptor, dht_reducer};
 
 pub mod net;
 
@@ -45,7 +45,9 @@ impl Default for Options {
 }
 
 /// Re-export of Dht type used for DSF
-pub type Dht<C> = StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, ()>;
+pub type Dht<C> = StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, Ctx>;
+
+
 
 pub struct Dsf<C> {
     /// Inernal storage for daemon service 
@@ -58,7 +60,7 @@ pub struct Dsf<C> {
     services: ServiceManager,
 
     /// Distributed Database
-    dht: StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, ()>,
+    dht: StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, Ctx>,
 
     /// Backing store for DHT
     store: HashMapStore<Id, Data>,
@@ -80,12 +82,12 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         let services = ServiceManager::new(&format!("{}/services", config.database_dir));
 
         // Create DHT components
-        let dht_conn = DhtAdaptor::new(service.id(), peers.clone(), connector.clone());
+        let dht_conn = DhtAdaptor::new(service.id(), service.public_key(), peers.clone(), connector.clone());
         let table = KNodeTable::new(service.id(), config.dht.k, config.dht.hash_size);
         let store = HashMapStore::new_with_reducer(Box::new(dht_reducer));
 
         // Instantiate DHT
-        let dht = StandardDht::<Id, Peer, Data, RequestId, _, ()>::new(service.id(), config.dht, table, dht_conn, store.clone());
+        let dht = StandardDht::<Id, Peer, Data, RequestId, _, Ctx>::new(service.id(), config.dht, table, dht_conn, store.clone());
 
         // Create DSF object
         let s = Self {
@@ -168,7 +170,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             p.set_signature(b.signature().clone().unwrap());
         }
 
-        match timeout(Duration::from_secs(20), self.dht.store(id.clone().into(), pages, ())).await? {
+        match timeout(Duration::from_secs(20), self.dht.store(id.clone().into(), pages, Ctx::PUB_KEY_REQUEST)).await? {
             Ok(n) => {
                 debug!("Store complete ({} peers)", n);
                 // TODO: use search results
@@ -187,7 +189,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         let span = span!(Level::DEBUG, "search", "{}", self.id());
         let _enter = span.enter();
         
-        match timeout(Duration::from_secs(20), self.dht.find(id.clone().into(), ())).await? {
+        match timeout(Duration::from_secs(20), self.dht.find(id.clone().into(), Ctx::PUB_KEY_REQUEST)).await? {
             Ok(d) => {
                 let data = dht_reducer(&d);
 
@@ -211,7 +213,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         let span = span!(Level::DEBUG, "lookup", "{}", self.id());
         let _enter = span.enter();
 
-        match timeout(Duration::from_secs(20), self.dht.lookup(id.clone().into(), ())).await? {
+        match timeout(Duration::from_secs(20), self.dht.lookup(id.clone().into(), Ctx::empty())).await? {
             Ok(n) => {
                 debug!("Lookup complete: {:?}", n.info());
                 // TODO: use search results

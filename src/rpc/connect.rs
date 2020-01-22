@@ -12,14 +12,14 @@ use dsf_core::net;
 
 use dsf_rpc::{ConnectOptions, ConnectInfo};
 
-use crate::daemon::Dsf;
+use crate::daemon::{Dsf};
+use crate::daemon::dht::Ctx;
 use crate::io;
 
 use crate::error::{Error as DsfError};
 use crate::core::{peers::PeerAddress};
 
 use crate::daemon::dht::TryAdapt;
-
 
 
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
@@ -69,6 +69,8 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
             }
         };
 
+        debug!("response from peer: {:?}", &resp.from);
+
         // Update peer information and prepare response
         let peer = self.peers().find_or_create(resp.from.clone(), PeerAddress::Implicit(address), None);
         let mut info = ConnectInfo{
@@ -78,7 +80,8 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
 
         // Pass response to DHT to finish connecting
         let data = resp.data.try_to((our_id, self.peers())).unwrap();
-        match self.dht().handle_connect_response(DhtEntry::new(resp.from, peer), data, ()).await {
+        let ctx = Ctx::INCLUDE_PUBLIC_KEY | Ctx::PUB_KEY_REQUEST | Ctx::ADDRESS_REQUEST;
+        match self.dht().handle_connect_response(DhtEntry::new(resp.from, peer), data, ctx).await {
             Ok(nodes) => {
                 // Nodes already added to PeerManager in WireAdaptor
                 info.peers = nodes.len();

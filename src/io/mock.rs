@@ -52,6 +52,8 @@ impl MockConnector {
 
     /// Finalise expectations on the connector
     pub fn finalise(&mut self) {
+        debug!("Finalizing expectations");
+        
         let transactions: Vec<_> = self.transactions.lock().unwrap().drain(..).collect();
         let expectations = Vec::<MockTransaction>::new();
         assert_eq!(

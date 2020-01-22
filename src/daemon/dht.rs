@@ -12,22 +12,31 @@ use crate::io::Connector;
 
 use super::*;
 
-type Ctx = ();
-
 /// Adaptor to convert between DSF and DHT requests/responses
 #[derive(Clone)]
 pub struct DhtAdaptor<C> {
     id: Id,
+    pub_key: PublicKey,
 
     peers: PeerManager,
 
     connector: C,
 }
 
+bitflags!(
+    /// Contex object for managing outgoing messages
+    pub struct Ctx: u32 {
+        /// Include public key with outgoing message
+        const INCLUDE_PUBLIC_KEY = (1 << 0);
+        const ADDRESS_REQUEST    = (1 << 1);
+        const PUB_KEY_REQUEST    = (1 << 2);
+    }
+);
+
 impl <C> DhtAdaptor <C> where C: Connector + Clone + Sync + Send
 {
-    pub fn new(id: Id, peers: PeerManager, connector: C) -> Self {
-        DhtAdaptor{id, peers, connector}
+    pub fn new(id: Id, pub_key: PublicKey, peers: PeerManager, connector: C) -> Self {
+        DhtAdaptor{id, pub_key, peers, connector}
     }
 }
 
@@ -43,6 +52,16 @@ impl <C> DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor <C> where C
         // Build DSF Request from DHT request
         let mut req = Request::new(self.id.clone(), req.to(), Flags::default());
         trace!("request: {:?}", req);
+
+        if ctx.contains(Ctx::INCLUDE_PUBLIC_KEY) {
+            req.set_public_key(self.pub_key.clone());
+        }
+        if ctx.contains(Ctx::ADDRESS_REQUEST) {
+            req.flags().insert(Flags::ADDRESS_REQUEST);
+        }
+        if ctx.contains(Ctx::PUB_KEY_REQUEST) {
+            req.flags().insert(Flags::PUB_KEY_REQUEST);
+        }
 
         // Issue request and await response
         // TODO: remove timeout duration from here

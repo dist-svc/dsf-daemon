@@ -9,7 +9,8 @@ extern crate base64;
 extern crate bytes;
 extern crate chrono_humanize;
 extern crate colored;
-
+#[macro_use]
+extern crate bitflags;
 
 #[macro_use]
 extern crate derive_builder;
