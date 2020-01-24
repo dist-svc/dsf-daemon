@@ -6,7 +6,8 @@ use futures::prelude::*;
 
 use dsf_core::prelude::*;
 use dsf_core::net;
-use dsf_rpc::ServiceIdentifier;
+
+use dsf_rpc::{self as rpc, ServiceIdentifier};
 
 use crate::error::Error;
 use crate::io::Connector;
@@ -35,8 +36,26 @@ pub mod query;
 impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 {
     /// Execute an RPC command
-    pub async fn exec() -> Result<(), Error> {
-        unimplemented!()
+    // TODO: Actually execute RPC commands
+    pub async fn exec(&mut self, req: rpc::RequestKind) -> Result<rpc::ResponseKind, Error> {
+        let res = match req {
+            rpc::RequestKind::Status => Ok(rpc::ResponseKind::Status(self.status())),
+
+            _ => Ok(rpc::ResponseKind::Unrecognised),
+        };
+
+        match res {
+            Ok(v) => Ok(v),
+            Err(e) => Ok(rpc::ResponseKind::Error(e)),
+        }
+    }
+
+    pub(crate) fn status(&mut self) -> rpc::StatusInfo {
+        rpc::StatusInfo{
+            id: self.id(),
+            peers: self.peers().count(),
+            services: self.services().count(),
+        }
     }
 
     pub(crate) fn resolve_identifier(&mut self, identifier: &ServiceIdentifier) -> Result<Id, Error> {

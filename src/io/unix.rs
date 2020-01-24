@@ -88,7 +88,7 @@ impl Unix {
         let (rx_sink, rx_stream) = mpsc::channel::<UnixMessage>(0);
 
         let handle = task::spawn(async move {
-            let mut incoming= listener.incoming();
+            let mut incoming = listener.incoming();
 
             while let Some(stream) = incoming.next().await {
                 let stream = stream?;
@@ -108,13 +108,27 @@ impl Unix {
 
     /// Send a network message
     pub async fn send(&mut self, msg: UnixMessage) -> Result<(), UnixError> {
-        let mut connections = self.connections.lock().unwrap();
-        let interface = match connections.get_mut(&msg.connection_id) {
-            Some(v) => v,
-            None => return Err(UnixError::NoMatchingConnection),
+        // Sink must be cloned here so the connection lock can be dropped
+        // before the await point, interestingly explicitly dropping doesn't
+        // work, but, adding a scope does...
+
+        let mut sink = {
+           
+            let mut connections = self.connections.lock().unwrap();
+            
+            let interface = match connections.get_mut(&msg.connection_id) {
+                Some(v) => v,
+                None => return Err(UnixError::NoMatchingConnection),
+            };
+
+            debug!("send on interface: {}", interface.index);
+
+            let mut sink: mpsc::Sender<UnixMessage> = interface.sink.clone();
+
+            sink
         };
 
-        interface.sink.send(msg).await?;
+        sink.send(msg).await?;
 
         Ok(())
     }
@@ -129,14 +143,14 @@ impl Stream for Unix {
 }
 
 impl Connection {
-    fn new(stream: UnixStream, index: u32, rx_sink: mpsc::Sender<UnixMessage>) -> Connection {
+    fn new(unix_stream: UnixStream, index: u32, rx_sink: mpsc::Sender<UnixMessage>) -> Connection {
 
-        let mut stream = stream;
+        let mut unix_stream = unix_stream;
         let mut rx_sink = rx_sink;
 
         let (tx_sink, tx_stream) = mpsc::channel::<UnixMessage>(0);
 
-        let handle = task::spawn(async move {
+        let _handle: JoinHandle<Result<(), UnixError>> = task::spawn(async move {
             debug!("new connection");
 
             let mut buff = vec![0u8; UNIX_BUFF_LEN];
@@ -146,20 +160,21 @@ impl Connection {
                 select!{
                     tx = tx_stream.next() => {
                         if let Some(tx) = tx {
-                            debug!("tx: {:?}", tx.data);
-                            stream.write(&tx.data).await?;
+                            debug!("unix tx: {:?}", tx.data);
+                            unix_stream.write(&tx.data).await?;
                         }
                     },
-                    res = stream.read(&mut buff).fuse() => {
+                    res = unix_stream.read(&mut buff).fuse() => {
                         match res {
                             Ok(n) => {
+                                // Skip zero length messages
                                 if n == 0 {
                                     continue
                                 }
 
-                                debug!("rx: {:?}", &buff[..n]);
-
+                                
                                 let u = UnixMessage::new(index, Bytes::copy_from_slice(&buff[..n]));
+                                debug!("unix rx: {:?}", &u.data);
                                 rx_sink.send(u).await?;
                             },
                             Err(e) => {
@@ -176,7 +191,7 @@ impl Connection {
             Ok(())
         }.instrument(span!(Level::TRACE, "UNIX", index)) );
 
-        Connection{index, _handle: handle, sink: tx_sink}
+        Connection{index, _handle, sink: tx_sink}
     }
 }
 

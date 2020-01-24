@@ -60,7 +60,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             }
 
             // Update peer info
-            if let Some(mut peer) = self.peers.find(&from2) {
+            if let Some(mut peer) = self.peers().find(&from2) {
                 peer.update(|mut p| {
                     p.sent += 1;
                 });
@@ -178,7 +178,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             },
             net::RequestKind::Subscribe(id) => {
                 info!("Subscribe request from: {} for service: {}", from, id);
-                let service = match self.services.find(&id) {
+                let service = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -195,7 +195,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             },
             net::RequestKind::Query(id) => {
                 info!("Query request from: {} for service: {}", from, id);
-                let service = match self.services.find(&id) {
+                let service = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -214,7 +214,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             },
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
-                let service = match self.services.find(&id) {
+                let service = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -227,7 +227,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
                 // Store data against service
                 service.add_data(&data[0]).unwrap();
-                self.services.sync_inst(&service);
+                self.services().sync_inst(&service);
 
                 info!("Data push complete");
 

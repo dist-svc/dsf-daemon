@@ -5,8 +5,7 @@ extern crate async_std;
 use async_std::task;
 
 extern crate tracing_subscriber;
-use tracing_subscriber::FmtSubscriber;
-use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::{FmtSubscriber, filter::LevelFilter};
 
 
 extern crate tempdir;
@@ -85,11 +84,11 @@ fn test_manager() {
         mux.finalise();
 
         // Check peer and public key have been registered
-        let peer = dsf.peers.find(&s2.id()).unwrap();
+        let peer = dsf.peers().find(&s2.id()).unwrap();
         assert_eq!(peer.state(), PeerState::Known(s2.public_key()));
         assert!(!peer.seen().is_none());
 
-        let peer = dsf.peers.find(&s3.id()).unwrap();
+        let peer = dsf.peers().find(&s3.id()).unwrap();
         assert_eq!(peer.state(), PeerState::Known(s3.public_key()));
         // TODO: seen not updated because MockConnector bypasses .handle() :-/
         //assert!(!peer.seen().is_none());
@@ -164,7 +163,7 @@ fn test_manager() {
         let info = dsf.create(rpc::CreateOptions::default()).await.expect("error creating service");
         mux.finalise();
 
-        let pages = dsf.store.find(&info.id).expect("no internal store entry found");
+        let pages = dsf.datastore().find(&info.id).expect("no internal store entry found");
         let page = &pages[0];
 
         info!("Registers services");
@@ -206,7 +205,7 @@ fn test_manager() {
             Response::new(id1.clone(), rand::random(), ResponseKind::Status(net::Status::Ok), Flags::default()),
         );
 
-        let service_inst = dsf.services.find(&info.id).unwrap();
+        let service_inst = dsf.services().find(&info.id).unwrap();
         let service_inst = service_inst.write().unwrap();
         assert_eq!(service_inst.subscribers.len(), 1);
         let _subscriber = service_inst.subscribers.get(&s4.id()).expect("subscriber entry not found for service");

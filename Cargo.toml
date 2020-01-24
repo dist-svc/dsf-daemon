@@ -34,6 +34,9 @@ features = [ "serde" ]
 version = "*"
 path = "../dsf-rpc"
 
+[dependencies.dsf-client]
+version = "*"
+path = "../dsf-client"
 
 [dependencies.kad]
 version = "*"
@@ -65,6 +68,7 @@ version = "*"
 tempdir = "0.3.7"
 rr-mux = "0.10.1"
 rand = "0.7.3"
+indicatif = "0.13.0"
 
 
 [patch.crates-io]

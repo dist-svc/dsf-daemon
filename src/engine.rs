@@ -12,6 +12,7 @@ use tracing::{span, Level};
 
 use bytes::Bytes;
 
+use dsf_core::types::Id;
 use dsf_core::service::{Service, ServiceBuilder};
 use dsf_rpc::{Request as RpcRequest, Response as RpcResponse, ResponseKind as RpcResponseKind};
 
@@ -61,7 +62,7 @@ pub struct Options {
     pub daemon_socket: String,
 
     #[structopt(flatten)]
-    daemon_options: DaemonOptions,
+    pub daemon_options: DaemonOptions,
 }
 
 impl Default for Options {
@@ -78,6 +79,23 @@ impl Default for Options {
         }
     }
 }
+
+impl Options {
+    /// Helper constructor to run multiple instances alongside each other
+    pub fn with_suffix(&self, suffix: usize) -> Self {
+        Self {
+            bind_addresses: vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 10100 + suffix as u16)],
+            daemon_socket: format!("{}.{}", self.daemon_socket, suffix),
+            database: format!("{}.{}", self.database, suffix),
+            service_file: format!("{}.{}", self.service_file, suffix),
+            daemon_options: DaemonOptions {
+                database_dir: format!("{}.{}", self.daemon_options.database_dir, suffix),
+                dht: self.daemon_options.dht.clone(),
+            }
+        }
+    }
+}
+
 
 impl Engine {
     /// Create a new daemon instance
@@ -114,6 +132,10 @@ impl Engine {
         debug!("Engine created!");
 
         Ok(Self{dsf, net, unix, store, wire})
+    }
+
+    pub fn id(&self) -> Id {
+        self.dsf.id()
     }
 
     /// Run a daemon instance
@@ -174,12 +196,16 @@ impl Engine {
         let span = span!(Level::TRACE, "rpc", id=req.req_id());
         let _enter = span.enter();
         
-        // TODO: handle RPC request
-        let resp = RpcResponse::new(req.req_id(), RpcResponseKind::None);
+        // Handle RPC request
+        let resp_kind = self.dsf.exec(req.kind()).await?;
 
-        // Encode and send response
+        // Generate response
+        let resp = RpcResponse::new(req.req_id(), resp_kind);
+
+        // Encode response
         let enc = serde_json::to_vec(&resp).unwrap();
 
+        // Send response via relevant unix connection
         let msg = UnixMessage {
             connection_id: msg.connection_id,
             data: Bytes::from(enc),
