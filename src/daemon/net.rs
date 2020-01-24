@@ -75,7 +75,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     // Internal function to send a request and await a response
     /// This MUST be used in place of self.connector.clone.request for correct system behaviour
     pub(crate) async fn request(&mut self, address: Address, req: net::Request) -> Result<net::Response, Error> {
-        let mut req = req.clone();
+        let req = req.clone();
 
         trace!("[DSF ({:?})] Sending request to: {:?} request: {:?}", self.id(), address, &req);
 
@@ -116,17 +116,17 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             }
         }
 
-        responses.drain(..).map(|(resp, addr)| resp ).collect()
+        responses.drain(..).map(|(resp, _addr)| resp ).collect()
     }
 
     /// Internal function to send a response
     /// This MUST be used in place of self.connector.clone.respond for correct system behavior
     pub(crate) async fn respond(&mut self, address: Address, resp: net::Response) -> Result<(), Error> {
-        let mut resp = resp.clone();
+        let resp = resp.clone();
 
         trace!("[DSF ({:?})] Sending response to: {:?} response: {:?}", self.id(), address, &resp);
 
-        let res = timeout(Duration::from_secs(10), self.connector().respond(resp.id, address, resp)).await;
+        timeout(Duration::from_secs(10), self.connector().respond(resp.id, address, resp)).await??;
 
         Ok(())
     }

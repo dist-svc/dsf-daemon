@@ -7,6 +7,8 @@ use colored::*;
 
 use dsf_core::prelude::*;
 
+pub use dsf_rpc::peer::{PeerInfo, PeerState, PeerAddress};
+
 /// Peer object used to store peer related state and information
 /// This is a global singleton representing a known peer and may be shared
 /// between components of the system
@@ -72,81 +74,7 @@ impl Peer {
 }
 
 
-/// PeerInfo object for storage and exchange of peer information
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PeerInfo {
-    pub id: Id,
-    pub address: PeerAddress,
-    pub state: PeerState,
-    pub seen: Option<SystemTime>,
-
-    pub sent: u64,
-    pub received: u64,
-}
-
-
-/// PeerState defines the state of a peer
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum PeerState {
-    /// A peer that has not been contacted exists in the Unknown state
-    Unknown,
-    /// Once public keys have been exchanged this moces to the Known state
-    Known(PublicKey),
-    
-    //Peered(Service),
-}
-
-/// PeerState defines the state of a peer
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum PeerAddress {
-    /// Implicit address
-    Implicit(Address),
-    /// Explicit / requested address
-    Explicit(Address),
-}
-
-impl PeerInfo {
-    pub fn new(id: Id, address: PeerAddress, state: PeerState, seen: Option<SystemTime>) -> Self {
-        Self{id, address, state, seen, sent: 0, received: 0}
-    }
-
-    /// Fetch the address of a peer
-    pub fn address(&self) -> &Address {
-        match &self.address {
-            PeerAddress::Explicit(e) => e,
-            PeerAddress::Implicit(i) => i
-        }
-    }
-
-    pub fn update_address(&mut self, addr: PeerAddress){
-        use PeerAddress::*;
-
-        match (&self.address, &addr) {
-            (_, Explicit(_)) => self.address = addr,
-            (Implicit(_), Implicit(_)) => self.address = addr,
-            _ => (),
-        }
-    }
-
-    /// Fetch the state of a peer
-    pub fn state(&self) -> &PeerState {
-        &self.state
-    }
-
-    // Set the state of a peer
-    pub fn set_state(&mut self, state: PeerState) {
-        self.state = state;
-    }
-
-    pub fn seen(&self) -> Option<SystemTime> {
-        self.seen
-    }
-
-    pub fn set_seen(&mut self, seen: SystemTime) {
-        self.seen = Some(seen);
-    }
-}
-
+#[cfg(disabled)]
 impl fmt::Display for PeerInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 
@@ -189,7 +117,7 @@ impl fmt::Display for PeerInfo {
     }
 }
 
-
+#[cfg(disabled)]
 impl fmt::Display for PeerState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if f.sign_plus() {

@@ -1,7 +1,6 @@
 
 use std::time::Duration;
 
-use futures::prelude::*;
 use async_std::future::timeout;
 use tracing::{span, Level};
 
@@ -25,7 +24,7 @@ use crate::daemon::dht::TryAdapt;
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
 {
     pub async fn connect(&mut self, options: ConnectOptions) -> Result<ConnectInfo, DsfError> {
-        let span = span!(Level::DEBUG, "connect", "{}", self.id());
+        let span = span!(Level::DEBUG, "connect");
         let _enter = span.enter();
 
         info!("Connect: {:?}", options.address);
@@ -46,8 +45,8 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
         req.common.public_key = Some(service.public_key());
 
         let our_id = self.id();
-        let mut peers = self.peers();
-        let mut dht = self.dht();
+        let _peers = self.peers();
+        let _dht = self.dht();
 
         let address = options.address.clone();
 

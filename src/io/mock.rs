@@ -16,6 +16,7 @@ pub struct MockTransaction {
 }
 
 impl MockTransaction {
+    /// Create a new mocked request
     pub fn request(target: Address, req: NetRequest, resp: Result<NetResponse, CoreError>) -> Self {
         let (r, e) = match resp {
             Ok(v) => (Some(v), None),
@@ -25,7 +26,8 @@ impl MockTransaction {
         Self{target, req: Some(req), resp: r, err: e}
     }
 
-    pub fn respones(target: Address, resp: NetResponse, err: Option<CoreError>) -> Self {
+    /// Create a new mocked response
+    pub fn response(target: Address, resp: NetResponse, err: Option<CoreError>) -> Self {
         Self{target, req: None, resp: Some(resp), err}
     }
 }
@@ -68,7 +70,7 @@ impl MockConnector {
 impl Connector for MockConnector {
     // Send a request and receive a response or error at some time in the future
     async fn request(
-        &self, req_id: RequestId, target: Address, req: NetRequest, timeout: Duration,
+        &self, _req_id: RequestId, target: Address, req: NetRequest, _timeout: Duration,
     ) -> Result<NetResponse, Error> {
         
         let mut transactions = self.transactions.lock().unwrap();
@@ -77,7 +79,8 @@ impl Connector for MockConnector {
             req
         ));
 
-        let request = transaction.req.as_ref().expect("expected request");
+        // Check request object exists in transaction
+        transaction.req.as_ref().expect("expected request");
 
         assert_eq!(transaction.target, target, "destination mismatch");
         assert_eq!(transaction.req, Some(req), "request mismatch");
@@ -91,7 +94,7 @@ impl Connector for MockConnector {
 
     // Send a response message
     async fn respond(
-        &self, req_id: RequestId, target: Address, resp: NetResponse,
+        &self, _req_id: RequestId, target: Address, resp: NetResponse,
     ) -> Result<(), Error> {
         let mut transactions = self.transactions.lock().unwrap();
         let transaction = transactions.pop_front().expect(&format!(
@@ -99,7 +102,8 @@ impl Connector for MockConnector {
             resp
         ));
 
-        let response = transaction.resp.as_ref().expect("expected response");
+        // Check response object exists in transaction
+        transaction.resp.as_ref().expect("expected response");
 
         assert_eq!(transaction.target, target, "destination mismatch");
         assert_eq!(transaction.resp, Some(resp), "response mismatch");

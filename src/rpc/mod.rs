@@ -1,15 +1,11 @@
 
 
-
-
-use futures::prelude::*;
-
 use dsf_core::prelude::*;
 use dsf_core::net;
 
 use dsf_rpc::{self as rpc, ServiceIdentifier};
 
-use crate::error::Error;
+use crate::error::{Error, CoreError};
 use crate::io::Connector;
 use crate::daemon::Dsf;
 
@@ -38,15 +34,28 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     /// Execute an RPC command
     // TODO: Actually execute RPC commands
     pub async fn exec(&mut self, req: rpc::RequestKind) -> Result<rpc::ResponseKind, Error> {
-        let res = match req {
-            rpc::RequestKind::Status => Ok(rpc::ResponseKind::Status(self.status())),
+        use rpc::*;
 
-            _ => Ok(rpc::ResponseKind::Unrecognised),
+        debug!("Handling request: {:?}", req);
+
+        let res = match req {
+            RequestKind::Status => Ok(ResponseKind::Status(self.status())),
+
+            RequestKind::Peer(PeerCommands::List(_options)) => Ok(ResponseKind::Peers(self.peer_info())),
+            RequestKind::Peer(PeerCommands::Connect(options)) => self.connect(options).await.map(|i| ResponseKind::Connected(i)),
+
+            _ => Ok(ResponseKind::Unrecognised),
         };
+
+        debug!("Result: {:?}", res);
 
         match res {
             Ok(v) => Ok(v),
-            Err(e) => Ok(rpc::ResponseKind::Error(e)),
+            Err(Error::Core(e)) => Ok(ResponseKind::Error(e)),
+            Err(e) => {
+                error!("Unsupported RPC error: {:?}", e);
+                Ok(ResponseKind::Error(CoreError::Unknown))
+            }
         }
     }
 
@@ -56,6 +65,10 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             peers: self.peers().count(),
             services: self.services().count(),
         }
+    }
+
+    pub(crate) fn peer_info(&self) -> Vec<(Id, rpc::PeerInfo)> {
+        self.peers().list().drain(..).map(|(id, p)| (id, p.info()) ).collect()
     }
 
     pub(crate) fn resolve_identifier(&mut self, identifier: &ServiceIdentifier) -> Result<Id, Error> {

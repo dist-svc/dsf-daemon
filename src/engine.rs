@@ -118,16 +118,16 @@ impl Engine {
         }
 
         // Create new unix socket connector
-        let mut unix = Unix::new(&options.daemon_socket).await?;
+        let unix = Unix::new(&options.daemon_socket).await?;
 
         // Create new local data store
-        let mut store = Store::new(&options.database)?;
+        let store = Store::new(&options.database)?;
         
         // Create new wire adaptor
-        let mut wire = Wire::new(s.private_key().unwrap());
+        let wire = Wire::new(s.private_key().unwrap());
 
         // Create new DSF instance
-        let mut dsf = Dsf::new(options.daemon_options, s, wire.connector())?;
+        let dsf = Dsf::new(options.daemon_options, s, wire.connector())?;
 
         debug!("Engine created!");
 

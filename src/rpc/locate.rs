@@ -1,7 +1,6 @@
 
 use std::time::SystemTime;
 
-use futures::prelude::*;
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;

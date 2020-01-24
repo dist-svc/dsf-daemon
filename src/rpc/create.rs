@@ -2,7 +2,6 @@
 
 use std::time::SystemTime;
 
-use futures::prelude::*;
 use futures::future::{ok, Either};
 use tracing::{span, Level};
 

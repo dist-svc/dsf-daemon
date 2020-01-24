@@ -112,7 +112,7 @@ impl Unix {
         // before the await point, interestingly explicitly dropping doesn't
         // work, but, adding a scope does...
 
-        let mut sink = {
+        let mut sink: mpsc::Sender<UnixMessage> = {
            
             let mut connections = self.connections.lock().unwrap();
             
@@ -123,9 +123,7 @@ impl Unix {
 
             debug!("send on interface: {}", interface.index);
 
-            let mut sink: mpsc::Sender<UnixMessage> = interface.sink.clone();
-
-            sink
+            interface.sink.clone()
         };
 
         sink.send(msg).await?;
@@ -172,7 +170,6 @@ impl Connection {
                                     continue
                                 }
 
-                                
                                 let u = UnixMessage::new(index, Bytes::copy_from_slice(&buff[..n]));
                                 debug!("unix rx: {:?}", &u.data);
                                 rx_sink.send(u).await?;

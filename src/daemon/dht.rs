@@ -86,7 +86,7 @@ impl <C> DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor <C> where C
     }
 
     // Send a response message
-    async fn respond(&mut self, ctx: Ctx, req_id: RequestId, target: DhtEntry<Id, Peer>, resp: DhtResponse<Id, Peer, Data>) -> Result<(), DhtError> {
+    async fn respond(&mut self, _ctx: Ctx, _req_id: RequestId, _target: DhtEntry<Id, Peer>, _resp: DhtResponse<Id, Peer, Data>) -> Result<(), DhtError> {
         
         unimplemented!()
 

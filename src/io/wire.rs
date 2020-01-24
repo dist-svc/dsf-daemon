@@ -63,7 +63,7 @@ impl Wire {
     /// Create a new wire adaptor
     pub fn new(private_key: PrivateKey) -> Self {
         let requests = Arc::new(Mutex::new(HashMap::new()));
-        let (sink, mut stream) = mpsc::channel::<(Address, DsfMessage)>(0);
+        let (sink, stream) = mpsc::channel::<(Address, DsfMessage)>(0);
 
         let connections = HashMap::new();
 
@@ -93,8 +93,8 @@ impl Wire {
         PK: Fn(&Id) -> Option<PublicKey>,
     {
         // Parse base container
-        let (container, n) = Container::from(data);
-        let id: Id = container.id().into();
+        let (container, _n) = Container::from(data);
+        let _id: Id = container.id().into();
 
         // Parse out base object
         // TODO: pass secret keys for encode / decode here
@@ -121,7 +121,7 @@ impl Wire {
         let decoded = match self.decode(&msg.data, |id| self.find_pub_key(id) ) {
             Ok(v) => v,
             Err(e) => {
-                debug!("Error decoding message from: {:?}", msg.address);
+                debug!("Error {:?} decoding message from: {:?}", e, msg.address);
                 // TODO: feed back decoding error to stats / rate limiting
                 return Ok(None)
             }
@@ -133,7 +133,7 @@ impl Wire {
         let info = self.connections.entry(from_id.clone()).or_insert(ConnectionInfo::new());
         info.rx_count += 1;
 
-        if !info.addresses.iter().any(|(addr, seen)| addr == &msg.address ) {
+        if !info.addresses.iter().any(|(addr, _seen)| addr == &msg.address ) {
             info.addresses.push((msg.address.clone(), SystemTime::now()));
         }
 
@@ -273,7 +273,7 @@ impl Connector for WireConnector {
     
         // Send a response message
         async fn respond(
-            &self, req_id: RequestId, target: Address, resp: NetResponse,
+            &self, _req_id: RequestId, target: Address, resp: NetResponse,
         ) -> Result<(), Error> {
             
             // Send message
