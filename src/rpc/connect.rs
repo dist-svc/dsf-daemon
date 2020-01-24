@@ -1,4 +1,6 @@
 
+use std::time::Duration;
+
 use async_std::future::timeout;
 use tracing::{span, Level};
 
@@ -56,7 +58,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
 
         info!("Sending request");
 
-        let d = options.timeout.or(options.timeout).unwrap();
+        let d = options.timeout.or(Some(Duration::from_secs(2))).unwrap();
         let res = timeout(d, self.request(address, req)).await;
 
         // Handle errors
@@ -81,6 +83,8 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
             peers: 0,
         };
 
+        error!("Starting DHT connect");
+
         // Pass response to DHT to finish connecting
         let data = resp.data.try_to((our_id, self.peers())).unwrap();
         let ctx = Ctx::INCLUDE_PUBLIC_KEY | Ctx::PUB_KEY_REQUEST | Ctx::ADDRESS_REQUEST;
@@ -94,6 +98,8 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
                 return Err(DsfError::Unknown)
             }
         }
+        
+        info!("Connect complete! {:?}", info);
 
         Ok(info)
     }

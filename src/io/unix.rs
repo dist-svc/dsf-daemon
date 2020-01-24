@@ -172,7 +172,7 @@ impl Connection {
                 select!{
                     tx = tx_stream.next() => {
                         if let Some(tx) = tx {
-                            debug!("unix tx: {:?}", tx.data);
+                            trace!("unix tx: {:?}", tx.data);
                             unix_stream.write(&tx.data).await?;
                         }
                     },
@@ -187,7 +187,7 @@ impl Connection {
                                 let mut u = UnixMessage::new(index, Bytes::copy_from_slice(&buff[..n]));
                                 u.tx = tx.clone();
 
-                                debug!("unix rx: {:?}", &u.data);
+                                trace!("unix rx: {:?}", &u.data);
                                 rx_sink.send(u).await?;
                             },
                             Err(e) => {
@@ -199,7 +199,7 @@ impl Connection {
                 }
             }
 
-            debug!("connection closed {}", index);
+            trace!("connection closed {}", index);
 
             Ok(())
         }.instrument(span!(Level::TRACE, "UNIX", index)) );

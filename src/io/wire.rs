@@ -138,7 +138,7 @@ impl Wire {
 
         match (info.public_key, decoded.pub_key()) {
             (None, Some(pk)) => {
-                info!("Registering new public key for ID: {:?}", from_id);
+                debug!("Registering new public key for ID: {:?}", from_id);
                 // TODO: emit this information / handle this
                 info.public_key = Some(pk);
             },
@@ -262,7 +262,8 @@ impl Connector for WireConnector {
             };
 
             // Remove request from tracking
-            if let Err(_e) = &res {
+            if let Err(e) = &res {
+                error!("Connection error: {:?}, removing from tracking", e);
                 self.requests.lock().unwrap().remove(&req_id);
             }
 
