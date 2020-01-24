@@ -43,7 +43,7 @@ impl <C> DhtAdaptor <C> where C: Connector + Clone + Sync + Send
 impl <C> DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor <C> where C: Connector + Clone + Sync + Send
 {
     // Send a request and receive a response or error at some time in the future
-    async fn request(&mut self, ctx: Ctx, req_id: RequestId, target: DhtEntry<Id, Peer>, req: DhtRequest<Id, Data>) -> Result<DhtResponse<Id, Peer, Data>, DhtError> {
+    async fn request(&mut self, ctx: Ctx, _req_id: RequestId, target: DhtEntry<Id, Peer>, req: DhtRequest<Id, Data>) -> Result<DhtResponse<Id, Peer, Data>, DhtError> {
         let peers = self.peers.clone();
         let id = self.id.clone();
         let c = self.connector.clone();
@@ -64,7 +64,7 @@ impl <C> DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor <C> where C
 
         // Issue request and await response
         // TODO: remove timeout duration from here
-        let resp = match c.request(req_id, target.info().address().clone(), req, Duration::from_secs(2)).await {
+        let resp = match c.request(req.id, target.info().address().clone(), req, Duration::from_secs(2)).await {
             Ok(v) => v,
             Err(e) => {
                 error!("error issuing DHT request: {:?}", e);

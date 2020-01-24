@@ -232,7 +232,7 @@ impl Connector for WireConnector {
         async fn request(
             &self, req_id: RequestId, target: Address, req: NetRequest, t: Duration,
         ) -> Result<NetResponse, Error> {   
-            debug!("issuing request: {:?} (id: {:?}) to: {:?}", req, req_id, target);
+            debug!("issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)", req, req_id, target, t.as_secs());
             
             // Create per-request channel
             let (tx, mut rx) = mpsc::channel(0);
@@ -263,7 +263,7 @@ impl Connector for WireConnector {
 
             // Remove request from tracking
             if let Err(e) = &res {
-                error!("Connection error: {:?}, removing from tracking", e);
+                error!("Connection error: {:?}, removing {} from tracking", e, req_id);
                 self.requests.lock().unwrap().remove(&req_id);
             }
 

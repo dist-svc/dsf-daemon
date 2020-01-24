@@ -50,7 +50,7 @@ fn end_to_end() {
         config.daemon_options.database_dir = d.path().to_str().unwrap().to_string();
 
         // Create daemons
-        error!("Creating daemons");
+        info!("Creating daemons");
         let bar = ProgressBar::new(NUM_DAEMONS as u64);
         for i in 0..NUM_DAEMONS {
             
@@ -78,9 +78,9 @@ fn end_to_end() {
             bar.inc(1);
         }
         bar.finish();
-        error!("created daemons");
+        info!("created daemons");
 
-        error!("connecting to peers");
+        info!("connecting to peers");
         let base_config = daemons[0].1.clone();
 
         let bar = ProgressBar::new((NUM_DAEMONS-1) as u64);
@@ -91,9 +91,8 @@ fn end_to_end() {
             bar.inc(1);
         }
         bar.finish();
-        error!("connecting complete");
+        info!("connecting complete");
 
-        return Ok(());
 
         let mut services = vec![];
 
@@ -107,9 +106,9 @@ fn end_to_end() {
             bar.inc(1);
         }
         bar.finish();
-        error!("created services");
+        info!("created services");
 
-        error!("searching for services");
+        info!("searching for services");
         let bar = ProgressBar::new(NUM_DAEMONS as u64);
         for i in 0..NUM_DAEMONS {
 
@@ -122,9 +121,9 @@ fn end_to_end() {
             bar.inc(1);
         }
         bar.finish();
-        error!("searching for services");
+        info!("searching for services");
 
-        error!("test complete, exiting");
+        info!("test complete, exiting");
 
         Ok(())
 
