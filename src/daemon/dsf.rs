@@ -22,6 +22,7 @@ use super::dht::{Ctx, DhtAdaptor, dht_reducer};
 /// Re-export of Dht type used for DSF
 pub type Dht<C> = StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, Ctx>;
 
+#[derive(Clone)]
 pub struct Dsf<C> {
     /// Inernal storage for daemon service 
     service: Service,
@@ -47,9 +48,6 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 {
     /// Create a new daemon
     pub fn new(config: Options, service: Service, connector: C) -> Result<Self, Error> {
-
-        let span = span!(Level::DEBUG, "new dsf", "{}", service.id());
-        let _enter = span.enter();
 
         debug!("Creating new DSF instance");
 

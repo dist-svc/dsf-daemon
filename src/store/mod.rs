@@ -45,7 +45,7 @@ mod test {
 
     #[test]
     fn store_service_inst() {
-        let mut store = Store::new("/tmp/dsf-test-1.db")
+        let _store = Store::new("/tmp/dsf-test-1.db")
             .expect("Error opening store");
 
 

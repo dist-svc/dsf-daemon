@@ -4,6 +4,8 @@ use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 
 use structopt::StructOpt;
 
+use async_std::task;
+
 use futures::prelude::*;
 use futures::select;
 
@@ -13,6 +15,8 @@ use bytes::Bytes;
 
 use dsf_core::types::Id;
 use dsf_core::service::{ServiceBuilder};
+use dsf_core::net::{Message as DsfMessage};
+
 use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
 
 use kad::{Config as DhtConfig};
@@ -27,10 +31,9 @@ use crate::daemon::{Options as DaemonOptions};
 pub struct Engine {
     dsf: Dsf<WireConnector>,
 
-    net: Net,
     unix: Unix,
-    
     wire: Wire,
+    net: Net,
 
     store: Store,
 }
@@ -119,76 +122,95 @@ impl Engine {
         // Create new unix socket connector
         let unix = Unix::new(&options.daemon_socket).await?;
 
-        // Create new local data store
-        let store = Store::new(&options.database)?;
-        
         // Create new wire adaptor
         let wire = Wire::new(s.private_key().unwrap());
+
+        // Create new local data store
+        let store = Store::new(&options.database)?;
 
         // Create new DSF instance
         let dsf = Dsf::new(options.daemon_options, s, wire.connector())?;
 
         debug!("Engine created!");
 
-        Ok(Self{dsf, net, unix, store, wire})
+        Ok(Self{dsf, wire, net, unix, store})
     }
 
     pub fn id(&self) -> Id {
         self.dsf.id()
     }
 
-    /// Run a daemon instance
-    /// 
-    /// This blocks forever
-    /// TODO: catch exit signal..?
-    pub async fn run(&mut self) -> Result<(), Error> {
-        let span = span!(Level::DEBUG, "engine", "{}", self.dsf.id());
-        let _enter = span.enter();
+    pub async fn run(self) -> Result<(), Error> {
 
-        loop {
+        let Engine{dsf, mut wire, mut net, mut unix, store: _store} = self;
 
-            select!{
-                // Incoming network messages
-                net_rx = self.net.next().fuse() => {
-                    if let Some(m) = net_rx {
-                        self.handle_net(m).await?;
-                    }
-                },
-                // Outgoing network messages
-                net_tx = self.wire.next().fuse() => {
-                    if let Some(m) = net_tx {
-                        self.net.send(m).await?;
-                    }
+        // Create network task
+        let mut d = dsf.clone();
+        let h1 = task::spawn(async move {
+            loop {
+                select!{
+                    // Outgoing network messages
+                    net_tx = wire.next().fuse() => {
+                        if let Some(m) = net_tx {
+                            trace!("Wire TX: {:?}", m);
+                            Self::handle_net_tx(&mut d, &mut net, &mut wire, m).await.unwrap();
+                        }
+                    },
+                    // Incoming network messages
+                    net_rx = net.next().fuse() => {
+                        if let Some(m) = net_rx {
+                            trace!("Wire RX: {:?}", m);
+                            Self::handle_net_rx(&mut d, &mut net, &mut wire, m).await.unwrap();
+                        }
+                    },
                 }
-                // Incoming RPC messages, response is inline
-                rpc_rx = self.unix.next().fuse() => {
-                    if let Some(m) = rpc_rx {
-                        self.handle_rpc(m).await?;
-                    }
-                },
-                // TODO: periodic update
-
             }
-            
-        }
+        });
+
+        // Create unix task
+        let mut d = dsf.clone();
+        let h2 = task::spawn(async move {
+            loop {
+                // Process and respond to incoming RPC messages
+                if let Some(m) = unix.next().await {
+                    Self::handle_rpc(&mut d, &mut unix, m).await.unwrap();
+                }
+            }
+        });
+
+        future::join(h1, h2).await;
+
+        Ok(())
     }
 
-    async fn handle_net(&mut self, msg: NetMessage) -> Result<(), Error> {
-        let address = msg.address.clone();
+    async fn handle_net_tx(_dsf: &mut Dsf<WireConnector>, net: &mut Net, _wire: &mut Wire, m: NetMessage) -> Result<(), Error> {
+        net.send(m).await.unwrap();
+        Ok(())
+    }
 
+    async fn handle_net_rx(dsf: &mut Dsf<WireConnector>, net: &mut Net, wire: &mut Wire, m: NetMessage) -> Result<(), Error> {
         // Pass through wire module
         // This will route responses internally and return requests
-        if let Some(req) = self.wire.handle(msg).await? {
+        let address = m.address.clone();
+
+        if let Some(req) = wire.handle(m).await.unwrap() {
+            trace!("Engine request: {:?}", req);
             // Handle the request
-            let resp = self.dsf.handle(address, req)?;
+            let resp = dsf.handle(address, req).unwrap();
+
+            trace!("Engine response: {:?}", resp);
+
+            let net_tx = wire.handle_outgoing(address, DsfMessage::Response(resp)).unwrap();
+
             // Send the response
-            self.wire.respond(address, resp).await?;
+            net.send(net_tx).await.unwrap();
         }
 
         Ok(())
     }
 
-    async fn handle_rpc(&mut self, msg: UnixMessage) -> Result<(), Error> {
+    
+    async fn handle_rpc(dsf: &mut Dsf<WireConnector>, unix: &mut Unix, msg: UnixMessage) -> Result<(), Error> {
         // Parse out message
         let req: RpcRequest = serde_json::from_slice(&msg.data).unwrap();
 
@@ -196,7 +218,7 @@ impl Engine {
         let _enter = span.enter();
         
         // Handle RPC request
-        let resp_kind = self.dsf.exec(req.kind()).await?;
+        let resp_kind = dsf.exec(req.kind()).await?;
 
         // Generate response
         let resp = RpcResponse::new(req.req_id(), resp_kind);
@@ -209,7 +231,7 @@ impl Engine {
             connection_id: msg.connection_id,
             data: Bytes::from(enc),
         };
-        self.unix.send(msg).await?;
+        unix.send(msg).await?;
 
         Ok(())
     }

@@ -38,10 +38,10 @@ fn main() {
     // Create async task
     let res = task::block_on(async move {
         // Initialise daemon
-        let mut d = match Engine::new(opts.daemon_opts).await {
+        let d = match Engine::new(opts.daemon_opts).await {
             Ok(d) => d,
             Err(e) => {
-                error!("Error initialising daemon: {:?}", e);
+                error!("Error running daemon: {:?}", e);
                 return Err(e)
             }
         };

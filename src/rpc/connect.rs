@@ -1,6 +1,4 @@
 
-use std::time::Duration;
-
 use async_std::future::timeout;
 use tracing::{span, Level};
 
@@ -56,14 +54,20 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
         // Execute request
         // TODO: could this just be a DHT::connect?
 
-        let d = options.timeout.or(Some(Duration::from_secs(3))).unwrap();
-        let res = timeout(d, self.request(address, req)).await?;
+        info!("Sending request");
+
+        let d = options.timeout.or(options.timeout).unwrap();
+        let res = timeout(d, self.request(address, req)).await;
 
         // Handle errors
         let resp = match res {
-            Ok(r) => r,
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
+                warn!("Connect error: {:?}", e);
+                return Err(DsfError::Timeout)
+            },
             Err(e) => {
-                warn!("[DSF ({:?})] Connect error: {:?}", our_id, e);
+                warn!("Timeout error: {:?}", e);
                 return Err(DsfError::Timeout)
             }
         };

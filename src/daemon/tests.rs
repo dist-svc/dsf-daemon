@@ -7,11 +7,8 @@ use async_std::task;
 extern crate tracing_subscriber;
 use tracing_subscriber::{FmtSubscriber, filter::LevelFilter};
 
-
 extern crate tempdir;
 use tempdir::TempDir;
-
-use futures::prelude::*;
 
 use kad::prelude::*;
 use kad::store::Datastore;
@@ -19,7 +16,7 @@ use kad::store::Datastore;
 //use rr_mux::mock::{MockConnector, MockTransaction};
 
 use dsf_core::prelude::*;
-use dsf_core::types::{Error, Address, Flags};
+use dsf_core::types::{Flags};
 use dsf_core::service::{ServiceBuilder, Publisher};
 use dsf_core::net::{self, Request, RequestKind, Response, ResponseKind};
 use dsf_rpc::{self as rpc};
@@ -42,7 +39,7 @@ fn test_manager() {
     config.database_dir = d.path().to_str().unwrap().to_string();
     let mut mux = MockConnector::new();
 
-    let mut service = Service::default();
+    let service = Service::default();
     let mut dsf = Dsf::new(config, service, mux.clone()).unwrap();
     let id1 = dsf.id().clone();
     let _addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 0, 1)), 8111);

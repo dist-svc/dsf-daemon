@@ -4,11 +4,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
+
 use std::pin::Pin;
+use std::task::{Poll, Context};
 
 use futures::prelude::*;
 use futures::channel::mpsc;
-use futures::task::{Poll, Context};
 
 use async_std::future::timeout;
 
@@ -185,7 +186,7 @@ impl Wire {
         Ok(())
     }
 
-    fn handle_outgoing(&mut self, target: Address, msg: DsfMessage) -> Result<NetMessage, Error> {
+    pub fn handle_outgoing(&mut self, target: Address, msg: DsfMessage) -> Result<NetMessage, Error> {
 
         // Encoding should never fail..?
         // what about oversize etc...
@@ -205,10 +206,9 @@ impl Stream for Wire {
         
         let p = Pin::new(&mut self.stream).poll_next(ctx);
 
-        trace!("wire poll: {:?}", p);
-
         match p {
             Poll::Ready(Some((address, message))) => {
+                // Encode outgoing message
                 let net_message = self.handle_outgoing(address, message).unwrap();
                 Poll::Ready(Some(net_message))
             },
@@ -232,7 +232,7 @@ impl Connector for WireConnector {
         async fn request(
             &self, req_id: RequestId, target: Address, req: NetRequest, t: Duration,
         ) -> Result<NetResponse, Error> {   
-            trace!("issuing request: {:?} (id: {:?}) to: {:?}", req, req_id, target);
+            debug!("issuing request: {:?} (id: {:?}) to: {:?}", req, req_id, target);
             
             // Create per-request channel
             let (tx, mut rx) = mpsc::channel(0);
@@ -240,7 +240,7 @@ impl Connector for WireConnector {
             // Add response channel to map
             self.requests.lock().unwrap().insert(req_id, tx);
 
-            // Send message
+            // Pass message to internal sink
             let mut sink = self.sink.clone();
             sink.send((target, DsfMessage::Request(req))).await.unwrap();
 
@@ -286,7 +286,6 @@ impl Connector for WireConnector {
 mod test {
     use std::time::Duration;
 
-    use futures::select;
     use async_std::task;
 
     use tracing_subscriber::{FmtSubscriber, filter::LevelFilter};
@@ -302,7 +301,7 @@ mod test {
         let (pub_key_0, pri_key_0) = new_pk().unwrap();
         let id_0 = hash(&pub_key_0).unwrap();
 
-        let mut w = Wire::new(pri_key_0.clone());
+        let w = Wire::new(pri_key_0.clone());
 
         let req = DsfMessage::Request(NetRequest::new(id_0.clone(), RequestKind::Hello, Flags::empty()));
 
@@ -319,7 +318,7 @@ mod test {
         let (pub_key_0, pri_key_0) = new_pk().unwrap();
         let id_0 = hash(&pub_key_0).unwrap();
 
-        let mut w = Wire::new(pri_key_0.clone());
+        let w = Wire::new(pri_key_0.clone());
 
         let req = NetRequest::new(id_0.clone(), RequestKind::Hello, Flags::empty());
 
@@ -333,20 +332,20 @@ mod test {
     fn test_wire_interop() {
         let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
 
-        let addr_0: Address = "127.0.0.1:19993".parse().unwrap();
+        let _addr_0: Address = "127.0.0.1:19993".parse().unwrap();
         let addr_1: Address = "127.0.0.1:19994".parse().unwrap();
 
         let (pub_key_0, pri_key_0) = new_pk().unwrap();
         let id_0 = hash(&pub_key_0).unwrap();
 
         let mut w0 = Wire::new(pri_key_0.clone());
-        let mut c0 = w0.connector();
+        let c0 = w0.connector();
 
         let (pub_key_1, pri_key_1) = new_pk().unwrap();
         let id_1 = hash(&pub_key_1).unwrap();
 
-        let mut w1 = Wire::new(pri_key_1.clone());
-        let mut c1 = w1.connector();
+        let w1 = Wire::new(pri_key_1.clone());
+        let _c1 = w1.connector();
 
         let req = NetRequest::new(id_0.clone(), RequestKind::Hello, Flags::empty());
         let resp = NetResponse::new(id_1.clone(), req.id, ResponseKind::NoResult, Flags::empty()).with_public_key(pub_key_1);
@@ -357,7 +356,7 @@ mod test {
         task::block_on(async move {
             // Create message passing task
             task::spawn(async move {
-                let req = w0.next().await;
+                let _req = w0.next().await;
                 w0.handle(resp_message).await.unwrap();
             });
 

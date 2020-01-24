@@ -35,7 +35,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         let from = req.from.clone();
         let from2 = from.clone();
 
-        trace!("[DSF ({:?})], handling request (from: {:?} / {})\n {:?}", own_id, from, addr, &req);
+        debug!("handling request (from: {:?} / {})\n {:?}", from, addr, &req);
 
         // Generic request processing here
         let peer = self.handle_base(&from, &addr, &req.common, Some(SystemTime::now()));
@@ -66,7 +66,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                 });
             }
 
-            trace!("[DSF ({:?})], returning response (to: {:?})\n {:?}", own_id, from2, &resp);
+            debug!("returning response (to: {:?})\n {:?}", from2, &resp);
 
             resp
         })
@@ -77,12 +77,12 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     pub(crate) async fn request(&mut self, address: Address, req: net::Request) -> Result<net::Response, Error> {
         let req = req.clone();
 
-        trace!("[DSF ({:?})] Sending request to: {:?} request: {:?}", self.id(), address, &req);
+        debug!("Sending request to: {:?} request: {:?}", address, &req);
 
         // Issue request and await response
         let resp = self.connector().request(req.id, address.clone(), req, Duration::from_secs(10)).await?;
         
-        trace!("[DSF ({:?})] Received response from: {:?} request: {:?}", self.id(), &address, &resp);
+        debug!("Received response from: {:?} request: {:?}", &address, &resp);
 
         // Handle received message
         self.handle_base(&resp.from, &address, &resp.common, Some(SystemTime::now()));

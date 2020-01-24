@@ -1,10 +1,8 @@
 use std::time::Duration;
 
 extern crate futures;
-use futures::{Future};
 
 extern crate async_std;
-use async_std::prelude::*;
 use async_std::task;
 
 extern crate tracing_subscriber;
@@ -57,21 +55,18 @@ fn end_to_end() {
             let c1 = c.clone();
 
             let addr = c.daemon_socket.clone();
+            let e = Engine::new(c1).await.expect("Error creating engine");
 
-            // Build daemon instance
-            let mut daemon = Engine::new(c1).await.unwrap();
-
-            // Run daemon
+            // Build and run daemon
             let handle = task::spawn(async move {
-                // Launch the daemon
-                daemon.run().await
+                e.run().await.unwrap();
             });
 
             // Create client
-            let mut client = Client::new(&addr, Duration::from_secs(1)).unwrap();
+            let mut client = Client::new(&addr, Duration::from_secs(1)).expect("Error connecting to client");
 
             // Fetch client status and ID
-            let status = client.status().await.unwrap();
+            let status = client.status().await.expect("Error fetching client ");
             let id = status.id;
 
             // Add the new daemon to the list
@@ -86,7 +81,7 @@ fn end_to_end() {
         let base_config = daemons[0].1.clone();
 
         let bar = ProgressBar::new((NUM_DAEMONS-1) as u64);
-        for (id, config, client, _) in &mut daemons[1..] {
+        for (_id, _config, client, _) in &mut daemons[1..] {
 
             client.connect(rpc::ConnectOptions{address: base_config.bind_addresses[0], id: None, timeout: Some(Duration::from_secs(10)) }).await.expect("connecting failed");
 
@@ -99,7 +94,7 @@ fn end_to_end() {
 
         error!("creating services");
         let bar = ProgressBar::new(NUM_DAEMONS as u64);
-        for (id, config, client, _) in &mut daemons[..] {
+        for (_id, _config, client, _) in &mut daemons[..] {
             
             let s = client.create(&rpc::CreateOptions::default().and_register()).await.expect("creation failed");
             services.push(s);
