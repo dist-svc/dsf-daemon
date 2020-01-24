@@ -140,11 +140,14 @@ impl Engine {
         self.dsf.id()
     }
 
+    // This run works because we split the net and rpc components into tasks
     pub async fn run(self) -> Result<(), Error> {
 
+        // Destructure engine so we can use the pieces
         let Engine{dsf, mut wire, mut net, mut unix, store: _store} = self;
 
         // Create network task
+        // This consumes and runs the wire and net objects
         let mut d = dsf.clone();
         let h1 = task::spawn(async move {
             loop {
@@ -168,6 +171,7 @@ impl Engine {
         });
 
         // Create unix task
+        // This consumes and runs the unix object
         let mut d = dsf.clone();
         let h2 = task::spawn(async move {
             loop {
@@ -178,9 +182,43 @@ impl Engine {
             }
         });
 
+        // Wait on the (ever distant) future
         future::join(h1, h2).await;
 
         Ok(())
+    }
+
+    // This run doesn't work because the RPC task blocks the net tasks
+    pub async fn run2(&mut self) -> Result<(), Error> {
+        let span = span!(Level::DEBUG, "engine", "{}", self.dsf.id());
+        let _enter = span.enter();
+
+        loop {
+
+            select!{
+                // Incoming network messages
+                net_rx = self.net.next().fuse() => {
+                    if let Some(m) = net_rx {
+                        Self::handle_net_rx(&mut self.dsf, &mut self.net, &mut self.wire, m).await?;
+                    }
+                },
+                // Outgoing network messages
+                net_tx = self.wire.next().fuse() => {
+                    if let Some(m) = net_tx {
+                        Self::handle_net_tx(&mut self.dsf, &mut self.net, &mut self.wire, m).await?;
+                    }
+                }
+                // Incoming RPC messages, response is inline
+                rpc_rx = self.unix.next().fuse() => {
+                    if let Some(m) = rpc_rx {
+                        Self::handle_rpc(&mut self.dsf, &mut self.unix, m).await?;
+                    }
+                },
+                // TODO: periodic update
+
+            }
+            
+        }
     }
 
     async fn handle_net_tx(_dsf: &mut Dsf<WireConnector>, net: &mut Net, _wire: &mut Wire, m: NetMessage) -> Result<(), Error> {
