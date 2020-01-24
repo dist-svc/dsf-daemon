@@ -140,56 +140,8 @@ impl Engine {
         self.dsf.id()
     }
 
-    // This run works because we split the net and rpc components into tasks
-    pub async fn run(self) -> Result<(), Error> {
-
-        // Destructure engine so we can use the pieces
-        let Engine{dsf, mut wire, mut net, mut unix, store: _store} = self;
-
-        // Create network task
-        // This consumes and runs the wire and net objects
-        let mut d = dsf.clone();
-        let h1 = task::spawn(async move {
-            loop {
-                select!{
-                    // Outgoing network messages
-                    net_tx = wire.next().fuse() => {
-                        if let Some(m) = net_tx {
-                            trace!("Wire TX: {:?}", m);
-                            Self::handle_net_tx(&mut d, &mut net, &mut wire, m).await.unwrap();
-                        }
-                    },
-                    // Incoming network messages
-                    net_rx = net.next().fuse() => {
-                        if let Some(m) = net_rx {
-                            trace!("Wire RX: {:?}", m);
-                            Self::handle_net_rx(&mut d, &mut net, &mut wire, m).await.unwrap();
-                        }
-                    },
-                }
-            }
-        });
-
-        // Create unix task
-        // This consumes and runs the unix object
-        let mut d = dsf.clone();
-        let h2 = task::spawn(async move {
-            loop {
-                // Process and respond to incoming RPC messages
-                if let Some(m) = unix.next().await {
-                    Self::handle_rpc(&mut d, &mut unix, m).await.unwrap();
-                }
-            }
-        });
-
-        // Wait on the (ever distant) future
-        future::join(h1, h2).await;
-
-        Ok(())
-    }
-
-    // This run doesn't work because the RPC task blocks the net tasks
-    pub async fn run2(&mut self) -> Result<(), Error> {
+    // Run the DSF daemon
+    pub async fn run(&mut self) -> Result<(), Error> {
         let span = span!(Level::DEBUG, "engine", "{}", self.dsf.id());
         let _enter = span.enter();
 
@@ -211,7 +163,13 @@ impl Engine {
                 // Incoming RPC messages, response is inline
                 rpc_rx = self.unix.next().fuse() => {
                     if let Some(m) = rpc_rx {
-                        Self::handle_rpc(&mut self.dsf, &mut self.unix, m).await?;
+                        let mut dsf = self.dsf.clone();
+
+                        // RPC tasks can take some time and thus must be independent threads
+                        // To avoid blocking network operations
+                        task::spawn(async move {
+                            Self::handle_rpc(&mut dsf, m).await.unwrap();
+                        });
                     }
                 },
                 // TODO: periodic update
@@ -248,9 +206,9 @@ impl Engine {
     }
 
     
-    async fn handle_rpc(dsf: &mut Dsf<WireConnector>, unix: &mut Unix, msg: UnixMessage) -> Result<(), Error> {
+    async fn handle_rpc(dsf: &mut Dsf<WireConnector>, unix_req: UnixMessage) -> Result<(), Error> {
         // Parse out message
-        let req: RpcRequest = serde_json::from_slice(&msg.data).unwrap();
+        let req: RpcRequest = serde_json::from_slice(&unix_req.data).unwrap();
 
         let span = span!(Level::TRACE, "rpc", id=req.req_id());
         let _enter = span.enter();
@@ -265,11 +223,9 @@ impl Engine {
         let enc = serde_json::to_vec(&resp).unwrap();
 
         // Send response via relevant unix connection
-        let msg = UnixMessage {
-            connection_id: msg.connection_id,
-            data: Bytes::from(enc),
-        };
-        unix.send(msg).await?;
+        let unix_resp = unix_req.response(Bytes::from(enc));
+
+        unix_resp.send().await?;
 
         Ok(())
     }

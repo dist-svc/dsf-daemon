@@ -38,22 +38,37 @@ impl From<mpsc::SendError> for UnixError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct UnixMessage {
     pub connection_id: u32,
     pub data: Bytes,
+    tx: Option<mpsc::Sender<UnixMessage>>,
 }
 
 impl UnixMessage {
-    pub fn new(connection_id: u32, data: Bytes) -> Self {
-        Self{connection_id, data}
+    fn new(connection_id: u32, data: Bytes) -> Self {
+        Self{connection_id, data, tx: None}
     }
 
+    /// Generate a response for an existing unix message
     pub fn response(&self, data: Bytes) -> Self {
         Self{
             connection_id: self.connection_id,
             data,
+            tx: self.tx.clone(),
         }
+    }
+
+    pub(crate) async fn send(&self) -> Result<(), mpsc::SendError> {
+        let mut ch = self.tx.as_ref().unwrap().clone();
+        ch.send(self.clone()).await?;
+        Ok(())
+    }
+}
+
+impl PartialEq for UnixMessage {
+    fn eq(&self, o: &Self) -> bool {
+        self.connection_id == o.connection_id && self.data == o.data
     }
 }
 
@@ -145,6 +160,7 @@ impl Connection {
         let mut rx_sink = rx_sink;
 
         let (tx_sink, tx_stream) = mpsc::channel::<UnixMessage>(0);
+        let tx = Some(tx_sink.clone());
 
         let _handle: JoinHandle<Result<(), UnixError>> = task::spawn(async move {
             debug!("new connection");
@@ -168,7 +184,9 @@ impl Connection {
                                     continue
                                 }
 
-                                let u = UnixMessage::new(index, Bytes::copy_from_slice(&buff[..n]));
+                                let mut u = UnixMessage::new(index, Bytes::copy_from_slice(&buff[..n]));
+                                u.tx = tx.clone();
+
                                 debug!("unix rx: {:?}", &u.data);
                                 rx_sink.send(u).await?;
                             },

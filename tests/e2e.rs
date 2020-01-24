@@ -55,7 +55,7 @@ fn end_to_end() {
             let c1 = c.clone();
 
             let addr = c.daemon_socket.clone();
-            let e = Engine::new(c1).await.expect("Error creating engine");
+            let mut e = Engine::new(c1).await.expect("Error creating engine");
 
             // Build and run daemon
             let handle = task::spawn(async move {
