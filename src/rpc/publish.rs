@@ -1,10 +1,8 @@
 
 
-use futures::future::{err};
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;
-use dsf_core::types::Kind;
 
 use dsf_core::net;
 use dsf_core::service::publisher::{Publisher, DataOptionsBuilder};

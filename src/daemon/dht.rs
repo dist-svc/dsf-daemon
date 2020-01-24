@@ -4,13 +4,12 @@ use std::collections::HashMap;
 
 use kad::prelude::*;
 
-use dsf_core::types::{Id, RequestId, Error, Address, Data, Flags};
-use dsf_core::net::{Request, RequestKind, Response, ResponseKind};
+use dsf_core::prelude::*;
+use dsf_core::types::{Id, RequestId, Data, Flags};
+use dsf_core::net::{Request, RequestKind, ResponseKind};
 
 use crate::core::peers::{Peer, PeerAddress, PeerManager};
 use crate::io::Connector;
-
-use super::*;
 
 /// Adaptor to convert between DSF and DHT requests/responses
 #[derive(Clone)]

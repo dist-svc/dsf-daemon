@@ -1,12 +1,9 @@
 
 use std::time::SystemTime;
 
-use futures::future::{err};
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;
-
-use dsf_core::net;
 use dsf_rpc::{RegisterOptions, RegisterInfo};
 
 use crate::core::services::ServiceState;

@@ -31,7 +31,7 @@ impl Store {
     }
 
 
-    pub fn get_service_inst(&mut self, id: Id) -> Result<ServiceInst, StoreError> {
+    pub fn get_service_inst(&mut self, _id: Id) -> Result<ServiceInst, StoreError> {
         unimplemented!()
     }
 

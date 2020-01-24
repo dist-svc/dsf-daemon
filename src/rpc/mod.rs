@@ -1,7 +1,6 @@
 
 
 use dsf_core::prelude::*;
-use dsf_core::net;
 
 use dsf_rpc::{self as rpc, ServiceIdentifier};
 

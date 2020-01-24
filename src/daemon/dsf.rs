@@ -2,8 +2,6 @@
 
 use std::time::Duration;
 
-use structopt::StructOpt;
-
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
 

@@ -17,8 +17,6 @@ use tracing_futures::Instrument;
 
 use bytes::Bytes;
 
-use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
-
 pub const UNIX_BUFF_LEN: usize = 10 * 1024;
 
 #[derive(Debug, PartialEq)]

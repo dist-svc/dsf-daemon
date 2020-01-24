@@ -1,13 +1,10 @@
 
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime};
-use std::fmt;
-
-use colored::*;
 
 use dsf_core::prelude::*;
-
 pub use dsf_rpc::peer::{PeerInfo, PeerState, PeerAddress};
+
 
 /// Peer object used to store peer related state and information
 /// This is a global singleton representing a known peer and may be shared

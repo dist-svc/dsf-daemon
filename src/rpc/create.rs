@@ -2,17 +2,15 @@
 
 use std::time::SystemTime;
 
-use futures::future::{ok, Either};
 use tracing::{span, Level};
 
 use kad::store::Datastore;
 
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
-use dsf_core::net;
 use dsf_core::options::Options;
 
-use dsf_rpc::{CreateOptions, RegisterOptions, ServiceIdentifier};
+use dsf_rpc::{CreateOptions};
 
 use crate::core::services::*;
 use crate::daemon::Dsf;

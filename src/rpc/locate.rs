@@ -4,7 +4,6 @@ use std::time::SystemTime;
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;
-use dsf_core::net;
 use dsf_core::service::Subscriber;
 use dsf_rpc::{LocateOptions, LocateInfo};
 

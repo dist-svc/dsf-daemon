@@ -1,7 +1,6 @@
 
 
 use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-use std::time::Duration;
 
 use structopt::StructOpt;
 
@@ -13,8 +12,8 @@ use tracing::{span, Level};
 use bytes::Bytes;
 
 use dsf_core::types::Id;
-use dsf_core::service::{Service, ServiceBuilder};
-use dsf_rpc::{Request as RpcRequest, Response as RpcResponse, ResponseKind as RpcResponseKind};
+use dsf_core::service::{ServiceBuilder};
+use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
 
 use kad::{Config as DhtConfig};
 
