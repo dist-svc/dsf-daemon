@@ -1,4 +1,4 @@
 
 
-pub mod info;
-pub use self::info::DataInfo;
+
+pub use dsf_rpc::data::DataInfo;

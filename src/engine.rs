@@ -194,7 +194,7 @@ impl Engine {
             // Handle the request
             let resp = dsf.handle(address, req).unwrap();
 
-            info!("Engine response: {:?}", resp);
+            trace!("Engine response: {:?}", resp);
 
             let net_tx = wire.handle_outgoing(address, DsfMessage::Response(resp)).unwrap();
 

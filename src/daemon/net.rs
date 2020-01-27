@@ -35,7 +35,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         let from = req.from.clone();
         let from2 = from.clone();
 
-        debug!("handling request (from: {:?} / {})\n {:?}", from, addr, &req);
+        trace!("handling request (from: {:?} / {})\n {:?}", from, addr, &req);
 
         // Generic request processing here
         let peer = self.handle_base(&from, &addr, &req.common, Some(SystemTime::now()));
@@ -66,7 +66,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                 });
             }
 
-            debug!("returning response (to: {:?})\n {:?}", from2, &resp);
+            trace!("returning response (to: {:?})\n {:?}", from2, &resp);
 
             resp
         })

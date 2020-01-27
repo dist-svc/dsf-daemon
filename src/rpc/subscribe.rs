@@ -1,13 +1,15 @@
 
 
 
-use futures::future::{ok, err, join_all};
+use futures::future::join_all;
+
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 use dsf_core::net;
 use dsf_rpc::{SubscribeOptions, SubscribeInfo};
 
+use crate::error::Error;
 use crate::core::services::ServiceState;
 use crate::daemon::Dsf;
 use crate::io;
@@ -16,9 +18,9 @@ use crate::io;
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
     // Subscribe to data from a given service
-    pub async fn subscribe(&mut self, options: SubscribeOptions) -> Result<SubscribeInfo, DsfError> { 
+    pub async fn subscribe(&mut self, options: SubscribeOptions) -> Result<SubscribeInfo, Error> { 
 
-        let span = span!(Level::DEBUG, "register", "{}", self.id());
+        let span = span!(Level::DEBUG, "subscribe");
         let _enter = span.enter();
 
         info!("Subscribe: {:?}", &options.service);
@@ -28,55 +30,61 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             Err(e) => return Err(e)
         };
 
-        let own_id = self.id.clone();
+        let own_id = self.id();
+        
+        let (service_id, searches) = {
+            // Fetch the known service from the service list
+            let service_arc = match self.services().find(&id) {
+                Some(s) => s,
+                None => {
+                    // Only known services can be registered
+                    error!("unknown service (id: {})", id);
+                    return Err(Error::UnknownService)
+                }
+            };
 
-        // Fetch the known service from the service list
-        let service_arc = match self.services.find(&id) {
-            Some(s) => s,
-            None => {
-                // Only known services can be registered
-                error!("unknown service (id: {})", id);
-                return Err(DsfError::UnknownService)
+            let service_inst = service_arc.read().unwrap();
+            let service_id = service_inst.id();
+
+            debug!("Service: {:?}", service_inst);
+
+            // Build search across listed replicas
+            let mut searches = Vec::with_capacity(service_inst.replicas.len());
+            for (id, _r) in service_inst.replicas.iter() {
+                let mut s = self.clone();
+                let id = id.clone();
+
+                searches.push(async move {
+                    s.lookup(&id).await
+                });
             }
+
+            drop(service_inst);
+
+            (service_id, searches)
         };
 
-        let service_inst = service_arc.read().unwrap();
-        let service_id = service_inst.id().clone();
-
-        debug!("Service: {:?}", service_inst);
-
-        // Lookup possible replicas
-        let mut searches = Vec::with_capacity(service_inst.replicas.len());
-        for (id, _r) in service_inst.replicas.iter() {
-            let mut s = self.clone();
-            searches.push(s.search(id.clone()).then(|r| {
-                match r {
-                    Ok(r) => Ok(Ok(r)),
-                    Err(e) => Ok(Err(e)),
-                }
-            }));
-        }
-
-        drop(service_inst);
-
         info!("Searching for viable replicas");
-        let mut s = self.clone();
 
-        let search_responses = join_all(searches).await;
+        // Execute searches
+        let mut search_responses = join_all(searches).await;
 
         // Filter successful responses
         let ok: Vec<_> = search_responses.drain(..).filter_map(|r| r.ok() ).collect();
         info!("Searches complete, found {} viable replicas", ok.len());
 
+        // Fetch addresses from viable replicas
         // TODO: limited subset of replicas
         let addrs: Vec<_> = ok.iter().filter(|_v| true).map(|v| v.address() ).collect();
         
         // Issue subscription requests                
-        let req = net::Request::new(s.id.clone(), net::RequestKind::Subscribe(service_id), Flags::default());
+        let req = net::Request::new(self.id(), net::RequestKind::Subscribe(service_id), Flags::default());
         info!("Sending subscribe messages to {} peers", addrs.len());
         
-        let subscribe_responses = s.request_all(&addrs, req).await;
+        let subscribe_responses = self.request_all(&addrs, req).await;
 
+        // Fetch the known service from the service list
+        let service_arc = self.services().find(&id).unwrap();
         let mut service = service_arc.write().unwrap();
         let mut count = 0;
         

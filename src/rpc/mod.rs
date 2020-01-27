@@ -1,5 +1,8 @@
 
 
+use tracing::{span, Level};
+
+
 use dsf_core::prelude::*;
 
 use dsf_rpc::{self as rpc, ServiceIdentifier};
@@ -27,12 +30,17 @@ pub mod locate;
 pub mod query;
 
 // Subscribe to a service
-//pub mod subscribe;
+pub mod subscribe;
+
+
 impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 {
     /// Execute an RPC command
     // TODO: Actually execute RPC commands
     pub async fn exec(&mut self, req: rpc::RequestKind) -> Result<rpc::ResponseKind, Error> {
+        let span = span!(Level::DEBUG, "rpc", "{}", self.id());
+        let _enter = span.enter();
+
         use rpc::*;
 
         debug!("Handling request: {:?}", req);
@@ -40,10 +48,15 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         let res = match req {
             RequestKind::Status => Ok(ResponseKind::Status(self.status())),
 
-            RequestKind::Peer(PeerCommands::List(_options)) => Ok(ResponseKind::Peers(self.peer_info())),
-            RequestKind::Peer(PeerCommands::Connect(options)) => self.connect(options).await.map(|i| ResponseKind::Connected(i)),
+            RequestKind::Peer(options) => self.exec_peer(options).await,
+            RequestKind::Service(options) => self.exec_service(options).await,
+            RequestKind::Data(options) => self.exec_data(options).await,
+            RequestKind::Debug(options) => self.exec_debug(options).await,
 
-            _ => Ok(ResponseKind::Unrecognised),
+            _ => {
+                error!("Unrecognized RPC request: {:?}", req);
+                Ok(ResponseKind::Unrecognised)
+            },
         };
 
         debug!("Result: {:?}", res);
@@ -66,11 +79,113 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         }
     }
 
-    pub(crate) fn peer_info(&self) -> Vec<(Id, rpc::PeerInfo)> {
+    async fn exec_debug(&mut self, req: rpc::DebugCommands) -> Result<rpc::ResponseKind, Error> {
+        use rpc::*;
+
+        let res = match req {
+            DebugCommands::Datastore => {
+                println!("{:?}", self.datastore());
+                ResponseKind::None
+            },
+            DebugCommands::Update => {
+                self.update(true).await.map(|_| { ResponseKind::None })?
+            },
+            DebugCommands::Bootstrap => {
+                self.bootstrap().await.map(|_| { ResponseKind::None })?
+            },
+        };
+
+        Ok(res)
+    }
+
+    async fn exec_peer(&mut self, req: rpc::PeerCommands) -> Result<rpc::ResponseKind, Error> {
+        use rpc::*;
+
+        let mut s = self.clone();
+
+        let res = match req {
+            PeerCommands::List(_options) => ResponseKind::Peers(self.peer_info()),
+            PeerCommands::Connect(options) => {
+                s.connect(options).await.map(ResponseKind::Connected)?
+            },
+            _ => ResponseKind::Unrecognised,
+        };
+
+        Ok(res)
+    }
+
+    async fn exec_data(&mut self, req: rpc::DataCommands) -> Result<rpc::ResponseKind, Error> {
+        use rpc::*;
+
+        let res = match req {
+            DataCommands::List(ListOptions{service, n}) => {
+                let id = self.resolve_identifier(&service)?;
+                self.get_data(&id, n).map(ResponseKind::Data)?
+            },
+            DataCommands::Publish(options) => {
+                self.publish(options).await.map(ResponseKind::Published)?
+            },
+            _ => {
+                ResponseKind::Unrecognised
+            }
+        };
+
+        Ok(res)
+    }
+
+    async fn exec_service(&mut self, req: rpc::ServiceCommands) -> Result<rpc::ResponseKind, Error> {
+        use rpc::*;
+
+        let res = match req {
+            ServiceCommands::List(_options) => {
+                ResponseKind::Services(self.get_services())
+            },
+            ServiceCommands::Create(options) => {
+                self.create(options).await.map(ResponseKind::Created)?
+            },
+            ServiceCommands::Register(options) => {
+                self.register(options).await.map(ResponseKind::Registered)?
+            },
+            ServiceCommands::Search(options) => {
+                self.locate(options).await.map(ResponseKind::Located)?
+            },
+            ServiceCommands::Subscribe(options) => {
+                self.subscribe(options).await.map(ResponseKind::Subscribed)?
+            },
+            ServiceCommands::SetKey(options) => {
+                let id = self.resolve_identifier(&options.service)?;
+
+                // Ehh?
+                let s = self.services().update_inst(&id, |s| {
+                    s.service.set_secret_key(options.secret_key);
+                });
+
+                match s {
+                    Some(s) => ResponseKind::Services(vec![s]),
+                    None => ResponseKind::None,
+                }
+                
+            }
+            _ => ResponseKind::Unrecognised,
+        };
+
+        Ok(res)
+    }
+
+    pub(super) fn peer_info(&mut self) -> Vec<(Id, rpc::PeerInfo)> {
         self.peers().list().drain(..).map(|(id, p)| (id, p.info()) ).collect()
     }
 
-    pub(crate) fn resolve_identifier(&mut self, identifier: &ServiceIdentifier) -> Result<Id, Error> {
+    pub(super) fn get_data(&mut self, id: &Id, count: usize) -> Result<Vec<dsf_rpc::DataInfo>, Error> {
+        let d = self.services().data(id, count)?;
+        Ok(d)
+    }
+
+    pub(super) fn get_services(&mut self) -> Vec<dsf_rpc::ServiceInfo> {
+        self.services().list()
+    }
+
+    pub(super) fn resolve_identifier(&mut self, identifier: &ServiceIdentifier) -> Result<Id, Error> {
         // Short circuit if ID specified or error if none
         let index = match (identifier.id, identifier.index) {
             (Some(id), _) => return Ok(id),

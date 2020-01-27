@@ -18,7 +18,7 @@ use crate::io;
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
     pub async fn locate(&mut self, options: LocateOptions) -> Result<LocateInfo, Error> {
-        let span = span!(Level::DEBUG, "locate", "{}", self.id());
+        let span = span!(Level::DEBUG, "locate");
         let _enter = span.enter();
 
         let mut services = self.services();

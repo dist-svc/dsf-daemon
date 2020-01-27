@@ -126,7 +126,7 @@ impl Wire {
             }
         };
 
-        debug!("handling message: {:?} from: {:?}", decoded, msg.address);
+        trace!("handling message: {:?} from: {:?}", decoded, msg.address);
 
         let from_id = decoded.from();
         let info = self.connections.entry(from_id.clone()).or_insert(ConnectionInfo::new());
@@ -232,7 +232,7 @@ impl Connector for WireConnector {
         async fn request(
             &self, req_id: RequestId, target: Address, req: NetRequest, t: Duration,
         ) -> Result<NetResponse, Error> {   
-            debug!("issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)", req, req_id, target, t.as_secs());
+            trace!("issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)", req, req_id, target, t.as_secs());
             
             // Create per-request channel
             let (tx, mut rx) = mpsc::channel(0);
@@ -249,7 +249,10 @@ impl Connector for WireConnector {
             
             // Handle timeouts
             let res = match res {
-                Ok(Some(v)) => Ok(v),
+                Ok(Some(v)) => {
+                    trace!("received response: {:?}", v);
+                    Ok(v)
+                },
                 // TODO: this seems like it should be a retry point..?
                 Ok(None) => {
                     error!("No response received");
@@ -266,6 +269,7 @@ impl Connector for WireConnector {
                 error!("Connection error: {:?}, removing {} from tracking", e, req_id);
                 self.requests.lock().unwrap().remove(&req_id);
             }
+
 
             res
         }

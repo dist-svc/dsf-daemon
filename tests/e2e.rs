@@ -100,7 +100,7 @@ fn end_to_end() {
         let bar = ProgressBar::new(NUM_DAEMONS as u64);
         for (_id, _config, client, _) in &mut daemons[..] {
             
-            let s = client.create(&rpc::CreateOptions::default().and_register()).await.expect("creation failed");
+            let s = client.create(rpc::CreateOptions::default().and_register()).await.expect("creation failed");
             services.push(s);
 
             bar.inc(1);

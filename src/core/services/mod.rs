@@ -16,8 +16,7 @@ use super::store::FileStore;
 use super::peers::Peer;
 use super::data::DataInfo;
 
-pub mod info;
-pub use info::{ServiceInfo, ServiceState};
+pub use dsf_rpc::service::{ServiceInfo, ServiceState};
 
 pub mod inst;
 pub use inst::{ServiceInst};

@@ -10,8 +10,9 @@ use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
 use dsf_core::options::Options;
 
-use dsf_rpc::{CreateOptions};
+use dsf_rpc::{CreateOptions, RegisterOptions, ServiceIdentifier};
 
+use crate::error::Error;
 use crate::core::services::*;
 use crate::daemon::Dsf;
 use crate::io;
@@ -20,8 +21,8 @@ use crate::io;
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
     /// Create (and publish) a new service
-    pub async fn create(&mut self, options: CreateOptions) -> Result<ServiceInfo, DsfError> {
-        let span = span!(Level::DEBUG, "create", "{}", self.id());
+    pub async fn create(&mut self, options: CreateOptions) -> Result<ServiceInfo, Error> {
+        let span = span!(Level::DEBUG, "create");
         let _enter = span.enter();
 
         let _services = self.services();
@@ -53,30 +54,31 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             sb.encrypt();
         }
 
-        info!("Generating service");
+        debug!("Generating service");
         let mut service = sb.build().unwrap();
         let id = service.id();
 
-        info!("Generating service page");
+        debug!("Generating service page");
         let mut buff = vec![0u8; 1024];
         let (n, mut primary_page) = service.publish_primary(&mut buff).unwrap();
         primary_page.raw = Some(buff[..n].to_vec());
 
         // Register service in local database
-        info!("Storing service information");
+        debug!("Storing service information");
         let service = self.services().register(service, &primary_page, ServiceState::Created, None).unwrap();
 
         let pages = vec![primary_page];
         
         // Register service in distributed database
         if !options.register {
+            info!("Registering service locally");
             // Write the service to the database
             self.datastore().store(&id, &pages);
             
         } else {
             info!("Registering and replicating service");
             // TODO URGENT: re-enable this when register is back
-            //self.register(RegisterOptions{service: ServiceIdentifier{id: Some(id.clone()), index: None}, no_replica: false }).await?;
+            let _register_info = self.register(RegisterOptions{service: ServiceIdentifier{id: Some(id.clone()), index: None}, no_replica: false }).await?;
 
             // Update local service state
             let mut s = service.write().unwrap();

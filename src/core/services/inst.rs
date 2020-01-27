@@ -11,15 +11,14 @@ use dsf_core::service::{Subscriber, Publisher};
 use dsf_core::service::publisher::SecondaryOptionsBuilder;
 use dsf_core::options::Options;
 
+use dsf_rpc::service::{ServiceInfo, ServiceState};
+
 
 use crate::core::peers::Peer;
 use crate::core::replicas::Replica;
 
-use super::info::{ServiceInfo, ServiceState};
 use super::SubscriptionInfo;
 use super::data::Data;
-
-
 
 #[derive(Debug, Serialize, Deserialize, Queryable)]
 pub struct ServiceInst {

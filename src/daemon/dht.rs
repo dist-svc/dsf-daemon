@@ -50,7 +50,7 @@ impl <C> DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor <C> where C
 
         // Build DSF Request from DHT request
         let mut req = Request::new(self.id.clone(), req.to(), Flags::default());
-        trace!("request: {:?}", req);
+        debug!("DHT request: {:?}", req);
 
         if ctx.contains(Ctx::INCLUDE_PUBLIC_KEY) {
             req.set_public_key(self.pub_key.clone());
@@ -71,6 +71,8 @@ impl <C> DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor <C> where C
                 return Err(DhtError::Connector)
             }
         };
+
+        debug!("DHT response: {:?}", resp);
 
         // Convert response
         let resp = match resp.data.try_to((id, peers)) {
