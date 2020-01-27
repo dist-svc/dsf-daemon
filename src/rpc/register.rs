@@ -85,7 +85,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
         };
 
 
-        info!("Registering service");
+        debug!("Registering service");
         trace!("Pages: {:?}", pages);
 
         // Store pages

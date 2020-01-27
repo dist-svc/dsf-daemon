@@ -246,10 +246,8 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         let from = DhtEntry::new(from.into(), peer);
 
         // Pass to DHT
-        self.dht().handle(&from, &req)
-            .map_err(|e| {
-                error!("DHT error: {:?}", e);
-                unimplemented!();
-            })
+        let resp = self.dht().handle(&from, &req).unwrap();
+        
+        Ok(resp)
     }
 }

@@ -106,17 +106,17 @@ fn end_to_end() {
             bar.inc(1);
         }
         bar.finish();
-        info!("created services");
+        info!("created services: {:?}", services);
 
         info!("searching for services");
         let bar = ProgressBar::new(NUM_DAEMONS as u64);
         for i in 0..NUM_DAEMONS {
 
-            let id = &daemons[NUM_DAEMONS - i - 1].0.clone();
+            let service_handle = &services[NUM_DAEMONS - i - 1].clone();
 
             let (_id, _config, client, _handle) = &mut daemons[i];
 
-            let _service_handle = client.locate(&id).await.expect("search failed");
+            let _service_handle = client.locate(&service_handle.id).await.expect("search failed");
 
             bar.inc(1);
         }
