@@ -31,7 +31,7 @@ fn test_manager() {
     let mut buff = vec![0u8; 1024];
 
     // Initialise logging
-    let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
+    let _ = FmtSubscriber::builder().with_max_level(LevelFilter::INFO).try_init();
 
     let d = TempDir::new("/tmp/").unwrap(); 
 

@@ -38,6 +38,7 @@ pub mod core;
 pub mod daemon;
 pub mod rpc;
 pub mod error;
+pub mod plugins;
 
 pub mod engine;
 

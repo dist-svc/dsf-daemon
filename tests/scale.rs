@@ -26,7 +26,6 @@ extern crate dsf_rpc;
 use dsf_rpc::{self as rpc};
 
 extern crate dsf_daemon;
-use dsf_daemon::daemon::*;
 use dsf_daemon::engine::{Engine, Options};
 
 extern crate dsf_client;

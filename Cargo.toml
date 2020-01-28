@@ -36,6 +36,10 @@ base64 = "0.11.0"
 chrono-humanize = "0.0.11"
 tempdir = "0.3.7"
 bitflags = "1.2.1"
+get_if_addrs = "0.5.3"
+libmdns = "0.2.4"
+mdns = "1.0.0"
+
 
 [dependencies.dsf-core]
 version = "0.1.0"
@@ -68,6 +72,10 @@ version = "1.0"
 [dependencies.chrono]
 features = ["serde"]
 version = "0.4.6"
+
+[dependencies.igd]
+version = "0.10.0"
+features = [ "aio" ]
 
 [dependencies.structopt]
 version = "0.3.5"

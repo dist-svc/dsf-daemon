@@ -42,7 +42,7 @@ fn end_to_end() {
     let d = TempDir::new("dsf-e2e").unwrap();
     let d = d.path().to_str().unwrap().to_string();
 
-    let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
+    let _ = FmtSubscriber::builder().with_max_level(LevelFilter::INFO).try_init();
 
     let mut daemons = vec![];
 
@@ -120,7 +120,9 @@ fn end_to_end() {
 
             let (_id, _config, client, _handle) = &mut daemons[i];
 
-            let _service_handle = client.locate(&service_handle.id).await.expect("search failed");
+            client.locate(rpc::LocateOptions{
+                id: service_handle.id.clone(),
+            }).await.expect("search failed");
 
             bar.inc(1);
         }
