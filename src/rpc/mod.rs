@@ -122,7 +122,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         use rpc::*;
 
         let res = match req {
-            DataCommands::List(ListOptions{service, n}) => {
+            DataCommands::List(data::ListOptions{service, n}) => {
                 let id = self.resolve_identifier(&service)?;
                 self.get_data(&id, n).map(ResponseKind::Data)?
             },

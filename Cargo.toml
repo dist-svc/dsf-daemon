@@ -7,7 +7,18 @@ edition = "2018"
 license = "GPL-3.0"
 publish = false
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# Debian packaging metadata (for cargo-deb)
+[package.metadata.deb]
+priority = "optional"
+depends = "$auto, systemd, openssl"
+assets = [
+    ["target/release/dsfd", "/usr/bin/dsfd",                    "0755"],
+    ["dsfd.env",            "/etc/dsfd/dsfd.env",               "0644"],
+    ["dsfd.service",        "/lib/systemd/system/dsfd.service", "0644"],
+]
+conf-files = [
+  "/etc/dsfd/dsfd.env",
+]
 
 [dependencies]
 futures = "0.3.1"
@@ -70,10 +81,6 @@ rr-mux = "0.10.1"
 rand = "0.7.3"
 indicatif = "0.13.0"
 
-
-[patch.crates-io]
-futures_codec = { git = "https://github.com/ryankurte/futures-codec", branch = "feature/json-cbor-codecs" }
-dsf_core = { path = "../dsf-core" }
 
 [[bin]]
 name = "dsfd"
