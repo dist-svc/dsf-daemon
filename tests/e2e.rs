@@ -1,4 +1,5 @@
 use std::time::Duration;
+use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 
 extern crate futures;
 
@@ -39,6 +40,7 @@ const NUM_DAEMONS: usize = 3;
 #[test]
 fn end_to_end() {
     let d = TempDir::new("dsf-e2e").unwrap();
+    let d = d.path().to_str().unwrap().to_string();
 
     let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
 
@@ -47,7 +49,9 @@ fn end_to_end() {
     let res: Result<(), Error> = task::block_on(async move {
 
         let mut config = Options::default();
-        config.daemon_options.database_dir = d.path().to_str().unwrap().to_string();
+        config.daemon_options.database_dir = d.clone();
+        config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)];
+        config.daemon_socket = format!("{}/dsf.sock", d);
 
         // Create daemons
         info!("Creating daemons");
@@ -96,7 +100,7 @@ fn end_to_end() {
 
         let mut services = vec![];
 
-        error!("creating services");
+        info!("creating services");
         let bar = ProgressBar::new(NUM_DAEMONS as u64);
         for (_id, _config, client, _) in &mut daemons[..] {
             

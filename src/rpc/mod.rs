@@ -108,6 +108,10 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             PeerCommands::Connect(options) => {
                 s.connect(options).await.map(ResponseKind::Connected)?
             },
+            PeerCommands::Search(options) => {
+                // TODO: pass timeout here
+                s.lookup(&options.id).await.map(|p| ResponseKind::Peers(vec![(p.id(), p.info())]))?
+            }
             _ => ResponseKind::Unrecognised,
         };
 

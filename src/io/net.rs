@@ -89,8 +89,8 @@ struct Binding {
 /// Network binding information object
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetInfo {
-    kind: NetKind,
-    addr: SocketAddr,
+    pub kind: NetKind,
+    pub addr: SocketAddr,
 }
 
 impl NetInfo {

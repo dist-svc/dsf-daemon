@@ -56,7 +56,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
         // Execute request
         // TODO: could this just be a DHT::connect?
 
-        info!("Sending request");
+        trace!("Sending request");
 
         let d = options.timeout.or(Some(Duration::from_secs(2))).unwrap();
         let res = timeout(d, self.request(address, req)).await;
@@ -74,7 +74,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
             }
         };
 
-        debug!("response from peer: {:?}", &resp.from);
+        trace!("response from peer: {:?}", &resp.from);
 
         // Update peer information and prepare response
         let peer = self.peers().find_or_create(resp.from.clone(), PeerAddress::Implicit(address), None);
@@ -83,7 +83,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
             peers: 0,
         };
 
-        error!("Starting DHT connect");
+        trace!("Starting DHT connect");
 
         // Pass response to DHT to finish connecting
         let data = resp.data.try_to((our_id, self.peers())).unwrap();

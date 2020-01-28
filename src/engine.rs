@@ -140,6 +140,10 @@ impl Engine {
         self.dsf.id()
     }
 
+    pub fn addrs(&self) -> Vec<SocketAddr> {
+        self.net.list().drain(..).map(|info| info.addr ).collect()
+    }
+
     // Run the DSF daemon
     pub async fn run(&mut self) -> Result<(), Error> {
         let span = span!(Level::DEBUG, "engine", "{}", self.dsf.id());
