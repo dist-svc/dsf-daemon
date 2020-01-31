@@ -62,7 +62,7 @@ impl ServiceInst {
             public_key: service.public_key(),
             secret_key: service.secret_key(),
             replicas: self.replicas.len(),
-            subscibers: self.subscribers.len(),
+            subscribers: self.subscribers.len(),
             origin: service.is_origin(),
         }
     }

@@ -12,6 +12,8 @@ extern crate colored;
 #[macro_use]
 extern crate bitflags;
 
+extern crate strum;
+
 #[macro_use]
 extern crate derive_builder;
 
@@ -43,6 +45,6 @@ pub mod plugins;
 pub mod engine;
 
 
-mod io;
+pub mod io;
 
-mod store;
+pub mod store;
