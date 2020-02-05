@@ -10,6 +10,8 @@ use dsf_rpc::{ServiceInfo, ServiceState};
 
 use super::{Store, StoreError, to_dt, from_dt};
 
+type ServiceFields = (String, i32, String, String, Option<String>, Option<String>, Option<String>, Option<NaiveDateTime>, i32, i32, bool);
+
 impl Store {
 
     pub fn save_service(&mut self, info: &ServiceInfo) -> Result<(), StoreError> {
@@ -19,7 +21,7 @@ impl Store {
         let up = info.last_updated.map(|v| last_updated.eq(to_dt(v)) );
 
         let values = (
-            id.eq(info.id.to_string()),
+            service_id.eq(info.id.to_string()),
             index.eq(info.index as i32),
             state.eq(info.state.to_string()),
             public_key.eq(info.public_key.to_string()),
@@ -30,12 +32,12 @@ impl Store {
             original.eq(info.origin),
         );
 
-        let r = services.filter(id.eq(info.id.to_string()))
+        let r = services.filter(service_id.eq(info.id.to_string()))
             .select(index).load::<i32>(&self.conn)?;
         
         if r.len() != 0 {
             diesel::update(services)
-                .filter(id.eq(info.id.to_string()))
+                .filter(service_id.eq(info.id.to_string()))
                 .set(values)
                 .execute(&self.conn)?;
         } else {
@@ -47,24 +49,17 @@ impl Store {
         Ok(())
     }
 
-    pub fn load_service(&mut self, service_id: &Id) -> Result<Option<ServiceInfo>, StoreError> {
-        use crate::store::schema::services::dsl::*;
-
-        let result = services
-            .filter(id.eq(service_id.to_string()))
-            .select((id, index, state, public_key, secret_key, last_updated, subscribers, replicas, original))
-            .load::<(String, i32, String, String, Option<String>, Option<NaiveDateTime>, i32, i32, bool)>(&self.conn)?;
-
-        if result.len() == 0 {
-            return Ok(None)
-        }
-
-        let (_r_id, r_index, r_state, r_pk, r_sk, r_upd, r_subs, r_reps, r_original) = &result[0];
+    fn parse_service(v: &ServiceFields) -> Result<ServiceInfo, StoreError> {
+        let (r_id, r_index, r_state, r_pk, r_sk, r_pp, r_rp, r_upd, r_subs, r_reps, r_original) = v;
 
         let s = ServiceInfo {
-            id: service_id.clone(),
+            id: Id::from_str(r_id)?,
             index: *r_index as usize,
             state: ServiceState::from_str(r_state)?,
+
+            primary_page: r_pp.as_ref().map(|v| Signature::from_str(&v).unwrap() ),
+            replica_page: r_rp.as_ref().map(|v| Signature::from_str(&v).unwrap() ),
+
             public_key: PublicKey::from_str(r_pk)?,
             secret_key: r_sk.as_ref().map(|v| SecretKey::from_str(&v).unwrap() ),
             
@@ -75,13 +70,46 @@ impl Store {
             origin: *r_original,
         };
 
+        Ok(s)
+    }
+
+    pub fn load_service(&mut self, id: &Id) -> Result<Option<ServiceInfo>, StoreError> {
+        use crate::store::schema::services::dsl::*;
+
+        let results = services
+            .filter(service_id.eq(id.to_string()))
+            .select((service_id, index, state, public_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .load::<ServiceFields>(&self.conn)?;
+
+        if results.len() == 0 {
+            return Ok(None)
+        }
+
+        let s = Self::parse_service(&results[0])?;
+
         Ok(Some(s))
     }
 
-    pub fn delete_service(&mut self, service_id: &Id) -> Result<(), StoreError> {
+    pub fn load_services(&mut self) -> Result<Vec<ServiceInfo>, StoreError> {
         use crate::store::schema::services::dsl::*;
 
-        diesel::delete(services).filter(id.eq(service_id.to_string()))
+        let results = services
+            .select((service_id, index, state, public_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .load::<ServiceFields>(&self.conn)?;
+
+        let mut v = vec![];
+
+        for r in &results {
+            v.push(Self::parse_service(r)?);
+        }
+
+        Ok(v)
+    }
+
+    pub fn delete_service(&mut self, id: &Id) -> Result<(), StoreError> {
+        use crate::store::schema::services::dsl::*;
+
+        diesel::delete(services).filter(service_id.eq(id.to_string()))
             .execute(&self.conn)?;
 
         Ok(())
@@ -122,6 +150,8 @@ mod test {
             state: ServiceState::Registered,
             public_key,
             secret_key: Some(secret_key),
+            primary_page: None,
+            replica_page: None,
             last_updated: Some(SystemTime::now()),
             subscribers: 14,
             replicas: 12,

@@ -2,16 +2,20 @@
 use diesel::table;
 
 table! {
-    services (id) {
-        id -> Text,
+    services (service_id) {
+        service_id -> Text,
         index -> Integer,
 
         state -> Text,
-        
+
         public_key -> Text,
         secret_key -> Nullable<Text>,
+
+        primary_page -> Nullable<Text>,
+        replica_page -> Nullable<Text>,
         
         last_updated -> Nullable<Timestamp>,
+
         subscribers -> Integer,
         replicas -> Integer,
         original -> Bool,
@@ -19,8 +23,8 @@ table! {
 }
 
 table! {
-    peers (id) {
-        id -> Text,
+    peers (peer_id) {
+        peer_id -> Text,
         state -> Text,
         public_key -> Nullable<Text>,
         
@@ -35,9 +39,10 @@ table! {
     }
 }
 
+
 table! {
-    peer_addresses (id) {
-        id -> Text,
+    peer_addresses (peer_id) {
+        peer_id -> Text,
         
         address -> Text,
         address_mode -> Text,
@@ -47,9 +52,25 @@ table! {
 }
 
 table! {
-    data (id) {
-        id -> Text,
-        sig -> Text,
+    subscriptions (service_id, peer_id) {
+        service_id -> Text,
+        peer_id -> Text,
 
+        last_updated -> Nullable<Timestamp>,
+        expiry -> Nullable<Timestamp>,
+    }
+}
+
+
+table! {
+    objects (service_id) {
+        service_id -> Text,
+        object_index -> Integer,
+
+        body -> Nullable<Blob>,
+        raw -> Nullable<Blob>,
+
+        parent -> Nullable<Text>,
+        signature -> Text,
     }
 }

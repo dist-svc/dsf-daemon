@@ -15,6 +15,8 @@ const UNKNOWN:  &str = "unknown";
 const IMPLICIT: &str = "implicit";
 const EXPLICIT: &str = "explicit";
 
+type PeerFields = (String, String, Option<String>, String, String, Option<NaiveDateTime>, i32, i32, bool);
+
 impl Store {
 
     pub fn save_peer(&mut self, info: &PeerInfo) -> Result<(), StoreError> {
@@ -38,7 +40,7 @@ impl Store {
         let seen = info.seen.map(|v| last_seen.eq(to_dt(v)) );
 
         let values = (
-            id.eq(info.id.to_string()),
+            peer_id.eq(info.id.to_string()),
             s,
             k,
             address.eq(info.address().to_string()),
@@ -49,12 +51,12 @@ impl Store {
             blocked.eq(info.blocked),
         );
 
-        let r = peers.filter(id.eq(info.id.to_string()))
-            .select(id).load::<String>(&self.conn)?;
+        let r = peers.filter(peer_id.eq(info.id.to_string()))
+            .select(peer_id).load::<String>(&self.conn)?;
 
         if r.len() != 0 {
             diesel::update(peers)
-                .filter(id.eq(info.id.to_string()))
+                .filter(peer_id.eq(info.id.to_string()))
                 .set(values)
                 .execute(&self.conn)?;
         } else {
@@ -66,24 +68,24 @@ impl Store {
         Ok(())
     }
 
-    fn convert_peer(v: &(String, String, Option<String>, String, String, Option<NaiveDateTime>, i32, i32, bool)) -> PeerInfo {
+    fn parse_peer(v: &PeerFields) -> Result<PeerInfo, StoreError> {
 
         let (r_id, r_state, r_pk, r_address, r_address_mode, r_seen, r_sent, r_recv, r_blocked) = v;
 
         let s_state = match (r_state.as_ref(), &r_pk) {
-            (KNOWN, Some(k)) => PeerState::Known(PublicKey::from_str(k).unwrap()),
+            (KNOWN, Some(k)) => PeerState::Known(PublicKey::from_str(k)?),
             (UNKNOWN, _) => PeerState::Unknown,
             _ => unreachable!(),
         };
 
         let s_addr = match r_address_mode.as_ref() {
-            IMPLICIT => PeerAddress::Implicit(r_address.parse().unwrap()),
-            EXPLICIT => PeerAddress::Explicit(r_address.parse().unwrap()),
+            IMPLICIT => PeerAddress::Implicit(r_address.parse()?),
+            EXPLICIT => PeerAddress::Explicit(r_address.parse()?),
             _ => unreachable!(),
         };
 
         let p = PeerInfo {
-            id: Id::from_str(r_id).unwrap(),
+            id: Id::from_str(r_id)?,
             state: s_state,
             address: s_addr,
 
@@ -94,22 +96,22 @@ impl Store {
             blocked: *r_blocked,
         };
 
-        p
+        Ok(p)
     }
 
-    pub fn load_peer(&mut self, peer_id: &Id) -> Result<Option<PeerInfo>, StoreError> {
+    pub fn load_peer(&mut self, id: &Id) -> Result<Option<PeerInfo>, StoreError> {
         use crate::store::schema::peers::dsl::*;
 
         let results = peers
-            .filter(id.eq(peer_id.to_string()))
-            .select((id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
+            .filter(peer_id.eq(id.to_string()))
+            .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
             .load::<(String, String, Option<String>, String, String, Option<NaiveDateTime>, i32, i32, bool)>(&self.conn)?;
 
         if results.len() == 0 {
             return Ok(None)
         }
 
-        let p = Self::convert_peer(&results[0]);
+        let p = Self::parse_peer(&results[0])?;
 
         Ok(Some(p))
     }
@@ -118,22 +120,22 @@ impl Store {
         use crate::store::schema::peers::dsl::*;
 
         let results = peers
-            .select((id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
+            .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
             .load::<(String, String, Option<String>, String, String, Option<NaiveDateTime>, i32, i32, bool)>(&self.conn)?;
 
         let mut v = vec![];
 
         for r in &results {
-            v.push(Self::convert_peer(r));
+            v.push(Self::parse_peer(r)?);
         }
 
         Ok(v)
     }
 
-    pub fn delete_peer(&mut self, peer_id: &Id) -> Result<(), StoreError> {
+    pub fn delete_peer(&mut self, id: &Id) -> Result<(), StoreError> {
         use crate::store::schema::peers::dsl::*;
 
-        diesel::delete(peers).filter(id.eq(peer_id.to_string()))
+        diesel::delete(peers).filter(peer_id.eq(id.to_string()))
             .execute(&self.conn)?;
 
         Ok(())

@@ -1,5 +1,6 @@
 
 use std::time::SystemTime;
+use std::net::AddrParseError;
 
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
@@ -39,6 +40,7 @@ pub enum StoreError {
     Diesel(DieselError),
     Strum(StrumError),
     B64(B64Error),
+    Addr(AddrParseError),
 }
 
 impl From<ConnectionError> for StoreError {
@@ -65,7 +67,11 @@ impl From<B64Error> for StoreError {
     }
 }
 
-
+impl From<AddrParseError> for StoreError {
+    fn from(e: AddrParseError) -> Self {
+        Self::Addr(e)
+    }
+}
 
 impl Store {
     pub fn new(path: &str) -> Result<Self, StoreError> {
@@ -75,11 +81,37 @@ impl Store {
     }
 
     pub fn create(&mut self) -> Result<(), StoreError> {
-        println!("Create!");
+        sql_query("CREATE TABLE services (
+            service_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
+            'index' INTEGER NOT NULL, 
+            state TEXT NOT NULL, 
 
-        sql_query("CREATE TABLE services (id TEXT NOT NULL UNIQUE PRIMARY KEY, 'index' INTEGER NOT NULL, state TEXT NOT NULL, public_key TEXT NOT NULL, secret_key TEXT, last_updated TEXT, subscribers INTEGER NOT NULL, replicas INTEGER NOT NULL, original BOOLEAN NOT NULL);").execute(&self.conn)?;
+            public_key TEXT NOT NULL, 
+            secret_key TEXT, 
 
-        sql_query("CREATE TABLE peers (id TEXT NOT NULL UNIQUE PRIMARY KEY, 'index' INTEGER, state TEXT NOT NULL, public_key TEXT, address TEXT, address_mode TEXT, last_seen TEXT, sent INTEGER NOT NULL, received INTEGER NOT NULL, blocked BOOLEAN NOT NULL);").execute(&self.conn)?;
+            primary_page BLOB, 
+            replica_page BLOB, 
+            
+            last_updated TEXT, 
+            subscribers INTEGER NOT NULL, 
+            replicas INTEGER NOT NULL,
+            original BOOLEAN NOT NULL
+        );").execute(&self.conn)?;
+
+        sql_query("CREATE TABLE peers (
+            peer_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
+            'index' INTEGER, 
+            state TEXT NOT NULL, 
+
+            public_key TEXT, 
+            address TEXT, 
+            address_mode TEXT, 
+            last_seen TEXT, 
+            
+            sent INTEGER NOT NULL, 
+            received INTEGER NOT NULL, 
+            blocked BOOLEAN NOT NULL
+        );").execute(&self.conn)?;
 
         Ok(())
     }

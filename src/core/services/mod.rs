@@ -67,7 +67,7 @@ impl ServiceManager {
         // Create a service instance wrapper
         let mut inst = ServiceInst{service, state,
             index: services.len(),
-            last_updated: updated, 
+            last_updated: updated,
             primary_page: Some(page.clone()),
             replica_page: None,
             data: Vec::new(),
@@ -155,7 +155,7 @@ impl ServiceManager {
                 service: id.clone(),
                 index: d.version(),
                 body: d.body().clone(),
-                parent: None,
+                previous: None,
                 signature: d.signature().unwrap(),
             }
         });
