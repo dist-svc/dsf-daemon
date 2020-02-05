@@ -83,7 +83,7 @@ impl Store {
     pub fn create(&mut self) -> Result<(), StoreError> {
         sql_query("CREATE TABLE services (
             service_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
-            'index' INTEGER NOT NULL, 
+            service_index TEGER NOT NULL, 
             state TEXT NOT NULL, 
 
             public_key TEXT NOT NULL, 
@@ -100,7 +100,7 @@ impl Store {
 
         sql_query("CREATE TABLE peers (
             peer_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
-            'index' INTEGER, 
+            peer_index INTEGER, 
             state TEXT NOT NULL, 
 
             public_key TEXT, 
@@ -113,6 +113,17 @@ impl Store {
             blocked BOOLEAN NOT NULL
         );").execute(&self.conn)?;
 
+        sql_query("CREATE TABLE data (
+            signature TEXT NOT NULL UNIQUE PRIMARY KEY, 
+            service_id TEXT NOT NULL,
+
+            object_index INTEGER NOT NULL,
+            body_kind TEXT NOT NULL,
+            body_value BLOB,
+
+            previous TEXT
+        );").execute(&self.conn)?;
+
         Ok(())
     }
 
@@ -120,6 +131,8 @@ impl Store {
         sql_query("DROP TABLE IF EXISTS services;").execute(&self.conn)?;
 
         sql_query("DROP TABLE IF EXISTS peers;").execute(&self.conn)?;
+
+        sql_query("DROP TABLE IF EXISTS data;").execute(&self.conn)?;
 
         Ok(())
     }

@@ -17,11 +17,12 @@ const EXPLICIT: &str = "explicit";
 
 type PeerFields = (String, String, Option<String>, String, String, Option<NaiveDateTime>, i32, i32, bool);
 
+use crate::store::schema::peers::dsl::*;
+
 impl Store {
 
     pub fn save_peer(&mut self, info: &PeerInfo) -> Result<(), StoreError> {
-        use crate::store::schema::peers::dsl::*;
-
+ 
         let (s, k) = match info.state {
             PeerState::Known(k) => {
                 (state.eq(KNOWN.to_string()), Some(public_key.eq(k.to_string())))
@@ -100,7 +101,6 @@ impl Store {
     }
 
     pub fn load_peer(&mut self, id: &Id) -> Result<Option<PeerInfo>, StoreError> {
-        use crate::store::schema::peers::dsl::*;
 
         let results = peers
             .filter(peer_id.eq(id.to_string()))
@@ -117,7 +117,6 @@ impl Store {
     }
 
     pub fn load_peers(&mut self) -> Result<Vec<PeerInfo>, StoreError> {
-        use crate::store::schema::peers::dsl::*;
 
         let results = peers
             .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
@@ -133,7 +132,6 @@ impl Store {
     }
 
     pub fn delete_peer(&mut self, id: &Id) -> Result<(), StoreError> {
-        use crate::store::schema::peers::dsl::*;
 
         diesel::delete(peers).filter(peer_id.eq(id.to_string()))
             .execute(&self.conn)?;

@@ -4,7 +4,7 @@ use diesel::table;
 table! {
     services (service_id) {
         service_id -> Text,
-        index -> Integer,
+        service_index -> Integer,
 
         state -> Text,
 
@@ -63,14 +63,14 @@ table! {
 
 
 table! {
-    objects (service_id) {
+    data (service_id) {
         service_id -> Text,
         object_index -> Integer,
 
-        body -> Nullable<Blob>,
-        raw -> Nullable<Blob>,
+        body_kind -> Text,
+        body_value -> Nullable<Blob>,
 
-        parent -> Nullable<Text>,
+        previous -> Nullable<Text>,
         signature -> Text,
     }
 }

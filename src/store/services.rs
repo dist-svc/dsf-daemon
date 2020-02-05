@@ -22,7 +22,7 @@ impl Store {
 
         let values = (
             service_id.eq(info.id.to_string()),
-            index.eq(info.index as i32),
+            service_index.eq(info.index as i32),
             state.eq(info.state.to_string()),
             public_key.eq(info.public_key.to_string()),
             sk,
@@ -33,7 +33,7 @@ impl Store {
         );
 
         let r = services.filter(service_id.eq(info.id.to_string()))
-            .select(index).load::<i32>(&self.conn)?;
+            .select(service_index).load::<i32>(&self.conn)?;
         
         if r.len() != 0 {
             diesel::update(services)
@@ -78,7 +78,7 @@ impl Store {
 
         let results = services
             .filter(service_id.eq(id.to_string()))
-            .select((service_id, index, state, public_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .select((service_id, service_index, state, public_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
             .load::<ServiceFields>(&self.conn)?;
 
         if results.len() == 0 {
@@ -94,7 +94,7 @@ impl Store {
         use crate::store::schema::services::dsl::*;
 
         let results = services
-            .select((service_id, index, state, public_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .select((service_id, service_index, state, public_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
             .load::<ServiceFields>(&self.conn)?;
 
         let mut v = vec![];
