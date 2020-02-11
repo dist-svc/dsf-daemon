@@ -229,6 +229,9 @@ impl ServiceManager {
                 error!("Error writing service instance {}: {:?}", id, e);
             }
 
+            
+    
+
             i.changed = false;
         }
     }

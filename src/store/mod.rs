@@ -14,6 +14,8 @@ pub mod peers;
 pub mod services;
 pub mod data;
 
+pub mod page;
+
 pub use error::StoreError;
 
 pub struct Store {

@@ -76,10 +76,10 @@ table! {
 
 
 table! {
-    objects (signature) {
+    object (signature) {
         service_id -> Text,
         
-        raw -> Blob,
+        raw_data -> Blob,
 
         previous -> Nullable<Text>,
         signature -> Text,

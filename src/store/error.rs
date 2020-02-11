@@ -12,6 +12,7 @@ pub enum StoreError {
     Strum(StrumError),
     B64(B64Error),
     Addr(AddrParseError),
+    MissingSignature,
 }
 
 impl From<ConnectionError> for StoreError {
