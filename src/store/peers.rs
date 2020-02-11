@@ -21,7 +21,7 @@ use crate::store::schema::peers::dsl::*;
 
 impl Store {
 
-    pub fn save_peer(&mut self, info: &PeerInfo) -> Result<(), StoreError> {
+    pub fn save_peer(&self, info: &PeerInfo) -> Result<(), StoreError> {
  
         let (s, k) = match info.state {
             PeerState::Known(k) => {
@@ -100,7 +100,7 @@ impl Store {
         Ok(p)
     }
 
-    pub fn load_peer(&mut self, id: &Id) -> Result<Option<PeerInfo>, StoreError> {
+    pub fn load_peer(&self, id: &Id) -> Result<Option<PeerInfo>, StoreError> {
 
         let results = peers
             .filter(peer_id.eq(id.to_string()))
@@ -116,7 +116,7 @@ impl Store {
         Ok(Some(p))
     }
 
-    pub fn load_peers(&mut self) -> Result<Vec<PeerInfo>, StoreError> {
+    pub fn load_peers(&self) -> Result<Vec<PeerInfo>, StoreError> {
 
         let results = peers
             .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
@@ -131,7 +131,7 @@ impl Store {
         Ok(v)
     }
 
-    pub fn delete_peer(&mut self, id: &Id) -> Result<(), StoreError> {
+    pub fn delete_peer(&self, id: &Id) -> Result<(), StoreError> {
 
         diesel::delete(peers).filter(peer_id.eq(id.to_string()))
             .execute(&self.conn)?;

@@ -1,6 +1,7 @@
 
 
 use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+use std::sync::{Arc, Mutex};
 
 use structopt::StructOpt;
 
@@ -26,6 +27,7 @@ use crate::io::*;
 use crate::store::*;
 use crate::daemon::*;
 
+
 use crate::daemon::{Options as DaemonOptions};
 
 pub struct Engine {
@@ -35,7 +37,6 @@ pub struct Engine {
     wire: Wire,
     net: Net,
 
-    store: Store,
 }
 
 pub const DEFAULT_UNIX_SOCKET: &str = "/tmp/dsf.sock";
@@ -103,14 +104,12 @@ impl Engine {
     /// Create a new daemon instance
     pub async fn new(options: Options) -> Result<Self, Error> {
         // Create or load service
-        let s = ServiceBuilder::default().peer().build().unwrap();
+        let service = ServiceBuilder::default().peer().build().unwrap();
 
-        let span = span!(Level::DEBUG, "engine", "{}", s.id());
+        let span = span!(Level::DEBUG, "engine", "{}", service.id());
         let _enter = span.enter();
 
         info!("Creating new engine");
-
-        // TODO: persist storage here
 
         // Create new network connector
         debug!("Creating network connector on addresses: {:?}", options.bind_addresses);
@@ -123,17 +122,17 @@ impl Engine {
         let unix = Unix::new(&options.daemon_socket).await?;
 
         // Create new wire adaptor
-        let wire = Wire::new(s.private_key().unwrap());
+        let wire = Wire::new(service.private_key().unwrap());
 
         // Create new local data store
-        let store = Store::new(&options.database)?;
+        let store = Arc::new(Mutex::new(Store::new(&options.database)?));
 
         // Create new DSF instance
-        let dsf = Dsf::new(options.daemon_options, s, wire.connector())?;
+        let dsf = Dsf::new(options.daemon_options, service, store, wire.connector())?;
 
         debug!("Engine created!");
 
-        Ok(Self{dsf, wire, net, unix, store})
+        Ok(Self{dsf, wire, net, unix})
     }
 
     pub fn id(&self) -> Id {

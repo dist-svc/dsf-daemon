@@ -14,7 +14,7 @@ type ServiceFields = (String, i32, String, String, Option<String>, Option<String
 
 impl Store {
 
-    pub fn save_service(&mut self, info: &ServiceInfo) -> Result<(), StoreError> {
+    pub fn save_service(&self, info: &ServiceInfo) -> Result<(), StoreError> {
         use crate::store::schema::services::dsl::*;
 
         let sk = info.secret_key.map(|v| secret_key.eq(v.to_string()) );
@@ -73,7 +73,7 @@ impl Store {
         Ok(s)
     }
 
-    pub fn load_service(&mut self, id: &Id) -> Result<Option<ServiceInfo>, StoreError> {
+    pub fn load_service(&self, id: &Id) -> Result<Option<ServiceInfo>, StoreError> {
         use crate::store::schema::services::dsl::*;
 
         let results = services
@@ -90,7 +90,7 @@ impl Store {
         Ok(Some(s))
     }
 
-    pub fn load_services(&mut self) -> Result<Vec<ServiceInfo>, StoreError> {
+    pub fn load_services(&self) -> Result<Vec<ServiceInfo>, StoreError> {
         use crate::store::schema::services::dsl::*;
 
         let results = services
@@ -106,7 +106,7 @@ impl Store {
         Ok(v)
     }
 
-    pub fn delete_service(&mut self, id: &Id) -> Result<(), StoreError> {
+    pub fn delete_service(&self, id: &Id) -> Result<(), StoreError> {
         use crate::store::schema::services::dsl::*;
 
         diesel::delete(services).filter(service_id.eq(id.to_string()))

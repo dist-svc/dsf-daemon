@@ -34,7 +34,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
         // Attach a body if provided
         if let Some(body) = options.body {
-            sb.body(body);
+            sb.body(Body::Cleartext(body.data));
         } else {
             sb.body(Body::None);
         }

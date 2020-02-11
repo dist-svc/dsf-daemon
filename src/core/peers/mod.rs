@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use dsf_core::prelude::*;
 
+use crate::store::Store;
 use super::store::FileStore;
 
 pub mod info;
@@ -19,19 +20,16 @@ pub use info::{Peer, PeerInfo, PeerAddress, PeerState};
 #[derive(Clone)]
 pub struct PeerManager {
     peers: Arc<Mutex<HashMap<Id, Peer>>>,
-    store: Arc<Mutex<FileStore>>,
+    store: Arc<Mutex<Store>>,
 }
 
 impl PeerManager {
-    pub fn new(database_path: &str) -> Self {
+    pub fn new(store: Arc<Mutex<Store>>) -> Self {
         let peers = HashMap::new();
-        let store = FileStore::new(database_path);
-
-        let _ = store.create_dir();
 
         let mut s = Self{
             peers: Arc::new(Mutex::new(peers)), 
-            store: Arc::new(Mutex::new(store)),
+            store,
         };
 
         s.load();
@@ -46,7 +44,7 @@ impl PeerManager {
 
     pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
         let mut peers = self.peers.lock().unwrap();
-        let store = self.store.clone();
+        let store = self.store.lock().unwrap();
 
         peers.entry(id.clone()).or_insert_with(|| {
             debug!("Creating new peer instance id: ({:?} addr: {:?}, key: {:?})", id, address, key);
@@ -58,10 +56,8 @@ impl PeerManager {
 
             let info = PeerInfo::new(id, address, state, None);
 
-            let name = format!("{}.json", id);
-            trace!("Writing to peer file: {}", &name);
-            if let Err(e) = store.lock().unwrap().store(&name, &info) {
-                error!("Error writing peer file: {}, {:?}", name, e);
+            if let Err(e) = store.save_peer(&info) {
+                error!("Error writing peer {} to db: {:?}", id, e);
             }
 
             Peer{ info: Arc::new(RwLock::new(info)) }
@@ -89,10 +85,8 @@ impl PeerManager {
         for (id, inst) in peers.iter() {
             let info = inst.info();
 
-            let name = format!("{}.json", id);
-            info!("Writing to peer file: {}", &name);
-            if let Err(e) = store.store(&name, &info) {
-                error!("Error writing peer file: {}, {:?}", name, e);
+            if let Err(e) = store.save_peer(&info) {
+                error!("Error writing peer {} to db: {:?}", info.id, e);
             }
         }
     }
@@ -101,7 +95,7 @@ impl PeerManager {
         let mut store = self.store.lock().unwrap();
         let mut peers = self.peers.lock().unwrap();
 
-        let files = match store.list() {
+        let peer_info = match store.load_peers() {
             Ok(v) => v,
             Err(e) => {
                 error!("Error listing files: {:?}", e);
@@ -109,15 +103,8 @@ impl PeerManager {
             }
         };
 
-        for f in &files {
-            match store.load::<PeerInfo, _, _>(f) {
-                Ok(v) => {
-                    peers.entry(v.id).or_insert(Peer{info: Arc::new(RwLock::new(v))});
-                },
-                Err(e) => {
-                    error!("Error loading service file: {:?}", e);
-                }
-            }
+        for p in peer_info {
+            peers.entry(p.id).or_insert(Peer{info: Arc::new(RwLock::new(p))});
         }
     }
 }

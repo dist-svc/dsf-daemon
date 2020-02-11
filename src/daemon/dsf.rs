@@ -1,5 +1,6 @@
 
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use dsf_core::prelude::*;
@@ -14,6 +15,7 @@ use crate::core::peers::{Peer, PeerManager};
 use crate::core::services::{ServiceManager};
 
 use crate::io::Connector;
+use crate::store::Store;
 use crate::error::Error;
 
 use super::Options;
@@ -37,7 +39,9 @@ pub struct Dsf<C> {
     dht: StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, Ctx>,
 
     /// Backing store for DHT
-    store: HashMapStore<Id, Data>,
+    dht_store: HashMapStore<Id, Data>,
+
+    store: Arc<Mutex<Store>>,
 
     /// Connector for external communication
     connector: C,
@@ -47,12 +51,12 @@ pub struct Dsf<C> {
 impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 {
     /// Create a new daemon
-    pub fn new(config: Options, service: Service, connector: C) -> Result<Self, Error> {
+    pub fn new(config: Options, service: Service, store: Arc<Mutex<Store>>, connector: C) -> Result<Self, Error> {
 
         debug!("Creating new DSF instance");
 
         // Create managers
-        let peers = PeerManager::new(&format!("{}/peers", config.database_dir));
+        let peers = PeerManager::new(store.clone());
         let services = ServiceManager::new(&format!("{}/services", config.database_dir));
 
         let id = service.id();
@@ -60,10 +64,10 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         // Create DHT components
         let dht_conn = DhtAdaptor::new(service.id(), service.public_key(), peers.clone(), connector.clone());
         let table = KNodeTable::new(service.id(), config.dht.k, id.max_bits());
-        let store = HashMapStore::new_with_reducer(Box::new(dht_reducer));
+        let dht_store = HashMapStore::new_with_reducer(Box::new(dht_reducer));
 
         // Instantiate DHT
-        let dht = StandardDht::<Id, Peer, Data, RequestId, _, Ctx>::new(id, config.dht, table, dht_conn, store.clone());
+        let dht = StandardDht::<Id, Peer, Data, RequestId, _, Ctx>::new(id, config.dht, table, dht_conn, dht_store.clone());
 
         // Create DSF object
         let s = Self {
@@ -71,6 +75,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             peers,
             services,
             dht,
+            dht_store,
             store,
             connector,
         };
@@ -105,7 +110,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     }
 
     pub(crate) fn datastore(&mut self) -> &mut HashMapStore<Id, Data> {
-        &mut self.store
+        &mut self.dht_store
     }
     
     pub(crate) fn pub_key(&self) -> PublicKey {

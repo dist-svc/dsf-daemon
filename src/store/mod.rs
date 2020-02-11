@@ -1,24 +1,20 @@
 
 use std::time::SystemTime;
-use std::net::AddrParseError;
 
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use diesel::result::{Error as DieselError};
 use diesel::dsl::sql_query;
 
 
-use strum::{ParseError as StrumError};
-
 use chrono::{DateTime, TimeZone, Local, NaiveDateTime};
 
-use base64::{DecodeError as B64Error};
-
+pub mod error;
 pub mod schema;
-
 pub mod peers;
 pub mod services;
 pub mod data;
+
+pub use error::StoreError;
 
 pub struct Store {
     conn: SqliteConnection,
@@ -34,44 +30,7 @@ fn from_dt(n: &NaiveDateTime) -> SystemTime {
     dt.into()
 }
 
-#[derive(Debug, PartialEq)]
-pub enum StoreError {
-    Connection(ConnectionError),
-    Diesel(DieselError),
-    Strum(StrumError),
-    B64(B64Error),
-    Addr(AddrParseError),
-}
 
-impl From<ConnectionError> for StoreError {
-    fn from(e: ConnectionError) -> Self {
-        Self::Connection(e)
-    }
-}
-
-impl From<DieselError> for StoreError {
-    fn from(e: DieselError) -> Self {
-        Self::Diesel(e)
-    }
-}
-
-impl From<StrumError> for StoreError {
-    fn from(e: StrumError) -> Self {
-        Self::Strum(e)
-    }
-}
-
-impl From<B64Error> for StoreError {
-    fn from(e: B64Error) -> Self {
-        Self::B64(e)
-    }
-}
-
-impl From<AddrParseError> for StoreError {
-    fn from(e: AddrParseError) -> Self {
-        Self::Addr(e)
-    }
-}
 
 impl Store {
     pub fn new(path: &str) -> Result<Self, StoreError> {
@@ -80,7 +39,7 @@ impl Store {
         Ok(Self{conn})
     }
 
-    pub fn create(&mut self) -> Result<(), StoreError> {
+    pub fn create(&self) -> Result<(), StoreError> {
         sql_query("CREATE TABLE services (
             service_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
             service_index TEGER NOT NULL, 
@@ -127,7 +86,7 @@ impl Store {
         Ok(())
     }
 
-    pub fn delete(&mut self) -> Result<(), StoreError> {
+    pub fn delete(&self) -> Result<(), StoreError> {
         sql_query("DROP TABLE IF EXISTS services;").execute(&self.conn)?;
 
         sql_query("DROP TABLE IF EXISTS peers;").execute(&self.conn)?;

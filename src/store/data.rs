@@ -17,7 +17,7 @@ const BODY_CLEARTEXT: &str = "cleartext";
 const BODY_ENCRYPTED: &str = "encrypted";
 
 impl Store {
-    pub fn save_data(&mut self, info: &DataInfo) -> Result<(), StoreError> {
+    pub fn save_data(&self, info: &DataInfo) -> Result<(), StoreError> {
 
         let (bk, bv) = match &info.body {
             Body::None          => {
@@ -81,7 +81,7 @@ impl Store {
         Ok(d)
     }
 
-    pub fn load_data(&mut self, sig: &Signature) -> Result<Option<DataInfo>, StoreError>  {
+    pub fn load_data(&self, sig: &Signature) -> Result<Option<DataInfo>, StoreError>  {
         let results = data
             .filter(signature.eq(sig.to_string()))
             .select((service_id, object_index, body_kind, body_value, previous, signature))
@@ -96,7 +96,7 @@ impl Store {
         Ok(Some(p))
     }
 
-    pub fn load_service_data(&mut self, id: &Id) -> Result<Vec<DataInfo>, StoreError>  {
+    pub fn load_service_data(&self, id: &Id) -> Result<Vec<DataInfo>, StoreError>  {
         let results = data
             .filter(service_id.eq(id.to_string()))
             .select((service_id, object_index, body_kind, body_value, previous, signature))
@@ -111,7 +111,7 @@ impl Store {
         Ok(v)
     }
 
-    pub fn delete_data(&mut self, sig: &Signature) -> Result<(), StoreError> {
+    pub fn delete_data(&self, sig: &Signature) -> Result<(), StoreError> {
 
         diesel::delete(data).filter(signature.eq(sig.to_string()))
             .execute(&self.conn)?;
@@ -127,7 +127,8 @@ mod test {
 
     use super::Store;
 
-    use dsf_rpc::{DataInfo, Body};
+    use dsf_rpc::{DataInfo};
+    use dsf_core::base::Body;
     use dsf_core::crypto::{new_pk, new_sk, hash, pk_sign};
 
     #[test]
