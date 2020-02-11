@@ -30,15 +30,21 @@ fn from_dt(n: &NaiveDateTime) -> SystemTime {
     dt.into()
 }
 
-
-
 impl Store {
+    /// Create or connect to a store with the provided filename
     pub fn new(path: &str) -> Result<Self, StoreError> {
         let conn = SqliteConnection::establish(path)?;
 
-        Ok(Self{conn})
+        let s = Self{conn};
+
+        let _ = s.create();
+
+        Ok(s)
     }
 
+    /// Initialise the store
+    /// 
+    /// This is called automatically in the `new` function
     pub fn create(&self) -> Result<(), StoreError> {
         sql_query("CREATE TABLE services (
             service_id TEXT NOT NULL UNIQUE PRIMARY KEY, 

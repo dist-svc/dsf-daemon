@@ -57,7 +57,7 @@ fn scale(n: usize, level: LevelFilter) {
 
         // Set common configuration
         let mut config = Options::default();
-        config.daemon_options.database_dir = d.clone();
+        config.database_file = format!("{}/dsf-scale.db", d);
         config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)];
 
         // Create instances

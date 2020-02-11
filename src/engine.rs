@@ -40,8 +40,7 @@ pub struct Engine {
 }
 
 pub const DEFAULT_UNIX_SOCKET: &str = "/tmp/dsf.sock";
-pub const DEFAULT_DATABASE: &str = "/tmp/dsf.db";
-pub const DEFAULT_DATABASE_DIR: &str = "/tmp/dsf/";
+pub const DEFAULT_DATABASE_FILE: &str = "/tmp/dsf.db";
 pub const DEFAULT_SERVICE: &str = "/tmp/dsf.svc";
 
 #[derive(StructOpt, Builder, Debug, Clone, PartialEq)]
@@ -52,13 +51,13 @@ pub struct Options {
     /// These may be reconfigured at runtime
     pub bind_addresses: Vec<SocketAddr>,
 
-    #[structopt(long = "database-file", default_value = "/var/dsf/dsf.db", env="DSF_DB")]
-    /// Database file for storage by the daemon
-    pub database: String,
-
     #[structopt(long = "service-file", default_value = "/var/dsf/dsf.svc", env="DSF_SVC")]
     /// Service file for reading / writing peer service information
     pub service_file: String,
+
+    #[structopt(long = "database-file", default_value = "/var/dsf/dsf.db", env="DSF_DB_FILE")]
+    /// Database file for storage by the daemon
+    pub database_file: String,
 
     #[structopt(short = "s", long = "daemon-socket", default_value = "/tmp/dsf.sock", env="DSF_SOCK")]
     /// Unix socket for communication with the daemon
@@ -73,10 +72,10 @@ impl Default for Options {
         Self {
             bind_addresses: vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 10100)],
             daemon_socket: DEFAULT_UNIX_SOCKET.to_string(),
-            database: DEFAULT_DATABASE.to_string(),
             service_file: DEFAULT_SERVICE.to_string(),
-            daemon_options: DaemonOptions{
-                database_dir: DEFAULT_DATABASE_DIR.to_string(),
+            database_file: DEFAULT_DATABASE_FILE.to_string(),
+            daemon_options: DaemonOptions {
+                
                 dht: DhtConfig::default(),
             }
         }
@@ -89,10 +88,9 @@ impl Options {
         Self {
             bind_addresses: vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 10100 + suffix as u16)],
             daemon_socket: format!("{}.{}", self.daemon_socket, suffix),
-            database: format!("{}.{}", self.database, suffix),
             service_file: format!("{}.{}", self.service_file, suffix),
+            database_file: format!("{}.{}", self.database_file, suffix),
             daemon_options: DaemonOptions {
-                database_dir: format!("{}.{}", self.daemon_options.database_dir, suffix),
                 dht: self.daemon_options.dht.clone(),
             }
         }
@@ -125,7 +123,7 @@ impl Engine {
         let wire = Wire::new(service.private_key().unwrap());
 
         // Create new local data store
-        let store = Arc::new(Mutex::new(Store::new(&options.database)?));
+        let store = Arc::new(Mutex::new(Store::new(&options.database_file)?));
 
         // Create new DSF instance
         let dsf = Dsf::new(options.daemon_options, service, store, wire.connector())?;

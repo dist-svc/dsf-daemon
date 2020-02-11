@@ -56,8 +56,9 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         debug!("Creating new DSF instance");
 
         // Create managers
+        //let store = Arc::new(Mutex::new(Store::new(&config.database_file)?));
         let peers = PeerManager::new(store.clone());
-        let services = ServiceManager::new(&format!("{}/services", config.database_dir));
+        let services = ServiceManager::new(store.clone());
 
         let id = service.id();
 

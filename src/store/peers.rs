@@ -157,7 +157,7 @@ mod test {
     fn store_peer_inst() {
         let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
 
-        let mut store = Store::new("/tmp/dsf-test-2.db")
+        let store = Store::new("/tmp/dsf-test-2.db")
             .expect("Error opening store");
 
         store.delete().unwrap();

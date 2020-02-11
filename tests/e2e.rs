@@ -49,7 +49,7 @@ fn end_to_end() {
     let res: Result<(), Error> = task::block_on(async move {
 
         let mut config = Options::default();
-        config.daemon_options.database_dir = d.clone();
+        config.database_file = format!("{}/dsf-e2e.db", d);
         config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)];
         config.daemon_socket = format!("{}/dsf.sock", d);
 

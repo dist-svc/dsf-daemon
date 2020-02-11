@@ -7,16 +7,13 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::{SystemTime, Duration};
 
 
-
-
-
 use dsf_core::prelude::*;
+pub use dsf_rpc::service::{ServiceInfo, ServiceState};
 
-use super::store::FileStore;
 use super::peers::Peer;
 use super::data::DataInfo;
 
-pub use dsf_rpc::service::{ServiceInfo, ServiceState};
+use crate::store::Store;
 
 pub mod inst;
 pub use inst::{ServiceInst};
@@ -28,7 +25,7 @@ pub use data::Data;
 #[derive(Clone)]
 pub struct ServiceManager {
     pub(crate) services: Arc<Mutex<HashMap<Id, Arc<RwLock<ServiceInst>>>>>,
-    store: Arc<Mutex<FileStore>>,
+    store: Arc<Mutex<Store>>,
 }
 
 #[derive(Clone, Debug)]
@@ -41,15 +38,12 @@ pub struct SubscriptionInfo {
 
 impl ServiceManager {
     /// Create a new service manager instance
-    pub fn new(database_path: &str) -> Self {
+    pub fn new(store: Arc<Mutex<Store>>) -> Self {
         let services = HashMap::new();
-        let store = FileStore::new(database_path);
-
-        let _ = store.create_dir();
 
         let s = Self{
             services: Arc::new(Mutex::new(services)), 
-            store: Arc::new(Mutex::new(store)),
+            store,
         };
 
         s.load();
@@ -196,11 +190,10 @@ impl ServiceManager {
 
     /// Sync a service instance to disk
     pub(crate) fn sync_inst(&mut self, inst: &ServiceInst) {
-        let mut store = self.store.lock().unwrap();
-        let name = format!("{}.json", inst.service.id());
+        let store = self.store.lock().unwrap();
 
-        if let Err(e) = store.store(&name, inst) {
-            error!("Error writing service file: {}, {:?}", name, e);
+        if let Err(e) = store.save_service(&inst.info()) {
+            error!("Error writing service instance {}: {:?}", inst.id(), e);
         }
     }
 
@@ -222,7 +215,7 @@ impl ServiceManager {
     /// Sync the service database to disk
     pub fn sync(&self) {
         let services = self.services.lock().unwrap();
-        let mut store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap();
 
         for (id, inst) in services.iter() {
             let mut inst = inst.write().unwrap();
@@ -232,9 +225,8 @@ impl ServiceManager {
                 continue
             }
 
-            let name = format!("{}.json", id);
-            if let Err(e) = store.store(&name, i) {
-                error!("Error writing service file: {}, {:?}", name, e);
+            if let Err(e) = store.save_service(&i.info()) {
+                error!("Error writing service instance {}: {:?}", id, e);
             }
 
             i.changed = false;
@@ -243,26 +235,14 @@ impl ServiceManager {
 
     /// Load the service database from disk
     pub fn load(&self) {
-        let mut store = self.store.lock().unwrap();
-        let mut services = self.services.lock().unwrap();
+        let store = self.store.lock().unwrap();
+        let services = self.services.lock().unwrap();
 
-        let files = match store.list() {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Error listing files: {:?}", e);
-                return
-            }
-        };
+        let service_info = store.load_services().unwrap();
 
-        for f in &files {
-            match store.load::<ServiceInst, _, _>(f) {
-                Ok(v) => {
-                    services.entry(v.service.id()).or_insert(Arc::new(RwLock::new(v)));
-                },
-                Err(e) => {
-                    error!("Error loading service file: {:?}", e);
-                }
-            }
+        for _s in service_info {
+            // URGENT TODO: rehydrate ServiceInst here
+            //services.entry(s.id).or_insert(Arc::new(RwLock::new(v)));
         }
     }
 }

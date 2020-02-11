@@ -130,10 +130,10 @@ mod test {
     use dsf_core::crypto::{new_pk, new_sk, hash};
 
     #[test]
-    fn store_service_inst() {
+    fn store_service_info() {
         let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
 
-        let mut store = Store::new("/tmp/dsf-test-1.db")
+        let store = Store::new("/tmp/dsf-test-1.db")
             .expect("Error opening store");
 
         store.delete().unwrap();

@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use dsf_core::prelude::*;
 
 use crate::store::Store;
-use super::store::FileStore;
 
 pub mod info;
 pub use info::{Peer, PeerInfo, PeerAddress, PeerState};
@@ -80,19 +79,19 @@ impl PeerManager {
 
     pub fn sync(&self) {
         let peers = self.peers.lock().unwrap();
-        let mut store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap();
 
         for (id, inst) in peers.iter() {
             let info = inst.info();
 
             if let Err(e) = store.save_peer(&info) {
-                error!("Error writing peer {} to db: {:?}", info.id, e);
+                error!("Error writing peer {} to db: {:?}", id, e);
             }
         }
     }
 
     pub fn load(&mut self) {
-        let mut store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap();
         let mut peers = self.peers.lock().unwrap();
 
         let peer_info = match store.load_peers() {

@@ -135,7 +135,7 @@ mod test {
     fn store_data_inst() {
         let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
 
-        let mut store = Store::new("/tmp/dsf-test-3.db")
+        let store = Store::new("/tmp/dsf-test-3.db")
             .expect("Error opening store");
 
         store.delete().unwrap();

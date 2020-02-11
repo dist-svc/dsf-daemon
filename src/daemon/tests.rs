@@ -1,4 +1,5 @@
 use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 extern crate async_std;
@@ -23,6 +24,7 @@ use dsf_rpc::{self as rpc};
 
 use crate::core::peers::{PeerState};
 use crate::io::mock::{MockConnector, MockTransaction};
+use crate::store::Store;
 use super::{Dsf, Options};
 
 #[test]
@@ -36,11 +38,12 @@ fn test_manager() {
     let d = TempDir::new("/tmp/").unwrap(); 
 
     let mut config = Options::default();
-    config.database_dir = d.path().to_str().unwrap().to_string();
+    let db_file = format!("{}/dsf-test.db", d.path().to_str().unwrap());
+    let store = Arc::new(Mutex::new(Store::new(&db_file).unwrap()));
     let mut mux = MockConnector::new();
 
     let service = Service::default();
-    let mut dsf = Dsf::new(config, service, mux.clone()).unwrap();
+    let mut dsf = Dsf::new(config, service, store, mux.clone()).unwrap();
     let id1 = dsf.id().clone();
     let _addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 0, 1)), 8111);
 
