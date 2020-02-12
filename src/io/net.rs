@@ -190,7 +190,7 @@ impl Net {
                             },
                             None => debug!("tx stream closed"),
                         }
-                    }
+                    },
                 }
             }
 
@@ -210,6 +210,9 @@ impl Stream for Net {
     type Item = NetMessage;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Option<Self::Item>> {
+        #[cfg(feature = "profile")]
+        let _fg = ::flame::start_guard("net::poll_next");
+
         Pin::new(&mut self.rx_stream).poll_next(ctx)
     }
 }

@@ -1,11 +1,7 @@
 
-
-use std::str::FromStr;
-
 use diesel::prelude::*;
 
 use dsf_core::prelude::*;
-use dsf_rpc::{DataInfo};
 
 use super::{Store, StoreError};
 
@@ -48,19 +44,7 @@ impl Store {
         Ok(())
     }
 
-    fn parse_page(v: &PageFields) -> Result<DataInfo, StoreError> {
-        let (r_id, r_raw, r_previous, r_signature) = v;
-
-        // TODO: how to parse out here without a key source for sig verification..?
-
-        // We _should_ be able to assume it's correct
-
-        let p = Page::decode_pages(&r_raw, |id| None ).unwrap();
-
-        unimplemented!()
-    }
-
-    pub fn load_page(&self, sig: &Signature) -> Result<Option<DataInfo>, StoreError>  {
+    pub fn load_page(&self, sig: &Signature) -> Result<Option<Page>, StoreError>  {
         let results = object
             .filter(signature.eq(sig.to_string()))
             .select((service_id, raw_data, previous, signature))
@@ -70,22 +54,22 @@ impl Store {
             return Ok(None)
         }
 
-        let p = Self::parse_page(&results[0])?;
+        let (_r_id, r_raw, _r_previous, _r_signature) = &results[0];
 
-        Ok(Some(p))
+        let mut v = Page::decode_pages(&r_raw, |_id| None ).unwrap();
+
+        Ok(Some(v.remove(0)))
     }
 
-    pub fn load_service_pages(&self, svc_id: &Id) -> Result<Vec<DataInfo>, StoreError>  {
+    pub fn load_service_pages(&self, svc_id: &Id) -> Result<Vec<Page>, StoreError>  {
         let results = object
             .filter(service_id.eq(svc_id.to_string()))
             .select((service_id, raw_data, previous, signature))
             .load::<PageFields>(&self.conn)?;
 
-        let mut v = vec![];
+        let (_r_id, r_raw, _r_previous, _r_signature) = &results[0];
 
-        for r in &results {
-            v.push(Self::parse_page(r)?);
-        }
+        let v = Page::decode_pages(&r_raw, |_id| None ).unwrap();
 
         Ok(v)
     }

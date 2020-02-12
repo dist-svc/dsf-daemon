@@ -35,6 +35,8 @@ fn from_dt(n: &NaiveDateTime) -> SystemTime {
 impl Store {
     /// Create or connect to a store with the provided filename
     pub fn new(path: &str) -> Result<Self, StoreError> {
+        debug!("Connecting to store: {}", path);
+
         let conn = SqliteConnection::establish(path)?;
 
         let s = Self{conn};

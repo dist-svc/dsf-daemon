@@ -149,6 +149,9 @@ impl Stream for Unix {
     type Item = UnixMessage;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Option<Self::Item>> {
+        #[cfg(feature = "profile")]
+        let _fg = ::flame::start_guard("unix::poll_next");
+
         Pin::new(&mut self.rx_stream).poll_next(ctx)
     }
 }
@@ -169,6 +172,9 @@ impl Connection {
             let mut tx_stream = tx_stream.fuse();
 
             loop {
+                #[cfg(feature = "profile")]
+                let _fg = ::flame::start_guard("unix::tick");
+
                 select!{
                     tx = tx_stream.next() => {
                         if let Some(tx) = tx {

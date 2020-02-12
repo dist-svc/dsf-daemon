@@ -8,6 +8,8 @@ use std::time::{SystemTime, Duration};
 
 
 use dsf_core::prelude::*;
+use dsf_core::service::Subscriber;
+
 pub use dsf_rpc::service::{ServiceInfo, ServiceState};
 
 use super::peers::Peer;
@@ -195,6 +197,14 @@ impl ServiceManager {
         if let Err(e) = store.save_service(&inst.info()) {
             error!("Error writing service instance {}: {:?}", inst.id(), e);
         }
+
+        if let Some(p) = &inst.primary_page {
+            store.save_page(p).unwrap();
+        }
+
+        if let Some(p) = &inst.replica_page {
+            store.save_page(p).unwrap();
+        }
     }
 
     /// Fetch a list of information for known services
@@ -229,7 +239,13 @@ impl ServiceManager {
                 error!("Error writing service instance {}: {:?}", id, e);
             }
 
-            
+            if let Some(p) = &i.primary_page {
+                store.save_page(p).unwrap();
+            }
+
+            if let Some(p) = &i.replica_page {
+                store.save_page(p).unwrap();
+            }
     
 
             i.changed = false;
@@ -239,13 +255,49 @@ impl ServiceManager {
     /// Load the service database from disk
     pub fn load(&self) {
         let store = self.store.lock().unwrap();
-        let services = self.services.lock().unwrap();
+        let mut services = self.services.lock().unwrap();
 
         let service_info = store.load_services().unwrap();
 
-        for _s in service_info {
-            // URGENT TODO: rehydrate ServiceInst here
-            //services.entry(s.id).or_insert(Arc::new(RwLock::new(v)));
+        for i in service_info {
+            let primary_page = match i.primary_page {
+                Some(p) => {
+                    store.load_page(&p).unwrap().unwrap()
+                },
+                None => {
+                    warn!("No primary page for service: {:?}", i);
+                    continue;
+                }
+            };
+
+            let replica_page = i.replica_page.map(|s| {
+                store.load_page(&s).unwrap()
+            }).flatten();
+
+            let service = Service::load(&primary_page).unwrap();            
+
+            
+            // URGENT TODO: rehydrate other components here
+            // TODO: maybe replicas and subscribers should not be stored against the service inst but in separate core modules?
+            let s = ServiceInst {
+                service,
+                state: i.state,
+                index: i.index,
+
+                last_updated: i.last_updated,
+                primary_page: Some(primary_page),
+                replica_page,
+
+                replicas: HashMap::new(),
+
+                subscribers: HashMap::new(),
+
+                data: vec![],
+
+                changed: false,
+            };
+
+            services.entry(i.id).or_insert(Arc::new(RwLock::new(s)));
         }
     }
 }

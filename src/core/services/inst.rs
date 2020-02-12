@@ -27,6 +27,7 @@ pub struct ServiceInst {
     pub(crate) index: usize,
     pub(crate) last_updated: Option<SystemTime>,
 
+    // TODO: this isn't really optional / should always exist?
     #[serde(skip)]
     pub(crate) primary_page: Option<Page>,
 

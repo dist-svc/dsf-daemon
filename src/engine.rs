@@ -2,10 +2,13 @@
 
 use std::net::{SocketAddr, IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use structopt::StructOpt;
 
 use async_std::task;
+use async_std::stream;
 
 use futures::prelude::*;
 use futures::select;
@@ -37,6 +40,8 @@ pub struct Engine {
     wire: Wire,
     net: Net,
 
+
+    options: Options,
 }
 
 pub const DEFAULT_UNIX_SOCKET: &str = "/tmp/dsf.sock";
@@ -63,6 +68,10 @@ pub struct Options {
     /// Unix socket for communication with the daemon
     pub daemon_socket: String,
 
+    #[structopt(long)]
+    /// Disable automatic bootstrapping
+    pub no_bootstrap: bool,
+
     #[structopt(flatten)]
     pub daemon_options: DaemonOptions,
 }
@@ -74,8 +83,8 @@ impl Default for Options {
             daemon_socket: DEFAULT_UNIX_SOCKET.to_string(),
             service_file: DEFAULT_SERVICE.to_string(),
             database_file: DEFAULT_DATABASE_FILE.to_string(),
+            no_bootstrap: false,
             daemon_options: DaemonOptions {
-                
                 dht: DhtConfig::default(),
             }
         }
@@ -90,6 +99,7 @@ impl Options {
             daemon_socket: format!("{}.{}", self.daemon_socket, suffix),
             service_file: format!("{}.{}", self.service_file, suffix),
             database_file: format!("{}.{}", self.database_file, suffix),
+            no_bootstrap: false,
             daemon_options: DaemonOptions {
                 dht: self.daemon_options.dht.clone(),
             }
@@ -126,11 +136,11 @@ impl Engine {
         let store = Arc::new(Mutex::new(Store::new(&options.database_file)?));
 
         // Create new DSF instance
-        let dsf = Dsf::new(options.daemon_options, service, store, wire.connector())?;
+        let dsf = Dsf::new(options.daemon_options.clone(), service, store, wire.connector())?;
 
         debug!("Engine created!");
 
-        Ok(Self{dsf, wire, net, unix})
+        Ok(Self{dsf, wire, net, unix, options})
     }
 
     pub fn id(&self) -> Id {
@@ -142,27 +152,54 @@ impl Engine {
     }
 
     // Run the DSF daemon
-    pub async fn run(&mut self) -> Result<(), Error> {
+    pub async fn run(&mut self, running: Arc<AtomicBool>) -> Result<(), Error> {
         let span = span!(Level::DEBUG, "engine", "{}", self.dsf.id());
         let _enter = span.enter();
 
-        loop {
+
+        if !self.options.no_bootstrap {
+            let mut d = self.dsf.clone();
+            // Create future bootstrap event
+            task::spawn(async move {
+                task::sleep(Duration::from_secs(2)).await;
+                let _ = d.bootstrap().await;
+            });
+        }
+        
+
+        // Create periodic timer
+        let mut update_timer = stream::interval(Duration::from_secs(30));
+        let mut tick_timer = stream::interval(Duration::from_secs(1));
+
+        while running.load(Ordering::SeqCst) {
+            #[cfg(feature = "profile")]
+            let _fg = ::flame::start_guard("engine::tick");
 
             select!{
                 // Incoming network messages
                 net_rx = self.net.next().fuse() => {
+                    #[cfg(feature = "profile")]
+                    let _fg = ::flame::start_guard("engine::net_rx");
+
                     if let Some(m) = net_rx {
                         Self::handle_net_rx(&mut self.dsf, &mut self.net, &mut self.wire, m).await?;
                     }
                 },
                 // Outgoing network messages
+                // TODO: this is one of the hot spots..?
                 net_tx = self.wire.next().fuse() => {
+                    #[cfg(feature = "profile")]
+                    let _fg = ::flame::start_guard("engine::net_tx");
+
                     if let Some(m) = net_tx {
                         Self::handle_net_tx(&mut self.dsf, &mut self.net, &mut self.wire, m).await?;
                     }
                 }
                 // Incoming RPC messages, response is inline
                 rpc_rx = self.unix.next().fuse() => {
+                    #[cfg(feature = "profile")]
+                    let _fg = ::flame::start_guard("engine::unix_rx");
+
                     if let Some(m) = rpc_rx {
                         let mut dsf = self.dsf.clone();
 
@@ -174,10 +211,20 @@ impl Engine {
                     }
                 },
                 // TODO: periodic update
+                interval = update_timer.next().fuse() => {
+                    #[cfg(feature = "profile")]
+                    let _fg = ::flame::start_guard("engine::tick");
 
+                    if let Some(_i) = interval {
+
+                    }
+                },
+                // Tick timer for process reactivity
+                tick = tick_timer.next().fuse() => {},
             }
-            
         }
+
+        return Ok(())
     }
 
     async fn handle_net_tx(_dsf: &mut Dsf<WireConnector>, net: &mut Net, _wire: &mut Wire, m: NetMessage) -> Result<(), Error> {

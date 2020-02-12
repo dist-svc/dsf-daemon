@@ -1,6 +1,5 @@
-#![recursion_limit="256"]
+#![recursion_limit="512"]
 #![allow(dead_code)]
-
 extern crate async_std;
 
 #[macro_use]
@@ -31,6 +30,8 @@ extern crate tracing;
 extern crate tracing_futures;
 extern crate tracing_subscriber;
 
+#[cfg(feature = "profile")]
+extern crate flame;
 
 extern crate dsf_core;
 extern crate dsf_rpc;

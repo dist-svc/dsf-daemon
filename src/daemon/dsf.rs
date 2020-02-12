@@ -9,6 +9,9 @@ use dsf_core::service::Publisher;
 use kad::prelude::*;
 
 use async_std::future::timeout;
+use async_std::task;
+
+use futures::future;
 use tracing::{Level, span};
 
 use crate::core::peers::{Peer, PeerManager};
@@ -123,12 +126,6 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         self.service.publish_primary(buff).map_err(|e| e.into() )
     }
 
-    /// Initialise a DSF instance
-    pub async fn bootstrap(&mut self) -> Result<(), Error> {
-        
-        unimplemented!();
-    }
-
     /// Store pages in the database at the provided ID
     pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
 
@@ -211,6 +208,8 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     /// Run an update of the daemom and all managed services
     pub async fn update(&mut self, force: bool) -> Result<(), Error> {
         use crate::core::services::ServiceState;
+
+        info!("DSF update (forced: {:?})", force);
         
         let interval = Duration::from_secs(10 * 60);
 
@@ -233,6 +232,37 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             //self.locate(rpc::LocateOptions{id: inst.id}).await;
             //self.subscribe(rpc::SubscribeOptions{service: rpc::ServiceIdentifier{id: Some(inst.id), index: None}}).await;
         }
+
+        Ok(())
+    }
+
+    /// Initialise a DSF instance
+    /// 
+    /// This bootstraps using known peers then updates all tracked services
+    pub async fn bootstrap(&mut self) -> Result<(), Error> {
+        let peers = self.peers.list();
+
+        info!("DSF bootstrap ({} peers)", peers.len());
+
+        let mut handles = vec![];
+
+        // Build peer connect requests
+        for (id, p) in peers {
+            let timeout = Duration::from_secs(10).into();
+            let mut s = self.clone();
+
+            let h = task::spawn(async move {
+                s.connect(dsf_rpc::ConnectOptions{address: p.address(), id: Some(id.clone()), timeout }).await
+            });
+
+            handles.push(h);
+        }
+
+        // We're not really worried about failures here
+        let _ = future::join_all(handles).await;
+
+        // Run updates
+        self.update(true).await?;
 
         Ok(())
     }
