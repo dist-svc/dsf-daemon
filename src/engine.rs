@@ -202,6 +202,7 @@ impl Engine {
 
                     if let Some(m) = rpc_rx {
                         let mut dsf = self.dsf.clone();
+                        //let mut unix = self.unix.clone();
 
                         // RPC tasks can take some time and thus must be independent threads
                         // To avoid blocking network operations
@@ -270,10 +271,14 @@ impl Engine {
         // Encode response
         let enc = serde_json::to_vec(&resp).unwrap();
 
-        // Send response via relevant unix connection
+        // Generate response with required socket info
         let unix_resp = unix_req.response(Bytes::from(enc));
 
+        // Send response
         unix_resp.send().await?;
+
+        // Close socket
+        unix_resp.close().await?;
 
         Ok(())
     }

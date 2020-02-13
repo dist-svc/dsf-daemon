@@ -160,6 +160,7 @@ impl Wire {
         let req_id = resp.id;
 
         // Find pending request
+        trace!("pending request lock");
         let mut a = match self.requests.lock().unwrap().remove(&req_id) {
             Some(a) => a,
             None => {
@@ -238,6 +239,7 @@ impl Connector for WireConnector {
             let (tx, mut rx) = mpsc::channel(0);
 
             // Add response channel to map
+            trace!("new request lock");
             self.requests.lock().unwrap().insert(req_id, tx);
 
             // Pass message to internal sink
@@ -267,6 +269,7 @@ impl Connector for WireConnector {
             // Remove request from tracking
             if let Err(e) = &res {
                 error!("Connection error: {:?}, removing {} from tracking", e, req_id);
+                trace!("response error lock");
                 self.requests.lock().unwrap().remove(&req_id);
             }
 

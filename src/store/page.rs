@@ -91,45 +91,35 @@ mod test {
     use super::Store;
 
     use dsf_rpc::{DataInfo};
-    use dsf_core::base::Body;
+    use dsf_core::service::{Service, Publisher};
     use dsf_core::crypto::{new_pk, new_sk, hash, pk_sign};
 
     #[test]
     fn store_page_inst() {
         let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
 
-        let store = Store::new("/tmp/dsf-test-3.db")
+        let store = Store::new("/tmp/dsf-test-4.db")
             .expect("Error opening store");
 
         store.delete().unwrap();
-
         store.create().unwrap();
 
-        let (public_key, private_key) = new_pk().unwrap();
-        let _secret_key = new_sk().unwrap();
-        let id = hash(&public_key).unwrap();
-        let sig = pk_sign(&private_key, &[0xaa, 0xaa, 0xaa, 0xaa]).unwrap();
+        let mut s = Service::default();
 
-        let d = DataInfo {
-            service: id,
-            index: 10,
-            body: Body::Cleartext(vec![0xaa, 0xbb, 0xcc, 0xdd]),
-
-            previous: Some(sig.clone()),
-            signature: sig,
-        };
+        let mut buff = vec![0u8; 1024];
+        let (_n, page) = s.publish_primary(&mut buff).expect("Error creating page");
+        let sig = page.signature.unwrap();
 
         // Check no matching service exists
-        assert_eq!(0, store.load_service_page(&id).unwrap().len());
+        assert_eq!(None, store.load_page(&sig).unwrap());
 
         // Store data
-        store.save_page(&d).unwrap();
-        assert_eq!(Some(&d), store.load_page(&d.signature).unwrap().as_ref());
-        assert_eq!(vec![d.clone()], store.load_service_page(&id).unwrap());
+        store.save_page(&page).unwrap();
+        assert_eq!(Some(&page), store.load_page(&sig).unwrap().as_ref());
+        assert_eq!(vec![page.clone()], store.load_service_pages(&s.id()).unwrap());
 
         // Delete data
-        store.delete_page(&d.signature).unwrap();
-        assert_eq!(0, store.load_service_page(&id).unwrap().len());
+        store.delete_page(&sig).unwrap();
+        assert_eq!(None, store.load_page(&sig).unwrap());
     }
-
 }
