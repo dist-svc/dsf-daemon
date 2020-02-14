@@ -206,12 +206,14 @@ impl Connection {
                 let _fg = ::flame::start_guard("unix::tick");
 
                 select!{
+                    // Send outgoing messages
                     tx = tx_stream.next() => {
                         if let Some(tx) = tx {
                             trace!("unix tx: {:?}", tx.data);
                             unix_tx.write(&tx.data).await?;
                         }
                     },
+                    // Forward incoming messages
                     res = unix_rx.read(&mut buff).fuse() => {
                         match res {
                             Ok(n) => {
@@ -232,13 +234,14 @@ impl Connection {
                                 break;
                             },
                         }
-                    }
+                    },
+                    // Handle the exit signal
                     res = exit_stream.next() => {
                         if let Some(r) = res {
                             debug!("Received exit");
                             break;
                         }
-                    }
+                    },
                 }
             }
 
@@ -283,7 +286,7 @@ mod test {
             assert_eq!(res, UnixMessage::new(0, data.clone()));
 
             // Server to client
-            unix.send(UnixMessage::new(0, data.clone())).await
+            unix.send(UnixMessage::new(0, data.clone()), false).await
                 .expect("Error sending message to client");
 
             let n = stream.read(&mut buff).await

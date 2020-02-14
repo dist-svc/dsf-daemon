@@ -244,25 +244,27 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
         info!("DSF bootstrap ({} peers)", peers.len());
 
-        let mut handles = vec![];
+        //let mut handles = vec![];
 
         // Build peer connect requests
+        // TODO: switched to serial due to locking issue somewhere,
+        // however, it should be possible to execute this in parallel
         for (id, p) in peers {
-            let timeout = Duration::from_secs(10).into();
+            let timeout = Duration::from_millis(200).into();
             let mut s = self.clone();
 
-            let h = task::spawn(async move {
-                s.connect(dsf_rpc::ConnectOptions{address: p.address(), id: Some(id.clone()), timeout }).await
-            });
-
-            handles.push(h);
+            let _ = self.connect(dsf_rpc::ConnectOptions{address: p.address(), id: Some(id.clone()), timeout }).await;
         }
 
         // We're not really worried about failures here
-        let _ = future::join_all(handles).await;
+        //let _ = timeout(Duration::from_secs(3), future::join_all(handles)).await;
+
+        info!("DSF bootstrap connect done");
 
         // Run updates
         self.update(true).await?;
+
+        info!("DSF bootstrap update done");
 
         Ok(())
     }

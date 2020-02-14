@@ -274,8 +274,10 @@ impl ServiceManager {
                 store.load_page(&s).unwrap()
             }).flatten();
 
-            let service = Service::load(&primary_page).unwrap();            
+            let mut service = Service::load(&primary_page).unwrap();            
 
+            service.set_private_key(i.private_key);
+            service.set_secret_key(i.secret_key);
             
             // URGENT TODO: rehydrate other components here
             // TODO: maybe replicas and subscribers should not be stored against the service inst but in separate core modules?

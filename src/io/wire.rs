@@ -233,14 +233,15 @@ impl Connector for WireConnector {
         async fn request(
             &self, req_id: RequestId, target: Address, req: NetRequest, t: Duration,
         ) -> Result<NetResponse, Error> {   
-            trace!("issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)", req, req_id, target, t.as_secs());
+            debug!("issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)", req, req_id, target, t.as_secs());
             
             // Create per-request channel
             let (tx, mut rx) = mpsc::channel(0);
 
             // Add response channel to map
-            trace!("new request lock");
+            debug!("new request lock");
             self.requests.lock().unwrap().insert(req_id, tx);
+            debug!("got new request lock");
 
             // Pass message to internal sink
             let mut sink = self.sink.clone();
@@ -257,22 +258,17 @@ impl Connector for WireConnector {
                 },
                 // TODO: this seems like it should be a retry point..?
                 Ok(None) => {
-                    error!("No response received");
+                    debug!("No response received");
                     Err(Error::Timeout)
                 },
                 Err(e) => {
-                    error!("Response error: {:?}", e);
+                    debug!("Response error: {:?}", e);
                     Err(Error::Timeout)
                 },
             };
 
             // Remove request from tracking
-            if let Err(e) = &res {
-                error!("Connection error: {:?}, removing {} from tracking", e, req_id);
-                trace!("response error lock");
-                self.requests.lock().unwrap().remove(&req_id);
-            }
-
+            self.requests.lock().unwrap().remove(&req_id);
 
             res
         }

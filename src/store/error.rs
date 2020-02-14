@@ -13,6 +13,8 @@ pub enum StoreError {
     B64(B64Error),
     Addr(AddrParseError),
     MissingSignature,
+    MissingRawData,
+    NotFound,
 }
 
 impl From<ConnectionError> for StoreError {

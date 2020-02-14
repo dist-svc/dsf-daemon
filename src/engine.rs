@@ -18,7 +18,7 @@ use tracing::{span, Level};
 use bytes::Bytes;
 
 use dsf_core::types::Id;
-use dsf_core::service::{ServiceBuilder};
+use dsf_core::service::{ServiceBuilder, Publisher};
 use dsf_core::net::{Message as DsfMessage};
 
 use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
@@ -99,7 +99,7 @@ impl Options {
             daemon_socket: format!("{}.{}", self.daemon_socket, suffix),
             service_file: format!("{}.{}", self.service_file, suffix),
             database_file: format!("{}.{}", self.database_file, suffix),
-            no_bootstrap: false,
+            no_bootstrap: self.no_bootstrap,
             daemon_options: DaemonOptions {
                 dht: self.daemon_options.dht.clone(),
             }
@@ -111,8 +111,32 @@ impl Options {
 impl Engine {
     /// Create a new daemon instance
     pub async fn new(options: Options) -> Result<Self, Error> {
-        // Create or load service
-        let service = ServiceBuilder::default().peer().build().unwrap();
+        
+        // Create new local data store
+        let store = Store::new(&options.database_file)?;
+
+        // Fetch or create new peer service
+        let mut service = match store.load_peer_service()? {
+            Some(s) => {
+                info!("Loaded existing peer service: {}", s.id());
+                s
+            },
+            None => {
+                let s = ServiceBuilder::default().peer().build().unwrap();
+                info!("Created new peer service: {}", s.id());
+                s
+            }
+        };
+
+        // Generate updated peer page
+        let mut buff = vec![0u8; 1025];
+        let (n, mut page) = service.publish_primary(&mut buff)?;
+        page.raw = Some(buff[..n].to_vec());
+
+
+        // Store service and page
+        store.set_peer_service(&service, &page)?;
+        
 
         let span = span!(Level::DEBUG, "engine", "{}", service.id());
         let _enter = span.enter();
@@ -132,11 +156,10 @@ impl Engine {
         // Create new wire adaptor
         let wire = Wire::new(service.private_key().unwrap());
 
-        // Create new local data store
-        let store = Arc::new(Mutex::new(Store::new(&options.database_file)?));
+
 
         // Create new DSF instance
-        let dsf = Dsf::new(options.daemon_options.clone(), service, store, wire.connector())?;
+        let dsf = Dsf::new(options.daemon_options.clone(), service, Arc::new(Mutex::new(store)), wire.connector())?;
 
         debug!("Engine created!");
 
@@ -178,8 +201,7 @@ impl Engine {
             select!{
                 // Incoming network messages
                 net_rx = self.net.next().fuse() => {
-                    #[cfg(feature = "profile")]
-                    let _fg = ::flame::start_guard("engine::net_rx");
+                    trace!("engine::net_rx");
 
                     if let Some(m) = net_rx {
                         Self::handle_net_rx(&mut self.dsf, &mut self.net, &mut self.wire, m).await?;
@@ -188,8 +210,7 @@ impl Engine {
                 // Outgoing network messages
                 // TODO: this is one of the hot spots..?
                 net_tx = self.wire.next().fuse() => {
-                    #[cfg(feature = "profile")]
-                    let _fg = ::flame::start_guard("engine::net_tx");
+                    trace!("engine::net_tx");
 
                     if let Some(m) = net_tx {
                         Self::handle_net_tx(&mut self.dsf, &mut self.net, &mut self.wire, m).await?;
@@ -197,8 +218,7 @@ impl Engine {
                 }
                 // Incoming RPC messages, response is inline
                 rpc_rx = self.unix.next().fuse() => {
-                    #[cfg(feature = "profile")]
-                    let _fg = ::flame::start_guard("engine::unix_rx");
+                    trace!("engine::unix_rx");
 
                     if let Some(m) = rpc_rx {
                         let mut dsf = self.dsf.clone();
@@ -213,8 +233,7 @@ impl Engine {
                 },
                 // TODO: periodic update
                 interval = update_timer.next().fuse() => {
-                    #[cfg(feature = "profile")]
-                    let _fg = ::flame::start_guard("engine::tick");
+                    trace!("engine::tick");
 
                     if let Some(_i) = interval {
 

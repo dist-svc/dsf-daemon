@@ -59,19 +59,15 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
         trace!("Sending request");
 
         let d = options.timeout.or(Some(Duration::from_secs(2))).unwrap();
-        let res = timeout(d, self.request(address, req)).await;
+        let res = self.request(address, req, d).await;
 
         // Handle errors
         let resp = match res {
-            Ok(Ok(r)) => r,
-            Ok(Err(e)) => {
-                warn!("Connect error: {:?}", e);
-                return Err(DsfError::Timeout)
-            },
+            Ok(r) => r,
             Err(e) => {
-                warn!("Timeout error: {:?}", e);
-                return Err(DsfError::Timeout)
-            }
+                warn!("Error connecting to {:?}: {:?}", address, e);
+                return Err(e)
+            },
         };
 
         trace!("response from peer: {:?}", &resp.from);

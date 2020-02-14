@@ -10,14 +10,15 @@ use dsf_rpc::{ServiceInfo, ServiceState};
 
 use super::{Store, StoreError, to_dt, from_dt};
 
-type ServiceFields = (String, i32, String, String, Option<String>, Option<String>, Option<String>, Option<NaiveDateTime>, i32, i32, bool);
+type ServiceFields = (String, i32, String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<NaiveDateTime>, i32, i32, bool);
 
 impl Store {
 
     pub fn save_service(&self, info: &ServiceInfo) -> Result<(), StoreError> {
         use crate::store::schema::services::dsl::*;
 
-        let sk = info.secret_key.map(|v| secret_key.eq(v.to_string()) );
+        let pri_key = info.private_key.map(|v| private_key.eq(v.to_string()) );
+        let sec_key = info.secret_key.map(|v| secret_key.eq(v.to_string()) );
         let up = info.last_updated.map(|v| last_updated.eq(to_dt(v)) );
 
         let values = (
@@ -25,7 +26,8 @@ impl Store {
             service_index.eq(info.index as i32),
             state.eq(info.state.to_string()),
             public_key.eq(info.public_key.to_string()),
-            sk,
+            sec_key,
+            pri_key,
             up,
             subscribers.eq(info.subscribers as i32),
             replicas.eq(info.replicas as i32),
@@ -50,7 +52,7 @@ impl Store {
     }
 
     fn parse_service(v: &ServiceFields) -> Result<ServiceInfo, StoreError> {
-        let (r_id, r_index, r_state, r_pk, r_sk, r_pp, r_rp, r_upd, r_subs, r_reps, r_original) = v;
+        let (r_id, r_index, r_state, r_pub_key, r_pri_key, r_sec_key, r_pp, r_rp, r_upd, r_subs, r_reps, r_original) = v;
 
         let s = ServiceInfo {
             id: Id::from_str(r_id)?,
@@ -60,8 +62,9 @@ impl Store {
             primary_page: r_pp.as_ref().map(|v| Signature::from_str(&v).unwrap() ),
             replica_page: r_rp.as_ref().map(|v| Signature::from_str(&v).unwrap() ),
 
-            public_key: PublicKey::from_str(r_pk)?,
-            secret_key: r_sk.as_ref().map(|v| SecretKey::from_str(&v).unwrap() ),
+            public_key: PublicKey::from_str(r_pub_key)?,
+            private_key: r_pri_key.as_ref().map(|v| PrivateKey::from_str(&v).unwrap() ),
+            secret_key: r_sec_key.as_ref().map(|v| SecretKey::from_str(&v).unwrap() ),
             
             last_updated: r_upd.as_ref().map(|v| from_dt(v) ),
 
@@ -78,7 +81,7 @@ impl Store {
 
         let results = services
             .filter(service_id.eq(id.to_string()))
-            .select((service_id, service_index, state, public_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
             .load::<ServiceFields>(&self.conn)?;
 
         if results.len() == 0 {
@@ -94,7 +97,7 @@ impl Store {
         use crate::store::schema::services::dsl::*;
 
         let results = services
-            .select((service_id, service_index, state, public_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
             .load::<ServiceFields>(&self.conn)?;
 
         let mut v = vec![];
@@ -140,7 +143,7 @@ mod test {
 
         store.create().unwrap();
 
-        let (public_key, _private_key) = new_pk().unwrap();
+        let (public_key, private_key) = new_pk().unwrap();
         let secret_key = new_sk().unwrap();
         let id = hash(&public_key).unwrap();
 
@@ -149,6 +152,7 @@ mod test {
             index: 10,
             state: ServiceState::Registered,
             public_key,
+            private_key: Some(private_key),
             secret_key: Some(secret_key),
             primary_page: None,
             replica_page: None,

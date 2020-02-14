@@ -9,6 +9,7 @@ table! {
         state -> Text,
 
         public_key -> Text,
+        private_key -> Nullable<Text>,
         secret_key -> Nullable<Text>,
 
         primary_page -> Nullable<Text>,
@@ -83,5 +84,16 @@ table! {
 
         previous -> Nullable<Text>,
         signature -> Text,
+    }
+}
+
+table! {
+    identity (service_id) {
+        service_id -> Text,
+
+        private_key -> Text,
+        secret_key -> Nullable<Text>,
+
+        last_page -> Text,
     }
 }

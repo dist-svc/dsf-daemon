@@ -74,13 +74,13 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
     // Internal function to send a request and await a response
     /// This MUST be used in place of self.connector.clone.request for correct system behaviour
-    pub(crate) async fn request(&mut self, address: Address, req: net::Request) -> Result<net::Response, Error> {
+    pub(crate) async fn request(&mut self, address: Address, req: net::Request, timeout: Duration) -> Result<net::Response, Error> {
         let req = req.clone();
 
         debug!("Sending request to: {:?} request: {:?}", address, &req);
 
         // Issue request and await response
-        let resp = self.connector().request(req.id, address.clone(), req, Duration::from_secs(10)).await?;
+        let resp = self.connector().request(req.id, address.clone(), req, timeout).await?;
         
         debug!("Received response from: {:?} request: {:?}", &address, &resp);
 

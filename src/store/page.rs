@@ -12,14 +12,17 @@ pub type PageFields = (String, Vec<u8>, Option<String>, String);
 impl Store {
     pub fn save_page(&self, page: &Page) -> Result<(), StoreError> {
 
-        let sig = match page.signature {
+        let sig = match &page.signature {
             Some(v) => signature.eq(v.to_string()),
             None => return Err(StoreError::MissingSignature),
         };
 
-        let prev = page.previous_sig.map(|v| previous.eq(v.to_string()) );
-        let raw = page.raw.as_ref().map(|v| raw_data.eq(v.clone()) );
+        let raw = match &page.raw {
+            Some(v) => raw_data.eq(v),
+            None => return Err(StoreError::MissingRawData),
+        };
 
+        let prev = page.previous_sig.map(|v| previous.eq(v.to_string()) );
         let values = (
             service_id.eq(page.id.to_string()),
             raw,
@@ -107,8 +110,9 @@ mod test {
         let mut s = Service::default();
 
         let mut buff = vec![0u8; 1024];
-        let (_n, page) = s.publish_primary(&mut buff).expect("Error creating page");
+        let (n, mut page) = s.publish_primary(&mut buff).expect("Error creating page");
         let sig = page.signature.unwrap();
+        page.raw = Some(buff[..n].to_vec());
 
         // Check no matching service exists
         assert_eq!(None, store.load_page(&sig).unwrap());

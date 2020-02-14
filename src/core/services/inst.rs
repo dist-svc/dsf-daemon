@@ -63,6 +63,7 @@ impl ServiceInst {
             primary_page: self.primary_page.as_ref().map(|v| v.signature()).flatten(),
             replica_page: self.replica_page.as_ref().map(|v| v.signature()).flatten(),
             public_key: service.public_key(),
+            private_key: service.private_key(),
             secret_key: service.secret_key(),
             replicas: self.replicas.len(),
             subscribers: self.subscribers.len(),

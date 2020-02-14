@@ -64,6 +64,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         match res {
             Ok(v) => Ok(v),
             Err(Error::Core(e)) => Ok(ResponseKind::Error(e)),
+            Err(Error::Timeout) => Ok(ResponseKind::Error(CoreError::Timeout)),
             Err(e) => {
                 error!("Unsupported RPC error: {:?}", e);
                 Ok(ResponseKind::Error(CoreError::Unknown))
