@@ -1,7 +1,6 @@
 
 use std::sync::{Arc, Mutex};
 use std::io;
-use std::time::Duration;
 use std::collections::HashMap;
 use std::pin::Pin;
 
@@ -12,7 +11,6 @@ use futures::task::{Poll, Context};
 
 use async_std::task::{self, JoinHandle};
 use async_std::os::unix::net::{UnixListener, UnixStream};
-use async_std::future::timeout;
 
 use tracing::{span, Level};
 use tracing_futures::Instrument;
@@ -217,9 +215,9 @@ impl Connection {
                     res = unix_rx.read(&mut buff).fuse() => {
                         match res {
                             Ok(n) => {
-                                // Skip zero length messages
+                                // Exit on 0 length message
                                 if n == 0 {
-                                    continue
+                                    break
                                 }
 
                                 let mut u = UnixMessage::new(index, Bytes::copy_from_slice(&buff[..n]));

@@ -1,7 +1,6 @@
 
 use std::time::Duration;
 
-use async_std::future::timeout;
 use tracing::{span, Level};
 
 use kad::prelude::{DhtEntry};

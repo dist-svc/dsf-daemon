@@ -9,9 +9,7 @@ use dsf_core::service::Publisher;
 use kad::prelude::*;
 
 use async_std::future::timeout;
-use async_std::task;
 
-use futures::future;
 use tracing::{Level, span};
 
 use crate::core::peers::{Peer, PeerManager};
@@ -251,7 +249,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         // however, it should be possible to execute this in parallel
         for (id, p) in peers {
             let timeout = Duration::from_millis(200).into();
-            let mut s = self.clone();
+            let mut _s = self.clone();
 
             let _ = self.connect(dsf_rpc::ConnectOptions{address: p.address(), id: Some(id.clone()), timeout }).await;
         }

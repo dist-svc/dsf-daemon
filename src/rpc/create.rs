@@ -10,7 +10,7 @@ use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
 use dsf_core::options::Options;
 
-use dsf_rpc::{CreateOptions, RegisterOptions, ServiceIdentifier};
+use dsf_rpc::{CreateOptions, RegisterCommand, RegisterOptions, ServiceIdentifier};
 
 use crate::error::Error;
 use crate::core::services::*;
@@ -78,7 +78,10 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
         } else {
             info!("Registering and replicating service");
             // TODO URGENT: re-enable this when register is back
-            let _register_info = self.register(RegisterOptions{service: ServiceIdentifier{id: Some(id.clone()), index: None}, no_replica: false }).await?;
+            let _register_info = self.register(RegisterCommand{
+                service: ServiceIdentifier{id: Some(id.clone()), index: None}, 
+                options: RegisterOptions{ no_replica: false }
+            }).await?;
 
             // Update local service state
             let mut s = service.write().unwrap();

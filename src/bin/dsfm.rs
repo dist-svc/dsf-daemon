@@ -30,6 +30,10 @@ struct Config {
     /// Number of instances to run
     count: usize,
 
+    #[structopt(long = "offset", default_value = "0")]
+    /// Offset for instance indexing
+    offset: usize,
+
     #[structopt(flatten)]
     daemon_opts: Options,
 
@@ -58,7 +62,7 @@ fn main() {
     let res = task::block_on(async move {
         let mut handles = vec![];
 
-        for i in 0..opts.count {
+        for i in opts.offset..opts.count+opts.offset {
             let r = running.clone();
             let o = opts.daemon_opts.with_suffix(i+1);
 

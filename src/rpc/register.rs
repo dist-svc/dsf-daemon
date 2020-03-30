@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;
-use dsf_rpc::{RegisterOptions, RegisterInfo};
+use dsf_rpc::{RegisterCommand, RegisterInfo};
 
 use crate::core::services::ServiceState;
 
@@ -22,13 +22,13 @@ pub enum RegisterError {
 
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
     /// Register a locally known service
-    pub async fn register(&mut self, options: RegisterOptions) -> Result<RegisterInfo, Error> {
+    pub async fn register(&mut self, command: RegisterCommand) -> Result<RegisterInfo, Error> {
         let span = span!(Level::DEBUG, "register");
         let _enter = span.enter();
 
-        info!("Register: {:?}", &options.service);
+        info!("Register: {:?}", &command.service);
 
-        let id = self.resolve_identifier(&options.service)?;
+        let id = self.resolve_identifier(&command.service)?;
 
         let mut services = self.services();
 
@@ -63,7 +63,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             let mut pages = vec![primary_page];
     
             // Generate replica page unless disabled
-            if !options.no_replica {
+            if !command.options.no_replica {
                 debug!("Generating replica page");
     
                 // Generate a replica page

@@ -7,7 +7,7 @@ use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 use dsf_core::net;
-use dsf_rpc::{SubscribeOptions, SubscribeInfo};
+use dsf_rpc::{SubscribeCommand, SubscribeInfo};
 
 use crate::error::Error;
 use crate::core::services::ServiceState;
@@ -18,14 +18,14 @@ use crate::io;
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
     // Subscribe to data from a given service
-    pub async fn subscribe(&mut self, options: SubscribeOptions) -> Result<SubscribeInfo, Error> { 
+    pub async fn subscribe(&mut self, command: SubscribeCommand) -> Result<SubscribeInfo, Error> { 
 
         let span = span!(Level::DEBUG, "subscribe");
         let _enter = span.enter();
 
-        info!("Subscribe: {:?}", &options.service);
+        info!("Subscribe: {:?}", &command.service);
 
-        let id = match self.resolve_identifier(&options.service) {
+        let id = match self.resolve_identifier(&command.service) {
             Ok(id) => id,
             Err(e) => return Err(e)
         };

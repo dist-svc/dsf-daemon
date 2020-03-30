@@ -56,10 +56,6 @@ pub struct Options {
     /// These may be reconfigured at runtime
     pub bind_addresses: Vec<SocketAddr>,
 
-    #[structopt(long = "service-file", default_value = "/var/dsf/dsf.svc", env="DSF_SVC")]
-    /// Service file for reading / writing peer service information
-    pub service_file: String,
-
     #[structopt(long = "database-file", default_value = "/var/dsf/dsf.db", env="DSF_DB_FILE")]
     /// Database file for storage by the daemon
     pub database_file: String,
@@ -81,7 +77,6 @@ impl Default for Options {
         Self {
             bind_addresses: vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 10100)],
             daemon_socket: DEFAULT_UNIX_SOCKET.to_string(),
-            service_file: DEFAULT_SERVICE.to_string(),
             database_file: DEFAULT_DATABASE_FILE.to_string(),
             no_bootstrap: false,
             daemon_options: DaemonOptions {
@@ -97,7 +92,6 @@ impl Options {
         Self {
             bind_addresses: vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 10100 + suffix as u16)],
             daemon_socket: format!("{}.{}", self.daemon_socket, suffix),
-            service_file: format!("{}.{}", self.service_file, suffix),
             database_file: format!("{}.{}", self.database_file, suffix),
             no_bootstrap: self.no_bootstrap,
             daemon_options: DaemonOptions {
@@ -295,9 +289,6 @@ impl Engine {
 
         // Send response
         unix_resp.send().await?;
-
-        // Close socket
-        unix_resp.close().await?;
 
         Ok(())
     }
