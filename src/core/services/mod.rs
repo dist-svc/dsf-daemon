@@ -72,6 +72,7 @@ impl ServiceManager {
             changed: true,
         };
 
+        // Push primary page
         inst.add_data(page)?;
 
         // Write new instance to disk
@@ -258,6 +259,8 @@ impl ServiceManager {
         let mut services = self.services.lock().unwrap();
 
         let service_info = store.load_services().unwrap();
+
+        debug!("Loading {} services from database", service_info.len());
 
         for i in service_info {
             let primary_page = match i.primary_page {

@@ -21,13 +21,18 @@ impl Store {
         let sec_key = info.secret_key.map(|v| secret_key.eq(v.to_string()) );
         let up = info.last_updated.map(|v| last_updated.eq(to_dt(v)) );
 
+        let pp = info.primary_page.map(|v| primary_page.eq(v.to_string()) );
+        let rp = info.replica_page.map(|v| replica_page.eq(v.to_string()) );
+
         let values = (
             service_id.eq(info.id.to_string()),
             service_index.eq(info.index as i32),
             state.eq(info.state.to_string()),
             public_key.eq(info.public_key.to_string()),
-            sec_key,
             pri_key,
+            sec_key,
+            pp,
+            rp,
             up,
             subscribers.eq(info.subscribers as i32),
             replicas.eq(info.replicas as i32),
@@ -47,6 +52,7 @@ impl Store {
                 .values(values)
                 .execute(&self.conn)?;
         }
+
 
         Ok(())
     }
@@ -130,7 +136,7 @@ mod test {
     use super::Store;
 
     use dsf_rpc::{ServiceInfo, ServiceState};
-    use dsf_core::crypto::{new_pk, new_sk, hash};
+    use dsf_core::crypto::{new_pk, new_sk, pk_sign, hash};
 
     #[test]
     fn store_service_info() {
@@ -146,6 +152,7 @@ mod test {
         let (public_key, private_key) = new_pk().unwrap();
         let secret_key = new_sk().unwrap();
         let id = hash(&public_key).unwrap();
+        let sig = pk_sign(&private_key, &id).unwrap();
 
         let mut s = ServiceInfo {
             id,
@@ -154,8 +161,8 @@ mod test {
             public_key,
             private_key: Some(private_key),
             secret_key: Some(secret_key),
-            primary_page: None,
-            replica_page: None,
+            primary_page: Some(sig),
+            replica_page: Some(sig),
             last_updated: Some(SystemTime::now()),
             subscribers: 14,
             replicas: 12,
@@ -178,5 +185,4 @@ mod test {
         store.delete_service(&s.id).unwrap();
         assert_eq!(None, store.load_service(&s.id).unwrap());
     }
-
 }

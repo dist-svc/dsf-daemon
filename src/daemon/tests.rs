@@ -189,7 +189,10 @@ fn test_manager() {
         transactions.append(&mut stores);
 
         mux.expect(transactions.clone());
-        dsf.register(rpc::RegisterOptions{service: rpc::ServiceIdentifier{id: Some(info.id.clone()), index: None}, no_replica: true}).await.expect("Registration error");
+        dsf.register(rpc::RegisterCommand{
+                service: rpc::ServiceIdentifier::id(info.id.clone()), 
+                options: rpc::RegisterOptions{ no_replica: true },
+        }).await.expect("Registration error");
         mux.finalise();
 
         info!("Publishes data");

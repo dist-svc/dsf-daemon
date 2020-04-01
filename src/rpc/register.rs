@@ -35,7 +35,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
         // Generate pages
         // This needs to be in a scope so the generator doesn't try moving the
         // RwLockWriteGuart<'_, ServiceInst> over yeild points
-        let (info, pages) = {
+        let (mut info, pages) = {
             // Fetch the known service from the service list
             let service = match services.find(&id) {
                 Some(s) => s,
@@ -90,7 +90,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
         // Store pages
         // TODO: get store info / number of peers storing
-        self.store(&id, pages).await?;
+        info.peers = self.store(&id, pages).await?;
         
         // Update local storage info
         services.update_inst(&id, |s| {

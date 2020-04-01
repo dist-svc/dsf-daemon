@@ -125,7 +125,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     }
 
     /// Store pages in the database at the provided ID
-    pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
+    pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<usize, Error> {
 
         let span = span!(Level::DEBUG, "store", "{}", self.id());
         let _enter = span.enter();
@@ -151,7 +151,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             Ok(n) => {
                 debug!("Store complete ({} peers)", n);
                 // TODO: use search results
-                Ok(())
+                Ok(n)
             },
             Err(e) => {
                 error!("Store failed: {:?}", e);

@@ -233,7 +233,7 @@ impl Connector for WireConnector {
         async fn request(
             &self, req_id: RequestId, target: Address, req: NetRequest, t: Duration,
         ) -> Result<NetResponse, Error> {   
-            debug!("issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)", req, req_id, target, t.as_secs());
+            trace!("issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)", req, req_id, target, t.as_secs());
             
             // Create per-request channel
             let (tx, mut rx) = mpsc::channel(0);
