@@ -1,4 +1,5 @@
 
+use std::convert::TryFrom;
 
 use tracing::{span, Level};
 
@@ -6,7 +7,7 @@ use dsf_core::prelude::*;
 
 use dsf_core::net;
 use dsf_core::service::publisher::{Publisher, DataOptionsBuilder};
-use dsf_rpc::{PublishOptions, PublishInfo};
+use dsf_rpc::{PublishOptions, PublishInfo, DataInfo};
 
 use crate::daemon::Dsf;
 use crate::error::Error;
@@ -74,8 +75,13 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             drop(service);
 
             info!("Storing data page");
+
+            let data_info = DataInfo::try_from(&page).unwrap();
+
+            self.data().store_data(&data_info, &page)?;
+
             // Store data against service
-            service_inst.add_data(&page)?;
+            //service_inst.add_data(&page)?;
             services.sync_inst(&service_inst);
 
             // TODO: send data to subscribers

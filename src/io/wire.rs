@@ -239,9 +239,9 @@ impl Connector for WireConnector {
             let (tx, mut rx) = mpsc::channel(0);
 
             // Add response channel to map
-            debug!("new request lock");
+            trace!("new request lock");
             self.requests.lock().unwrap().insert(req_id, tx);
-            debug!("got new request lock");
+            trace!("got new request lock");
 
             // Pass message to internal sink
             let mut sink = self.sink.clone();

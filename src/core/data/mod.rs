@@ -1,11 +1,8 @@
 
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
-use std::time::{SystemTime, Duration};
+use std::sync::{Arc, Mutex};
 
-
-use dsf_core::prelude::*;
+use dsf_core::{types::Id, page::Page};
 
 pub use dsf_rpc::data::DataInfo;
 
@@ -16,6 +13,25 @@ pub struct DataManager {
     store: Arc<Mutex<Store>>,
 }
 
+pub struct DataInst {
+    info: DataInfo,
+    page: Page,
+}
+
+impl From<Page> for DataInst {
+    fn from(page: Page) -> Self {
+        let info = DataInfo {
+            service: page.id.clone(),
+            index: page.header().index,
+            body: page.body(),
+            previous: page.info().previous,
+            signature: page.signature.clone(),
+        };
+
+        DataInst{info, page}
+    }
+}
+
 impl DataManager {
     pub fn new(store: Arc<Mutex<Store>>) -> Self {
         Self{store}
@@ -23,18 +39,31 @@ impl DataManager {
 
     /// Fetch data for a given service
     // TODO: add paging?
-    pub fn fetch_data(&self, service_id: &Id, n: usize) -> Result<Vec<DataInfo>, Error> {
-        let d = self.store.lock().unwrap().load_service_data(service_id)?;
+    pub fn fetch_data(&self, service_id: &Id) -> Result<Vec<DataInst>, Error> {
+        let store = self.store.lock().unwrap();
 
-        Ok(d)
+        // Load data info
+        let info = store.load_service_data(service_id)?;
+
+        // Load associated raw pages
+        let mut data = Vec::with_capacity(info.len());
+        for i in info {
+            let p = store.load_page(&i.signature)?;
+            data.push(DataInst{info: i, page: p})
+        }
+
+        Ok(data)
     }
 
     /// Store data for a given service
     pub fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
+        let store = self.store.lock().unwrap();
+
         // Store data object
-        self.store.lock().unwrap().save_data(info)?;
+        store.save_data(info)?;
 
         // Store backing raw object
+        store.save_page(page)?;
 
         Ok(())
     }

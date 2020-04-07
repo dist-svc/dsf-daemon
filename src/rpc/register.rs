@@ -45,6 +45,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                     return Err(Error::UnknownService.into())
                 }
             };
+
             let mut s = service.try_write().unwrap();
 
             debug!("Generating service page");
@@ -80,6 +81,9 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
     
                 drop(s);
             }
+
+            // Write back any changes to the instances
+            services.sync();
 
             (info, pages)
         };

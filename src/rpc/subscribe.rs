@@ -7,6 +7,7 @@ use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 use dsf_core::net;
+use dsf_core::types::{Error as CoreError};
 use dsf_rpc::{SubscribeCommand, SubscribeInfo};
 
 use crate::error::Error;
@@ -46,7 +47,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             let service_inst = service_arc.read().unwrap();
             let service_id = service_inst.id();
 
-            debug!("Service: {:?}", service_inst);
+            debug!("Service: {:?}", service_id);
 
             // Build search across listed replicas
             let mut searches = Vec::with_capacity(service_inst.replicas.len());
@@ -103,7 +104,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                     debug!("[DSF ({:?})] Subscription ack from: {:?}", own_id, response.from);
 
                     service.update_replica(response.from, |mut r| {
-                        r.active = true;
+                        r.info.active = true;
                     });
 
                     count += 1;
@@ -126,7 +127,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             });
         } else {
             warn!("[DSF ({:?})] Subscription failed, no viable replicas found", own_id);
-            return Err(Error::NoReplicasFound)
+            return Err(Error::Core(CoreError::NoReplicasFound))
         }
 
         Ok(SubscribeInfo{count})

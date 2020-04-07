@@ -13,7 +13,6 @@ use dsf_core::service::Subscriber;
 pub use dsf_rpc::service::{ServiceInfo, ServiceState};
 
 use super::peers::Peer;
-use super::data::DataInfo;
 
 use crate::store::Store;
 
@@ -54,17 +53,18 @@ impl ServiceManager {
     }
 
     /// Register a local service for tracking
-    pub fn register(&mut self, service: Service, page: &Page, state: ServiceState, updated: Option<SystemTime>) -> Result<Arc<RwLock<ServiceInst>>, DsfError> {
+    pub fn register(&mut self, service: Service, primary_page: &Page, state: ServiceState, updated: Option<SystemTime>) -> Result<Arc<RwLock<ServiceInst>>, DsfError> {
         let services = self.services.clone();
         let mut services = services.lock().unwrap();
 
         let id = service.id();
 
         // Create a service instance wrapper
-        let mut inst = ServiceInst{service, state,
+        let mut inst = ServiceInst{
+            service, state,
             index: services.len(),
             last_updated: updated,
-            primary_page: Some(page.clone()),
+            primary_page: Some(primary_page.clone()),
             replica_page: None,
             data: Vec::new(),
             replicas: HashMap::new(),
@@ -73,7 +73,7 @@ impl ServiceManager {
         };
 
         // Push primary page
-        inst.add_data(page)?;
+        inst.add_data(primary_page)?;
 
         // Write new instance to disk
         self.sync_inst(&inst);
@@ -139,6 +139,7 @@ impl ServiceManager {
     }
 
     /// Fetch data for a given service
+    #[cfg(nope)]
     pub fn data(&self, id: &Id, n: usize) -> Result<Vec<DataInfo>, DsfError> {
         let service = match self.find(id) {
             Some(s) => s,

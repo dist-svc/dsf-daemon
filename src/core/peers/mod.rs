@@ -20,6 +20,8 @@ pub use info::{Peer, PeerInfo, PeerAddress, PeerState};
 pub struct PeerManager {
     peers: Arc<Mutex<HashMap<Id, Peer>>>,
     store: Arc<Mutex<Store>>,
+
+    index: Arc<Mutex<usize>>,
 }
 
 impl PeerManager {
@@ -29,6 +31,7 @@ impl PeerManager {
         let mut s = Self{
             peers: Arc::new(Mutex::new(peers)), 
             store,
+            index: Arc::new(Mutex::new(0)),
         };
 
         s.load();
@@ -43,6 +46,8 @@ impl PeerManager {
 
     pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
         let mut peers = self.peers.lock().unwrap();
+        let mut index = self.index.lock().unwrap();
+
         let store = self.store.lock().unwrap();
 
         peers.entry(id.clone()).or_insert_with(|| {
@@ -53,11 +58,13 @@ impl PeerManager {
                 None => PeerState::Unknown,
             };
 
-            let info = PeerInfo::new(id, address, state, None);
+            let info = PeerInfo::new(id, address, state, *index, None);
 
             if let Err(e) = store.save_peer(&info) {
                 error!("Error writing peer {} to db: {:?}", id, e);
             }
+
+            *index += 1;
 
             Peer{ info: Arc::new(RwLock::new(info)) }
         }).clone()
@@ -77,6 +84,14 @@ impl PeerManager {
         peers.iter().map(|(id, p)| (id.clone(), p.clone()) ).collect()
     }
 
+    pub fn index_to_id(&self, index: usize) -> Option<Id> {
+        let peers = self.peers.lock().unwrap();
+
+        peers.iter().find(|(_id, p)| {
+            p.info.read().unwrap().index == index
+        }).map(|(id, _s)| id.clone() )
+    }
+
     pub fn sync(&self) {
         let peers = self.peers.lock().unwrap();
         let store = self.store.lock().unwrap();
@@ -90,9 +105,11 @@ impl PeerManager {
         }
     }
 
-    pub fn load(&mut self) {
-        let store = self.store.lock().unwrap();
+    // Load all peers from store
+    fn load(&mut self) {
         let mut peers = self.peers.lock().unwrap();
+        let store = self.store.lock().unwrap();
+        let mut index = self.index.lock().unwrap();
 
         let peer_info = match store.load_peers() {
             Ok(v) => v,
@@ -102,8 +119,12 @@ impl PeerManager {
             }
         };
 
-        for p in peer_info {
+        for mut p in peer_info {
+            p.index = *index;
+            
             peers.entry(p.id).or_insert(Peer{info: Arc::new(RwLock::new(p))});
+            
+            *index += 1;
         }
     }
 }

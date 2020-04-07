@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
 use std::time::{SystemTime, Duration};
-use std::convert::TryInto;
 use std::ops::Add;
-
-
 
 use dsf_core::prelude::*;
 use dsf_core::service::{Subscriber, Publisher};
@@ -71,6 +68,7 @@ impl ServiceInst {
         }
     }
 
+    #[cfg(nope)]
     pub(crate) fn add_data(&mut self, page: &Page) -> Result<(), DsfError> {
         // Validate page (assuming sig has been pre-verified)
         self.service.validate_page(page)?;
@@ -94,6 +92,7 @@ impl ServiceInst {
         Ok(())
     }
 
+    #[cfg(nope)]
     pub(crate) fn get_data(&self, n: usize) -> impl Iterator<Item=Page> + '_ {
         let public_key = self.service.public_key();
         let secret_key = self.service.secret_key();

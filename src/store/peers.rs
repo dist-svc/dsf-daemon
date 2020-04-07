@@ -89,6 +89,7 @@ impl Store {
             id: Id::from_str(r_id)?,
             state: s_state,
             address: s_addr,
+            index: 0,
 
             seen: r_seen.as_ref().map(|v| from_dt(v) ),
 
@@ -105,7 +106,7 @@ impl Store {
         let results = peers
             .filter(peer_id.eq(id.to_string()))
             .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
-            .load::<(String, String, Option<String>, String, String, Option<NaiveDateTime>, i32, i32, bool)>(&self.conn)?;
+            .load::<PeerFields>(&self.conn)?;
 
         if results.len() == 0 {
             return Ok(None)
@@ -120,7 +121,7 @@ impl Store {
 
         let results = peers
             .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
-            .load::<(String, String, Option<String>, String, String, Option<NaiveDateTime>, i32, i32, bool)>(&self.conn)?;
+            .load::<PeerFields>(&self.conn)?;
 
         let mut v = vec![];
 
@@ -170,6 +171,7 @@ mod test {
 
         let mut p = PeerInfo {
             id,
+            index: 0,
             address: PeerAddress::Explicit("127.0.0.1:8080".parse().unwrap()),
             state: PeerState::Known(public_key),
             seen: Some(SystemTime::now()),

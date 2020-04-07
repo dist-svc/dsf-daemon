@@ -26,6 +26,7 @@ table! {
 table! {
     peers (peer_id) {
         peer_id -> Text,
+        peer_index -> Integer,
         state -> Text,
         public_key -> Nullable<Text>,
         

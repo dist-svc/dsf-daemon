@@ -1,42 +1,75 @@
 
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use dsf_core::prelude::*;
+use dsf_rpc::replica::ReplicaInfo;
 
-use super::peers::Peer;
+use crate::store::Store;
 
-#[derive(Debug, Clone)]
+
+#[derive(Clone, Debug)]
 pub struct Replica {
-    pub(crate) id: Id,
-    pub(crate) version: u16,
-
-    pub(crate) peer: Option<Peer>,
-    
-    pub(crate) issued: SystemTime,
-    pub(crate) expiry: SystemTime,
-
-    pub(crate) active: bool,
+    info: ReplicaInfo,
+    page: Page,
 }
 
-use std::fmt;
+impl From<Page> for Replica {
+    fn from(page: Page) -> Self {
 
-impl fmt::Display for Replica {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let info = ReplicaInfo{
+            peer_id: page.info().peer_id(),
 
-        if f.sign_plus() {
-            write!(f, "service id: {}", self.id)?;
-        } else {
-            write!(f, "{}", self.id)?;
-        }
+            version: page.version(),
+            page_id: page.id.clone(),
 
-        if f.sign_plus() {
-            write!(f, " - version: {}", self.version)?;
-        } else {
-            write!(f, "{}", self.version)?;
-        }
+            //peer: None,
+            issued: page.issued(),
+            updated: SystemTime::now(),
+            expiry: page.expiry(),
+            active: false,
+        };
 
-        // TODO: the rest of this
-
-        Ok(())
+        Replica{page, info}
     }
 }
+
+pub struct ReplicaManager {
+    store: Arc<Mutex<Store>>
+}
+
+impl ReplicaManager {
+    pub fn new(store: Arc<Mutex<Store>>) -> Result<Self, ()> {
+        // Create replica manager instance
+        let m = ReplicaManager{
+            store,
+        };
+
+        // TODO: load known replicas
+        
+
+
+        // Return replica manager
+        Ok(m)
+    }
+
+    // Update a specified replica
+    pub fn update(replica: &Replica) -> Result<Self, ()> {
+        unimplemented!()
+    }
+
+    // Remove a specified replica
+    pub fn remove(replica: &Replica) -> Result<Self, ()> {
+        unimplemented!()
+    }
+
+    // Find replicas for a given service
+    pub fn find(_ud: Id) -> Vec<Replica> {
+        unimplemented!()
+    }
+
+    fn load() {
+
+    }
+}
+
