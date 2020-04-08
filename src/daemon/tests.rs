@@ -210,8 +210,11 @@ fn test_manager() {
 
         let service_inst = dsf.services().find(&info.id).unwrap();
         let service_inst = service_inst.write().unwrap();
-        assert_eq!(service_inst.subscribers.len(), 1);
-        let _subscriber = service_inst.subscribers.get(&s4.id()).expect("subscriber entry not found for service");
+
+        let subscribers = dsf.subscriptions().find(&info.id).unwrap();
+
+        assert_eq!(subscribers.len(), 1);
+        let _subscriber = subscribers.get(&s4.id()).expect("subscriber entry not found for service");
 
 
         info!("Publishes data to subscribers");

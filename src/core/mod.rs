@@ -8,4 +8,7 @@ pub mod replicas;
 
 pub mod services;
 
-pub mod subscription;
+pub mod subscriptions;
+
+pub mod subscribers;
+

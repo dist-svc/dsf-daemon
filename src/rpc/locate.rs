@@ -8,7 +8,7 @@ use dsf_core::service::Subscriber;
 use dsf_rpc::{LocateOptions, LocateInfo, ReplicaInfo};
 
 use crate::core::services::ServiceState;
-use crate::core::replicas::Replica;
+use crate::core::replicas::ReplicaInst;
 
 use crate::daemon::Dsf;
 use crate::error::Error;
@@ -22,6 +22,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
         let _enter = span.enter();
 
         let mut services = self.services();
+        let mut replicaManager = self.replicas();
 
         // Skip search for owned services...
         if let Some(service) = services.info(&options.id) {
@@ -43,7 +44,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
         };
 
         // Fetch replica pages
-        let replicas: Vec<Replica> = pages.drain(..).filter(|p| p.kind().is_page() && p.flags().contains(Flags::SECONDARY) 
+        let replicas: Vec<ReplicaInst> = pages.drain(..).filter(|p| p.kind().is_page() && p.flags().contains(Flags::SECONDARY) 
         && p.application_id() == 0 && p.kind() == PageKind::Replica.into() )
         .filter_map(|p| {
             let peer_id = match p.info().peer_id() {
@@ -51,22 +52,25 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                 _ => return None,
             };
 
-            Some(Replica::from(p))
+            Some(ReplicaInst::from(p))
         }).collect();
 
         info!("locate, found {} replicas", replicas.len());
 
-        if services.known(&options.id) {
-            // Update a known service
-            info!("updating existing service");
+        match services.find(&options.id) {
+            Some(service_inst) => {
 
-            services.update_inst(&options.id, |inst| {
+                let mut inst = service_inst.write().unwrap();
+
+                // Update a known service
+                info!("updating existing service");
+                
                 // Apply page update
-                let updated = match inst.service.apply_primary(&primary_page) {
+                let updated = match inst.service().apply_primary(&primary_page) {
                     Ok(r) => r,
                     Err(e) => {
                         error!("error updating service: {:?}", e);
-                        return
+                        return Err(e.into());
                     },
                 };
 
@@ -78,29 +82,30 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                     inst.primary_page = Some(primary_page.clone());
                 }
 
-                inst.sync_replicas(&replicas);
-            } );
+                replicaManager.sync(&options.id, &replicas);
 
-            debug!("locate done");
+                debug!("locate done");
 
-            Ok(LocateInfo{origin: false, updated: true})
-        } else {
-            // Create a new entry for unknown service
-            info!("creating new service entry");
+                drop(inst);
 
-            let service = match Service::load(&primary_page) {
-                Ok(s) => s,
-                Err(e) => return Err(e.into()),
-            };
+                Ok(LocateInfo{origin: false, updated: true})
+            }, None => {
+                // Create a new entry for unknown service
+                info!("creating new service entry");
 
-            let inst = services.register(service, &primary_page, ServiceState::Located, Some(SystemTime::now())).unwrap();
+                let service = match Service::load(&primary_page) {
+                    Ok(s) => s,
+                    Err(e) => return Err(e.into()),
+                };
 
-            inst.write().unwrap().sync_replicas(&replicas);
+                let inst = services.register(service, &primary_page, ServiceState::Located, Some(SystemTime::now())).unwrap();
 
-            debug!("locate done");
+                replicaManager.sync(&options.id, &replicas);
 
-            Ok(LocateInfo{origin: false, updated: true})
+                debug!("locate done");
+
+                Ok(LocateInfo{origin: false, updated: true})
+            }
         }
-
     }
 }

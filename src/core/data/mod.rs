@@ -22,10 +22,10 @@ impl From<Page> for DataInst {
     fn from(page: Page) -> Self {
         let info = DataInfo {
             service: page.id.clone(),
-            index: page.header().index,
-            body: page.body(),
-            previous: page.info().previous,
-            signature: page.signature.clone(),
+            index: page.version(),
+            body: page.body().clone(),
+            previous: page.previous_sig.clone(),
+            signature: page.signature.unwrap().clone(),
         };
 
         DataInst{info, page}
@@ -49,7 +49,7 @@ impl DataManager {
         let mut data = Vec::with_capacity(info.len());
         for i in info {
             let p = store.load_page(&i.signature)?;
-            data.push(DataInst{info: i, page: p})
+            data.push(DataInst{info: i, page: p.unwrap()})
         }
 
         Ok(data)

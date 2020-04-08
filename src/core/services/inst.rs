@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 use std::time::{SystemTime, Duration};
 use std::ops::Add;
@@ -12,14 +11,13 @@ use dsf_rpc::service::{ServiceInfo, ServiceState};
 
 
 use crate::core::peers::Peer;
-use crate::core::replicas::Replica;
 
 use super::SubscriptionInfo;
-use super::data::Data;
 
 #[derive(Debug, Serialize, Deserialize, Queryable)]
 pub struct ServiceInst {
     pub(crate) service: Service,
+
     pub(crate) state: ServiceState,
     pub(crate) index: usize,
     pub(crate) last_updated: Option<SystemTime>,
@@ -32,14 +30,6 @@ pub struct ServiceInst {
     pub(crate) replica_page: Option<Page>,
 
     #[serde(skip)]
-    pub (crate) replicas: HashMap<Id, Replica>,
-
-    #[serde(skip)]
-    pub(crate) subscribers: HashMap<Id, SubscriptionInfo>,
-
-    pub(crate) data: Vec<Data>,
-
-    #[serde(skip)]
     pub(crate) changed: bool,
 }
 
@@ -47,6 +37,10 @@ pub struct ServiceInst {
 impl ServiceInst {
     pub(crate) fn id(&self) -> Id {
         self.service.id()
+    }
+
+    pub(crate) fn service(&mut self) -> &mut Service {
+        &mut self.service
     }
 
     pub(crate) fn info(&self) -> ServiceInfo {
@@ -193,6 +187,7 @@ impl ServiceInst {
         Ok(replica_page)
     }
 
+    #[cfg(nope)]
     pub(crate) fn sync_replicas(&mut self, replicas: &[Replica]) {
         use std::collections::hash_map::Entry::{Vacant, Occupied};
         info!("syncing {} replicas", replicas.len());
@@ -221,6 +216,7 @@ impl ServiceInst {
         self.changed = true;
     }
 
+    #[cfg(nope)]
     pub(crate) fn update_replica<F>(&mut self, id: Id, f: F)
     where F: Fn(&mut Replica) {
         use std::collections::hash_map::Entry::{Occupied};

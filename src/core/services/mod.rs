@@ -66,9 +66,6 @@ impl ServiceManager {
             last_updated: updated,
             primary_page: Some(primary_page.clone()),
             replica_page: None,
-            data: Vec::new(),
-            replicas: HashMap::new(),
-            subscribers: HashMap::new(),
             changed: true,
         };
 
@@ -293,12 +290,6 @@ impl ServiceManager {
                 last_updated: i.last_updated,
                 primary_page: Some(primary_page),
                 replica_page,
-
-                replicas: HashMap::new(),
-
-                subscribers: HashMap::new(),
-
-                data: vec![],
 
                 changed: false,
             };

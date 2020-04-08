@@ -9,16 +9,22 @@ use crate::store::Store;
 
 
 #[derive(Clone, Debug)]
-pub struct Replica {
-    info: ReplicaInfo,
-    page: Page,
+pub struct ReplicaInst {
+    pub info: ReplicaInfo,
+    pub page: Page,
 }
 
-impl From<Page> for Replica {
+impl From<Page> for ReplicaInst {
     fn from(page: Page) -> Self {
 
+        // Replica pages are _always_ secondary types
+        let peer_id = match page.info() {
+            PageInfo::Secondary(s) => s.peer_id,
+            _ => unimplemented!()
+        };
+
         let info = ReplicaInfo{
-            peer_id: page.info().peer_id(),
+            peer_id,
 
             version: page.version(),
             page_id: page.id.clone(),
@@ -27,10 +33,11 @@ impl From<Page> for Replica {
             issued: page.issued(),
             updated: SystemTime::now(),
             expiry: page.expiry(),
+
             active: false,
         };
 
-        Replica{page, info}
+        Self{page, info}
     }
 }
 
@@ -41,34 +48,40 @@ pub struct ReplicaManager {
 impl ReplicaManager {
     pub fn new(store: Arc<Mutex<Store>>) -> Result<Self, ()> {
         // Create replica manager instance
-        let m = ReplicaManager{
+        let mut m = ReplicaManager{
             store,
         };
 
-        // TODO: load known replicas
-        
-
+        // Load existing replicas from database
+        m.load();
 
         // Return replica manager
         Ok(m)
     }
 
+
+    // Find replicas for a given service
+    pub fn find(&self, _service_id: &Id) -> Vec<ReplicaInst> {
+        unimplemented!()
+    }
+
     // Update a specified replica
-    pub fn update(replica: &Replica) -> Result<Self, ()> {
+    pub fn update(&self, replica: &ReplicaInst) -> Result<Self, ()> {
         unimplemented!()
     }
 
     // Remove a specified replica
-    pub fn remove(replica: &Replica) -> Result<Self, ()> {
+    pub fn remove(&self, replica: &ReplicaInst) -> Result<Self, ()> {
         unimplemented!()
     }
 
-    // Find replicas for a given service
-    pub fn find(_ud: Id) -> Vec<Replica> {
+    // Sync replicas for a given service
+    pub fn sync(&self, _service_id: &Id, replicas: &[ReplicaInst]) {
         unimplemented!()
     }
 
-    fn load() {
+
+    fn load(&mut self) {
 
     }
 }

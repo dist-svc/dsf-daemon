@@ -14,6 +14,12 @@ use tracing::{Level, span};
 
 use crate::core::peers::{Peer, PeerManager};
 use crate::core::services::{ServiceManager};
+
+// TODO: these are all pretty much functionally the same
+// Should probably refactor to minimize duplication
+use crate::core::replicas::{ReplicaManager};
+use crate::core::subscribers::{SubscriberManager};
+use crate::core::subscriptions::{SubscriptionManager};
 use crate::core::data::{DataManager};
 
 use crate::io::Connector;
@@ -39,8 +45,18 @@ pub struct Dsf<C> {
     /// Service manager
     services: ServiceManager,
 
+    /// Subscription manager
+    subscriptions: SubscriptionManager,
+
+    /// Subscriber manager
+    subscribers: SubscriberManager,
+
+    /// Replica manager
+    replicas: ReplicaManager,
+
     /// Data manager
     data: DataManager,
+
 
     /// Distributed Database
     dht: StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, Ctx>,
@@ -66,7 +82,11 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         //let store = Arc::new(Mutex::new(Store::new(&config.database_file)?));
         let peers = PeerManager::new(store.clone());
         let services = ServiceManager::new(store.clone());
+        let subscriptions = SubscriptionManager::new(store.clone());
+        let subscribers = SubscriberManager::new(store.clone());
+        let replicas = ReplicaManager::new(store.clone());
         let data = DataManager::new(store.clone());
+
 
         let id = service.id();
 
@@ -81,9 +101,15 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         // Create DSF object
         let s = Self {
             service,
+
             peers,
             services,
+            
+            subscriptions,
+            subscribers,
+            replicas,
             data,
+
             dht,
             dht_store,
             store,
@@ -109,6 +135,18 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
     pub(crate) fn services(&mut self) -> ServiceManager {
         self.services.clone()
+    }
+
+    pub(crate) fn replicas(&mut self) -> ReplicaManager {
+        self.replicas.clone()
+    }
+
+    pub(crate) fn subscribers(&mut self) -> SubscriberManager {
+        self.subscribers.clone()
+    }
+
+    pub(crate) fn subscriptions(&mut self) -> SubscriptionManager {
+        self.subscriptions.clone()
     }
 
     pub(crate) fn data(&mut self) -> DataManager {
