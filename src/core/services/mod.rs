@@ -69,9 +69,6 @@ impl ServiceManager {
             changed: true,
         };
 
-        // Push primary page
-        inst.add_data(primary_page)?;
-
         // Write new instance to disk
         self.sync_inst(&inst);
 

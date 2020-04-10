@@ -1,6 +1,7 @@
 
 
 use std::sync::{Arc, Mutex};
+use std::convert::TryFrom;
 
 use dsf_core::{types::Id, page::Page};
 
@@ -9,25 +10,19 @@ pub use dsf_rpc::data::DataInfo;
 use crate::error::Error;
 use crate::store::Store;
 
+#[derive(Clone)]
 pub struct DataManager {
     store: Arc<Mutex<Store>>,
 }
 
 pub struct DataInst {
-    info: DataInfo,
-    page: Page,
+    pub info: DataInfo,
+    pub page: Page,
 }
 
 impl From<Page> for DataInst {
     fn from(page: Page) -> Self {
-        let info = DataInfo {
-            service: page.id.clone(),
-            index: page.version(),
-            body: page.body().clone(),
-            previous: page.previous_sig.clone(),
-            signature: page.signature.unwrap().clone(),
-        };
-
+        let info = DataInfo::try_from(&page).unwrap();
         DataInst{info, page}
     }
 }
@@ -39,7 +34,7 @@ impl DataManager {
 
     /// Fetch data for a given service
     // TODO: add paging?
-    pub fn fetch_data(&self, service_id: &Id) -> Result<Vec<DataInst>, Error> {
+    pub fn fetch_data(&self, service_id: &Id, _limit: usize) -> Result<Vec<DataInst>, Error> {
         let store = self.store.lock().unwrap();
 
         // Load data info

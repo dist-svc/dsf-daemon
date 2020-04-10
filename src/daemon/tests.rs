@@ -189,9 +189,9 @@ fn test_manager() {
         transactions.append(&mut stores);
 
         mux.expect(transactions.clone());
-        dsf.register(rpc::RegisterCommand{
-                service: rpc::ServiceIdentifier::id(info.id.clone()), 
-                options: rpc::RegisterOptions{ no_replica: true },
+        dsf.register(rpc::RegisterOptions{
+            service: rpc::ServiceIdentifier::id(info.id.clone()), 
+            no_replica: true 
         }).await.expect("Registration error");
         mux.finalise();
 

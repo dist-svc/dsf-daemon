@@ -168,7 +168,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                 ResponseKind::Services(self.get_services())
             },
             ServiceCommands::Create(options) => {
-                self.create(options).await.map(ResponseKind::Created)?
+                self.create(options).await.map(ResponseKind::Service)?
             },
             ServiceCommands::Register(options) => {
                 self.register(options).await.map(ResponseKind::Registered)?
@@ -204,8 +204,8 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     }
 
     pub(super) fn get_data(&mut self, id: &Id, count: usize) -> Result<Vec<dsf_rpc::DataInfo>, Error> {
-        let d = self.services().data(id, count)?;
-        Ok(d)
+        let d = self.data().fetch_data(id, count)?;
+        Ok(d.iter().map(|i| i.info.clone() ).collect())
     }
 
     pub(super) fn get_services(&mut self) -> Vec<dsf_rpc::ServiceInfo> {

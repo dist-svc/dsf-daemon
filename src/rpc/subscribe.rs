@@ -8,10 +8,12 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 use dsf_core::net;
 use dsf_core::types::{Error as CoreError};
-use dsf_rpc::{SubscribeCommand, SubscribeInfo};
+use dsf_rpc::{SubscribeOptions, SubscribeInfo};
 
 use crate::error::Error;
 use crate::core::services::ServiceState;
+use crate::core::replicas::ReplicaInst;
+
 use crate::daemon::Dsf;
 use crate::io;
 
@@ -19,14 +21,14 @@ use crate::io;
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
     // Subscribe to data from a given service
-    pub async fn subscribe(&mut self, command: SubscribeCommand) -> Result<SubscribeInfo, Error> { 
+    pub async fn subscribe(&mut self, options: SubscribeOptions) -> Result<SubscribeInfo, Error> { 
 
         let span = span!(Level::DEBUG, "subscribe");
         let _enter = span.enter();
 
-        info!("Subscribe: {:?}", &command.service);
+        info!("Subscribe: {:?}", &options.service);
 
-        let id = match self.resolve_identifier(&command.service) {
+        let id = match self.resolve_identifier(&options.service) {
             Ok(id) => id,
             Err(e) => return Err(e)
         };
@@ -49,14 +51,19 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
             debug!("Service: {:?}", service_id);
 
-            // Build search across listed replicas
-            let mut searches = Vec::with_capacity(service_inst.replicas.len());
-            for (id, _r) in service_inst.replicas.iter() {
+            // TODO: lookup replicas in distributed database?
+
+            // Fetch known replicas
+            let replicas = self.replicas().find(&id);
+
+            // Build peer search across known replicas
+            let mut searches = Vec::with_capacity(replicas.len());
+            for inst in replicas.iter() {
                 let mut s = self.clone();
-                let id = id.clone();
+                let peer_id = inst.info.peer_id.clone();
 
                 searches.push(async move {
-                    s.lookup(&id).await
+                    s.lookup(&peer_id).await
                 });
             }
 
@@ -103,7 +110,8 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                 net::ResponseKind::Status(net::Status::Ok) => {
                     debug!("[DSF ({:?})] Subscription ack from: {:?}", own_id, response.from);
 
-                    service.update_replica(response.from, |mut r| {
+                    // Update replica status
+                    self.replicas().update_fn(&service_id, &response.from, |r| {
                         r.info.active = true;
                     });
 

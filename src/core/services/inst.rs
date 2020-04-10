@@ -56,8 +56,9 @@ impl ServiceInst {
             public_key: service.public_key(),
             private_key: service.private_key(),
             secret_key: service.secret_key(),
-            replicas: self.replicas.len(),
-            subscribers: self.subscribers.len(),
+            // TODO: fix replica / subscriber info (split objects?)
+            replicas: 0,
+            subscribers: 0,
             origin: service.is_origin(),
         }
     }
@@ -113,6 +114,7 @@ impl ServiceInst {
         })
     }
 
+    /// Publish a service, creating a new primary page
     pub(crate) fn publish(&mut self, force_update: bool) -> Result<Page, DsfError> {
         // Check the private key exists for signing the primary page
         let _private_key = match self.service.private_key() {
@@ -151,6 +153,7 @@ impl ServiceInst {
         Ok(primary_page)
     }
 
+    /// Replicate a service, creating a new replica page
     pub(crate) fn replicate(&mut self, peer_service: &mut Service, force_update: bool) -> Result<Page, DsfError> {
         let mut version = 0;
 
@@ -185,6 +188,15 @@ impl ServiceInst {
         self.changed = true;
 
         Ok(replica_page)
+    }
+
+    /// Apply an updated service page
+    pub(crate) fn apply_update(&mut self, page: &Page) -> Result<bool, DsfError> {
+        let changed = self.service.apply_primary(page)?;
+
+        // TODO: mark update required
+
+        Ok(changed)
     }
 
     #[cfg(nope)]
@@ -227,6 +239,7 @@ impl ServiceInst {
 
     }
 
+    #[cfg(nope)]
     pub(crate) fn update_subscription(&mut self, _id: Id, peer: Peer, updated: SystemTime, expiry: SystemTime) {
         use std::collections::hash_map::Entry::{Vacant, Occupied};
 

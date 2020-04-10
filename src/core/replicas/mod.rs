@@ -41,12 +41,13 @@ impl From<Page> for ReplicaInst {
     }
 }
 
+#[derive(Clone)]
 pub struct ReplicaManager {
     store: Arc<Mutex<Store>>
 }
 
 impl ReplicaManager {
-    pub fn new(store: Arc<Mutex<Store>>) -> Result<Self, ()> {
+    pub fn new(store: Arc<Mutex<Store>>) -> Self {
         // Create replica manager instance
         let mut m = ReplicaManager{
             store,
@@ -56,7 +57,7 @@ impl ReplicaManager {
         m.load();
 
         // Return replica manager
-        Ok(m)
+        m
     }
 
 
@@ -67,6 +68,10 @@ impl ReplicaManager {
 
     // Update a specified replica
     pub fn update(&self, replica: &ReplicaInst) -> Result<Self, ()> {
+        unimplemented!()
+    }
+
+    pub fn update_fn<F: Fn(&mut ReplicaInst)>(&self, service_id: &Id, peer_id: &Id, f: F) -> Result<(), ()> {
         unimplemented!()
     }
 
