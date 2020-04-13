@@ -64,7 +64,7 @@ pub struct Options {
     /// Unix socket for communication with the daemon
     pub daemon_socket: String,
 
-    #[structopt(long)]
+    #[structopt(long = "no-bootstrap")]
     /// Disable automatic bootstrapping
     pub no_bootstrap: bool,
 

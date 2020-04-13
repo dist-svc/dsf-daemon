@@ -33,7 +33,7 @@ struct Config {
     #[structopt(flatten)]
     daemon_opts: Options,
 
-    #[structopt(long)]
+    #[structopt(long = "profile")]
     profile: Option<String>,
 
     #[structopt(long = "log-level", default_value = "debug")]
