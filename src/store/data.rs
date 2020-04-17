@@ -6,7 +6,7 @@ use diesel::prelude::*;
 use dsf_core::prelude::*;
 use dsf_rpc::{DataInfo};
 
-use super::{Store, StoreError};
+use super::{Store, StoreError, Base};
 
 use crate::store::schema::data::dsl::*;
 
@@ -16,9 +16,8 @@ const BODY_NONE: &str = "none";
 const BODY_CLEARTEXT: &str = "cleartext";
 const BODY_ENCRYPTED: &str = "encrypted";
 
-impl Store {
-    pub fn save_data(&self, info: &DataInfo) -> Result<(), StoreError> {
-
+impl Base<DataInfo> for Store {
+    fn save(&self, info: &DataInfo) -> Result<(), StoreError> {
         let (bk, bv) = match &info.body {
             Body::None          => {
                 (BODY_NONE.to_string(), None)
@@ -60,6 +59,37 @@ impl Store {
         Ok(())
     }
 
+    // Find an item or items
+    fn find(&self, id: &Id) -> Result<Vec<DataInfo>, StoreError> {
+        let results = data
+            .filter(service_id.eq(id.to_string()))
+            .select((service_id, object_index, body_kind, body_value, previous, signature))
+            .load::<DataFields>(&self.conn)?;
+
+        let mut v = vec![];
+
+        for r in &results {
+            v.push(Self::parse_data(r)?);
+        }
+
+        Ok(v)
+    }
+
+    fn load(&self) -> Result<Vec<DataInfo>, StoreError> {
+        unimplemented!()
+    }
+
+    fn delete(&self, info: &DataInfo) -> Result<(), StoreError> {
+
+        diesel::delete(data).filter(signature.eq(info.signature.to_string()))
+            .execute(&self.conn)?;
+
+        Ok(())
+    }
+}
+
+impl Store {
+
     fn parse_data(v: &DataFields) -> Result<DataInfo, StoreError> {
         let (r_id, r_index, r_body_kind, r_body, r_previous, r_signature) = v;
 
@@ -96,28 +126,7 @@ impl Store {
         Ok(Some(p))
     }
 
-    pub fn load_service_data(&self, id: &Id) -> Result<Vec<DataInfo>, StoreError>  {
-        let results = data
-            .filter(service_id.eq(id.to_string()))
-            .select((service_id, object_index, body_kind, body_value, previous, signature))
-            .load::<DataFields>(&self.conn)?;
 
-        let mut v = vec![];
-
-        for r in &results {
-            v.push(Self::parse_data(r)?);
-        }
-
-        Ok(v)
-    }
-
-    pub fn delete_data(&self, sig: &Signature) -> Result<(), StoreError> {
-
-        diesel::delete(data).filter(signature.eq(sig.to_string()))
-            .execute(&self.conn)?;
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -157,16 +166,16 @@ mod test {
         };
 
         // Check no matching service exists
-        assert_eq!(0, store.load_service_data(&id).unwrap().len());
+        assert_eq!(0, store.load::<DataInfo>(&id).unwrap().len());
 
         // Store data
-        store.save_data(&d).unwrap();
-        assert_eq!(Some(&d), store.load_data(&d.signature).unwrap().as_ref());
-        assert_eq!(vec![d.clone()], store.load_service_data(&id).unwrap());
+        store.save::<DataInfo>(&d).unwrap();
+        //assert_eq!(Some(&d), store.load::<DataInfo>(&d.signature).unwrap().as_ref());
+        assert_eq!(vec![d.clone()], store.load::<DataInfo>(&id).unwrap());
 
         // Delete data
         store.delete_data(&d.signature).unwrap();
-        assert_eq!(0, store.load_service_data(&id).unwrap().len());
+        assert_eq!(0, store.load::<DataInfo>(&id).unwrap().len());
     }
 
 }

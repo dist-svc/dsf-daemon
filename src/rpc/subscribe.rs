@@ -54,7 +54,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             // TODO: lookup replicas in distributed database?
 
             // Fetch known replicas
-            let replicas = self.replicas().find(&id);
+            let replicas = self.replicas().find(&id)?;
 
             // Build peer search across known replicas
             let mut searches = Vec::with_capacity(replicas.len());

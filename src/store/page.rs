@@ -3,15 +3,15 @@ use diesel::prelude::*;
 
 use dsf_core::prelude::*;
 
-use super::{Store, StoreError};
+use super::{Store, StoreError, Base};
 
 use crate::store::schema::object::dsl::*;
 
 pub type PageFields = (String, Vec<u8>, Option<String>, String);
 
-impl Store {
-    pub fn save_page(&self, page: &Page) -> Result<(), StoreError> {
-
+impl Base<Page> for Store {
+    // Store an item
+    fn save(&self, page: &Page) -> Result<(), StoreError> {
         let sig = match &page.signature {
             Some(v) => signature.eq(v.to_string()),
             None => return Err(StoreError::MissingSignature),
@@ -47,6 +47,41 @@ impl Store {
         Ok(())
     }
 
+    // Find an item or items
+    fn find(&self, id: &Id) -> Result<Vec<Page>, StoreError> {
+        let results = object
+            .filter(service_id.eq(id.to_string()))
+            .select((service_id, raw_data, previous, signature))
+            .load::<PageFields>(&self.conn)?;
+
+        let (_r_id, r_raw, _r_previous, _r_signature) = &results[0];
+
+        let v = Page::decode_pages(&r_raw, |_id| None ).unwrap();
+
+        Ok(v)
+    }
+
+    // Load all items
+    fn load(&self) -> Result<Vec<Page>, StoreError> {
+        unimplemented!()
+    }
+
+    // Delete an item
+    fn delete(&self, page: &Page) -> Result<(), StoreError> {
+        let sig = match page.signature {
+            Some(v) => v,
+            None => return Err(StoreError::MissingSignature),
+        };
+
+        diesel::delete(object).filter(signature.eq(sig.to_string()))
+        .execute(&self.conn)?;
+
+        Ok(())
+    }
+}
+
+impl Store {
+
     pub fn load_page(&self, sig: &Signature) -> Result<Option<Page>, StoreError>  {
         let results = object
             .filter(signature.eq(sig.to_string()))
@@ -62,27 +97,6 @@ impl Store {
         let mut v = Page::decode_pages(&r_raw, |_id| None ).unwrap();
 
         Ok(Some(v.remove(0)))
-    }
-
-    pub fn load_service_pages(&self, svc_id: &Id) -> Result<Vec<Page>, StoreError>  {
-        let results = object
-            .filter(service_id.eq(svc_id.to_string()))
-            .select((service_id, raw_data, previous, signature))
-            .load::<PageFields>(&self.conn)?;
-
-        let (_r_id, r_raw, _r_previous, _r_signature) = &results[0];
-
-        let v = Page::decode_pages(&r_raw, |_id| None ).unwrap();
-
-        Ok(v)
-    }
-
-    pub fn delete_page(&self, sig: &Signature) -> Result<(), StoreError> {
-
-        diesel::delete(object).filter(signature.eq(sig.to_string()))
-            .execute(&self.conn)?;
-
-        Ok(())
     }
 }
 
@@ -118,9 +132,9 @@ mod test {
         assert_eq!(None, store.load_page(&sig).unwrap());
 
         // Store data
-        store.save_page(&page).unwrap();
+        store.save::<Page>(&page).unwrap();
         assert_eq!(Some(&page), store.load_page(&sig).unwrap().as_ref());
-        assert_eq!(vec![page.clone()], store.load_service_pages(&s.id()).unwrap());
+        assert_eq!(vec![page.clone()], store.load::<Page>(&s.id()).unwrap());
 
         // Delete data
         store.delete_page(&sig).unwrap();

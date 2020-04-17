@@ -8,13 +8,14 @@ use chrono::NaiveDateTime;
 use dsf_core::prelude::*;
 use dsf_rpc::{ServiceInfo, ServiceState};
 
-use super::{Store, StoreError, to_dt, from_dt};
+use super::{Store, StoreError, Base, to_dt, from_dt};
 
 type ServiceFields = (String, i32, String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<NaiveDateTime>, i32, i32, bool);
 
-impl Store {
+impl Base<ServiceInfo> for Store {
 
-    pub fn save_service(&self, info: &ServiceInfo) -> Result<(), StoreError> {
+    // Store an item
+    fn save(&self, info: &ServiceInfo) -> Result<(), StoreError> {
         use crate::store::schema::services::dsl::*;
 
         let pri_key = info.private_key.map(|v| private_key.eq(v.to_string()) );
@@ -53,9 +54,54 @@ impl Store {
                 .execute(&self.conn)?;
         }
 
+        Ok(())
+    }
+
+    // Find an item or items
+    fn find(&self, id: &Id) -> Result<Vec<ServiceInfo>, StoreError> {
+        use crate::store::schema::services::dsl::*;
+
+        let results = services
+            .filter(service_id.eq(id.to_string()))
+            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .load::<ServiceFields>(&self.conn)?;
+
+        let mut v = vec![];
+        for r in &results {
+            v.push(Self::parse_service(r)?);
+        }
+
+        Ok(v)
+    }
+
+    // Load all items
+    fn load(&self) -> Result<Vec<ServiceInfo>, StoreError> {
+        use crate::store::schema::services::dsl::*;
+
+        let results = services
+            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .load::<ServiceFields>(&self.conn)?;
+
+        let mut v = vec![];
+        for r in &results {
+            v.push(Self::parse_service(r)?);
+        }
+
+        Ok(v)
+    }
+
+    fn delete(&self, info: &ServiceInfo) -> Result<(), StoreError> {
+        use crate::store::schema::services::dsl::*;
+
+        diesel::delete(services).filter(service_id.eq(info.id.to_string()))
+            .execute(&self.conn)?;
 
         Ok(())
     }
+}
+
+
+impl Store {
 
     fn parse_service(v: &ServiceFields) -> Result<ServiceInfo, StoreError> {
         let (r_id, r_index, r_state, r_pub_key, r_pri_key, r_sec_key, r_pp, r_rp, r_upd, r_subs, r_reps, r_original) = v;
@@ -80,48 +126,6 @@ impl Store {
         };
 
         Ok(s)
-    }
-
-    pub fn load_service(&self, id: &Id) -> Result<Option<ServiceInfo>, StoreError> {
-        use crate::store::schema::services::dsl::*;
-
-        let results = services
-            .filter(service_id.eq(id.to_string()))
-            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
-            .load::<ServiceFields>(&self.conn)?;
-
-        if results.len() == 0 {
-            return Ok(None)
-        }
-
-        let s = Self::parse_service(&results[0])?;
-
-        Ok(Some(s))
-    }
-
-    pub fn load_services(&self) -> Result<Vec<ServiceInfo>, StoreError> {
-        use crate::store::schema::services::dsl::*;
-
-        let results = services
-            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
-            .load::<ServiceFields>(&self.conn)?;
-
-        let mut v = vec![];
-
-        for r in &results {
-            v.push(Self::parse_service(r)?);
-        }
-
-        Ok(v)
-    }
-
-    pub fn delete_service(&self, id: &Id) -> Result<(), StoreError> {
-        use crate::store::schema::services::dsl::*;
-
-        diesel::delete(services).filter(service_id.eq(id.to_string()))
-            .execute(&self.conn)?;
-
-        Ok(())
     }
 }
 
@@ -170,19 +174,19 @@ mod test {
         };
 
         // Check no matching service exists
-        assert_eq!(None, store.load_service(&s.id).unwrap());
+        assert_eq!(None, store.load::<ServiceInfo>(&s.id).unwrap());
 
         // Store service
-        store.save_service(&s).unwrap();
-        assert_eq!(Some(&s), store.load_service(&s.id).unwrap().as_ref());
+        store.save::<ServiceInfo>(&s).unwrap();
+        assert_eq!(Some(&s), store.load::<ServiceInfo>(&s.id).unwrap().as_ref());
 
         // update service
         s.subscribers = 0;
-        store.save_service(&s).unwrap();
-        assert_eq!(Some(&s), store.load_service(&s.id).unwrap().as_ref());
+        store.save::<ServiceInfo>(&s).unwrap();
+        assert_eq!(Some(&s), store.load::<ServiceInfo>(&s.id).unwrap().as_ref());
 
         // Delete service
-        store.delete_service(&s.id).unwrap();
-        assert_eq!(None, store.load_service(&s.id).unwrap());
+        store.delete::<ServiceInfo>(&s.id).unwrap();
+        assert_eq!(None, store.load::<ServiceInfo>(&s.id).unwrap());
     }
 }

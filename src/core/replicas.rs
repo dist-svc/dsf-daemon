@@ -5,6 +5,7 @@ use std::time::SystemTime;
 use dsf_core::prelude::*;
 use dsf_rpc::replica::ReplicaInfo;
 
+use crate::error::Error;
 use crate::store::Store;
 
 
@@ -62,7 +63,11 @@ impl ReplicaManager {
 
 
     // Find replicas for a given service
-    pub fn find(&self, _service_id: &Id) -> Vec<ReplicaInst> {
+    pub fn find(&self, _service_id: &Id) -> Result<Vec<ReplicaInst>, Error> {
+        let store = self.store.lock().unwrap();
+
+        //let replicas = store.load_replicas();
+
         unimplemented!()
     }
 

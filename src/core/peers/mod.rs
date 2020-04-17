@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use dsf_core::prelude::*;
 
-use crate::store::Store;
+use crate::store::{Store, Base};
 
 pub mod info;
 pub use info::{Peer, PeerInfo, PeerAddress, PeerState};
@@ -60,7 +60,7 @@ impl PeerManager {
 
             let info = PeerInfo::new(id, address, state, *index, None);
 
-            if let Err(e) = store.save_peer(&info) {
+            if let Err(e) = store.save(&info) {
                 error!("Error writing peer {} to db: {:?}", id, e);
             }
 
@@ -99,7 +99,7 @@ impl PeerManager {
         for (id, inst) in peers.iter() {
             let info = inst.info();
 
-            if let Err(e) = store.save_peer(&info) {
+            if let Err(e) = store.save(&info) {
                 error!("Error writing peer {} to db: {:?}", id, e);
             }
         }
@@ -111,7 +111,7 @@ impl PeerManager {
         let store = self.store.lock().unwrap();
         let mut index = self.index.lock().unwrap();
 
-        let peer_info = match store.load_peers() {
+        let peer_info: Vec<PeerInfo> = match store.load() {
             Ok(v) => v,
             Err(e) => {
                 error!("Error listing files: {:?}", e);

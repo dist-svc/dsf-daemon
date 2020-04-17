@@ -36,6 +36,20 @@ fn from_dt(n: &NaiveDateTime) -> SystemTime {
     dt.into()
 }
 
+pub trait Base<Item> {
+    // Store an item
+    fn save(&self, item: &Item) -> Result<(), StoreError>;
+
+    // Find an item or items
+    fn find(&self, id: &Id) -> Result<Vec<Item>, StoreError>;
+
+    // Load all items
+    fn load(&self) -> Result<Vec<Item>, StoreError>;
+
+    // Delete an item
+    fn delete(&self, item: &Item) -> Result<(), StoreError>;
+}
+
 impl Store {
     /// Create or connect to a store with the provided filename
     pub fn new(path: &str) -> Result<Self, StoreError> {
@@ -170,7 +184,7 @@ impl Store {
 
         // Ensure the page has been written
         if let None = self.load_page(&page.signature.unwrap())? {
-            self.save_page(page)?;
+            self.save(page)?;
         }
 
         // Setup identity values
