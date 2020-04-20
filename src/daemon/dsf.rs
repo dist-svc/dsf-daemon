@@ -14,12 +14,8 @@ use tracing::{Level, span};
 
 use crate::core::peers::{Peer, PeerManager};
 use crate::core::services::{ServiceManager};
-
-// TODO: these are all pretty much functionally the same
-// Should probably refactor to minimize duplication
 use crate::core::replicas::{ReplicaManager};
 use crate::core::subscribers::{SubscriberManager};
-use crate::core::subscriptions::{SubscriptionManager};
 use crate::core::data::{DataManager};
 
 use crate::io::Connector;
@@ -44,9 +40,6 @@ pub struct Dsf<C> {
 
     /// Service manager
     services: ServiceManager,
-
-    /// Subscription manager
-    subscriptions: SubscriptionManager,
 
     /// Subscriber manager
     subscribers: SubscriberManager,
@@ -82,10 +75,10 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         //let store = Arc::new(Mutex::new(Store::new(&config.database_file)?));
         let peers = PeerManager::new(store.clone());
         let services = ServiceManager::new(store.clone());
-        let subscriptions = SubscriptionManager::new(store.clone());
-        let subscribers = SubscriberManager::new(store.clone());
         let replicas = ReplicaManager::new(store.clone());
         let data = DataManager::new(store.clone());
+
+        let subscribers = SubscriberManager::new();
 
 
         let id = service.id();
@@ -105,7 +98,6 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             peers,
             services,
             
-            subscriptions,
             subscribers,
             replicas,
             data,
@@ -143,10 +135,6 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
     pub(crate) fn subscribers(&mut self) -> SubscriberManager {
         self.subscribers.clone()
-    }
-
-    pub(crate) fn subscriptions(&mut self) -> SubscriptionManager {
-        self.subscriptions.clone()
     }
 
     pub(crate) fn data(&mut self) -> DataManager {

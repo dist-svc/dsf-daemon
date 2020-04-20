@@ -83,7 +83,8 @@ impl Store {
             last_updated TEXT, 
             subscribers INTEGER NOT NULL, 
             replicas INTEGER NOT NULL,
-            original BOOLEAN NOT NULL
+            original BOOLEAN NOT NULL,
+            subscribed BOOLEAN NOT NULL
         );").execute(&self.conn)?;
 
         sql_query("CREATE TABLE peers (

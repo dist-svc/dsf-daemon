@@ -1,5 +1,6 @@
 
 
+use std::time::SystemTime;
 
 use futures::future::join_all;
 
@@ -8,7 +9,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 use dsf_core::net;
 use dsf_core::types::{Error as CoreError};
-use dsf_rpc::{SubscribeOptions, SubscribeInfo};
+use dsf_rpc::{SubscribeOptions, SubscriptionInfo};
 
 use crate::error::Error;
 use crate::core::services::ServiceState;
@@ -21,7 +22,7 @@ use crate::io;
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
     // Subscribe to data from a given service
-    pub async fn subscribe(&mut self, options: SubscribeOptions) -> Result<SubscribeInfo, Error> { 
+    pub async fn subscribe(&mut self, options: SubscribeOptions) -> Result<Vec<SubscriptionInfo>, Error> { 
 
         let span = span!(Level::DEBUG, "subscribe");
         let _enter = span.enter();
@@ -94,7 +95,8 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
         // Fetch the known service from the service list
         let service_arc = self.services().find(&id).unwrap();
         let mut service = service_arc.write().unwrap();
-        let mut count = 0;
+        
+        let mut subscription_info = vec![];
         
         for r in &subscribe_responses {
             
@@ -115,7 +117,13 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                         r.info.active = true;
                     });
 
-                    count += 1;
+                    subscription_info.push(SubscriptionInfo {
+                        peer_id: response.from.clone(),
+                        service_id: service_id.clone(),
+                        updated: Some(SystemTime::now()),
+                        expiry: None,
+                    });
+
                 },
                 net::ResponseKind::Status(net::Status::InvalidRequest) => {
                     debug!("[DSF ({:?})] Subscription denied from: {:?}", own_id, response.from);
@@ -126,7 +134,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             }
         }
 
-        if count > 0 {
+        if subscription_info.len() > 0 {
             info!("[DSF ({:?})] Subscription complete, updating service state", own_id);
             service.update(|s| {
                 if s.state == ServiceState::Located {
@@ -138,7 +146,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             return Err(Error::Core(CoreError::NoReplicasFound))
         }
 
-        Ok(SubscribeInfo{count})
+        Ok(subscription_info)
 
     }
 }

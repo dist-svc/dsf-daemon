@@ -20,6 +20,7 @@ table! {
         subscribers -> Integer,
         replicas -> Integer,
         original -> Bool,
+        subscribed -> Bool,
     }
 }
 
@@ -55,6 +56,16 @@ table! {
 
 table! {
     subscriptions (service_id, peer_id) {
+        service_id -> Text,
+        peer_id -> Text,
+
+        last_updated -> Nullable<Timestamp>,
+        expiry -> Nullable<Timestamp>,
+    }
+}
+
+table! {
+    subscribers (service_id, peer_id) {
         service_id -> Text,
         peer_id -> Text,
 

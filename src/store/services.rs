@@ -10,7 +10,7 @@ use dsf_rpc::{ServiceInfo, ServiceState};
 
 use super::{Store, StoreError, Base, to_dt, from_dt};
 
-type ServiceFields = (String, i32, String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<NaiveDateTime>, i32, i32, bool);
+type ServiceFields = (String, i32, String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<NaiveDateTime>, i32, i32, bool, bool);
 
 impl Base<ServiceInfo> for Store {
 
@@ -38,6 +38,7 @@ impl Base<ServiceInfo> for Store {
             subscribers.eq(info.subscribers as i32),
             replicas.eq(info.replicas as i32),
             original.eq(info.origin),
+            subscribed.eq(info.subscribed),
         );
 
         let r = services.filter(service_id.eq(info.id.to_string()))
@@ -63,7 +64,7 @@ impl Base<ServiceInfo> for Store {
 
         let results = services
             .filter(service_id.eq(id.to_string()))
-            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original, subscribed))
             .load::<ServiceFields>(&self.conn)?;
 
         let mut v = vec![];
@@ -79,7 +80,7 @@ impl Base<ServiceInfo> for Store {
         use crate::store::schema::services::dsl::*;
 
         let results = services
-            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original))
+            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original, subscribed))
             .load::<ServiceFields>(&self.conn)?;
 
         let mut v = vec![];
@@ -104,7 +105,7 @@ impl Base<ServiceInfo> for Store {
 impl Store {
 
     fn parse_service(v: &ServiceFields) -> Result<ServiceInfo, StoreError> {
-        let (r_id, r_index, r_state, r_pub_key, r_pri_key, r_sec_key, r_pp, r_rp, r_upd, r_subs, r_reps, r_original) = v;
+        let (r_id, r_index, r_state, r_pub_key, r_pri_key, r_sec_key, r_pp, r_rp, r_upd, r_subs, r_reps, r_original, r_subscribed) = v;
 
         let s = ServiceInfo {
             id: Id::from_str(r_id)?,
@@ -123,6 +124,7 @@ impl Store {
             subscribers: *r_subs as usize,
             replicas: *r_reps as usize,
             origin: *r_original,
+            subscribed: *r_subscribed,
         };
 
         Ok(s)

@@ -60,6 +60,7 @@ impl ServiceInst {
             replicas: 0,
             subscribers: 0,
             origin: service.is_origin(),
+            subscribed: false,
         }
     }
 

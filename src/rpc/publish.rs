@@ -88,7 +88,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             let req = net::Request::new(self.id(), net::RequestKind::PushData(service_id, vec![page]), Flags::default());
             
             let subscriber_manager = self.subscribers();
-            let addresses: Vec<_> = subscriber_manager.find(&service_id)?.iter().map(|(_id, s)| {
+            let addresses: Vec<_> = subscriber_manager.find(&service_id)?.iter().map(|(s)| {
                 s.peer.address()
             }).collect();
 

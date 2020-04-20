@@ -191,10 +191,12 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
                 let mut service = service.write().unwrap();
 
+                // TODO: should we verify who this is coming from prior to applying the update?
+
                 // TODO: update subscription information here
-                self.subscriptions().update_fn(&service_id, &peer.id(), |inst| {
-                    // inst.info.updated = SystemTime::now()
-                    // inst.info.expiry = SystemTime::now().add(Duration::from_secs(3600));
+                self.subscribers().update_fn(&service_id, &peer.id(), |inst| {
+                    inst.info.updated = Some(SystemTime::now());
+                    inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
                 });
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
