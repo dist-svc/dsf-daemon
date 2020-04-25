@@ -189,15 +189,17 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                     }
                 };
 
-                let mut service = service.write().unwrap();
+                let _service = service.write().unwrap();
 
-                // TODO: should we verify who this is coming from prior to applying the update?
+                // TODO: verify this is coming from an active upstream subscriber
 
-                // TODO: update subscription information here
-                self.subscribers().update_fn(&service_id, &peer.id(), |inst| {
+                // TODO: update subscriber count?
+
+                // TODO: update peer subscription information here
+                self.subscribers().update_peer(&service_id, &peer.id(), |inst| {
                     inst.info.updated = Some(SystemTime::now());
                     inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
-                });
+                }).unwrap();
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             },

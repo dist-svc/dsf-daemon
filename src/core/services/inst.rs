@@ -10,10 +10,6 @@ use dsf_core::options::Options;
 use dsf_rpc::service::{ServiceInfo, ServiceState};
 
 
-use crate::core::peers::Peer;
-
-use super::SubscriptionInfo;
-
 #[derive(Debug, Serialize, Deserialize, Queryable)]
 pub struct ServiceInst {
     pub(crate) service: Service,
@@ -62,57 +58,6 @@ impl ServiceInst {
             origin: service.is_origin(),
             subscribed: false,
         }
-    }
-
-    #[cfg(nope)]
-    pub(crate) fn add_data(&mut self, page: &Page) -> Result<(), DsfError> {
-        // Validate page (assuming sig has been pre-verified)
-        self.service.validate_page(page)?;
-
-        if let Some(raw) = page.raw() {
-            debug!("Using raw data object");
-            self.data.push(Data::from(&raw[..]));
-
-        } else {
-            debug!("Encoding data object");
-            // Encode base object for storage
-            let mut b: Base = page.into();
-            let mut d = vec![0u8; 4096];
-            let n = b.encode(None, None, &mut d)?;
-
-            self.data.push(Data::from(&d[..n]));
-        }
-
-        self.changed = true;
-
-        Ok(())
-    }
-
-    #[cfg(nope)]
-    pub(crate) fn get_data(&self, n: usize) -> impl Iterator<Item=Page> + '_ {
-        let public_key = self.service.public_key();
-        let secret_key = self.service.secret_key();
-
-        (&self.data).iter().rev().take(n)
-            .filter_map(move |v| {
-            let (b, _n) = match Base::parse(&v.0, |_id| Some(public_key), |_id| secret_key ) {
-                Ok(b) => b,
-                Err(e) => {
-                    error!("Error fetching data object: {:?}", e);
-                    return None
-                }
-            };
-
-            let p: Page = match b.try_into() {
-                Ok(p) => p,
-                Err(e) => {
-                    error!("Error converting data object: {:?}", e);
-                    return None
-                }
-            };
-
-            Some(p)
-        })
     }
 
     /// Publish a service, creating a new primary page
@@ -200,62 +145,10 @@ impl ServiceInst {
         Ok(changed)
     }
 
-    #[cfg(nope)]
-    pub(crate) fn sync_replicas(&mut self, replicas: &[Replica]) {
-        use std::collections::hash_map::Entry::{Vacant, Occupied};
-        info!("syncing {} replicas", replicas.len());
-
-        for r in replicas {
-            match self.replicas.entry(r.id) {
-                Vacant(v) => {
-                    v.insert(r.clone());
-                },
-                Occupied(mut o) => {
-                    let o = o.get_mut();
-                    if o.version < r.version {
-                        o.version = r.version;
-                        o.issued = r.issued;
-                        o.expiry = r.expiry;
-                        o.active = r.active;
-                    }
-                }
-            }
-        }
-    }
 
     pub fn update<F>(&mut self, f: F)
     where F: Fn(&mut ServiceInst) {
         (f)(self);
-        self.changed = true;
-    }
-
-    #[cfg(nope)]
-    pub(crate) fn update_replica<F>(&mut self, id: Id, f: F)
-    where F: Fn(&mut Replica) {
-        use std::collections::hash_map::Entry::{Occupied};
-
-        if let Occupied(mut o) = self.replicas.entry(id) {
-            f(o.get_mut());
-        }
-
-    }
-
-    #[cfg(nope)]
-    pub(crate) fn update_subscription(&mut self, _id: Id, peer: Peer, updated: SystemTime, expiry: SystemTime) {
-        use std::collections::hash_map::Entry::{Vacant, Occupied};
-
-        match self.subscribers.entry(peer.id()) {
-            Vacant(v) => {
-                v.insert(SubscriptionInfo{ peer, updated, expiry });
-            },
-            Occupied(mut o) => {
-                let mut s = o.get_mut();
-                // TODO: check bounds here
-                s.expiry = expiry;
-                s.updated = updated;
-            }
-        }
-
         self.changed = true;
     }
 

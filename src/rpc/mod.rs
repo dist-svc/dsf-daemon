@@ -112,10 +112,6 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             DebugCommands::Bootstrap => {
                 self.bootstrap().await.map(|_| { ResponseKind::None })?
             },
-            _ => {
-                error!("unsupported debug command: {:?}", req);
-                ResponseKind::Unrecognised
-            }
         };
 
         Ok(res)

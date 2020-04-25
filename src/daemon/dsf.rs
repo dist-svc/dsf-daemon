@@ -75,9 +75,9 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         //let store = Arc::new(Mutex::new(Store::new(&config.database_file)?));
         let peers = PeerManager::new(store.clone());
         let services = ServiceManager::new(store.clone());
-        let replicas = ReplicaManager::new(store.clone());
         let data = DataManager::new(store.clone());
 
+        let replicas = ReplicaManager::new();
         let subscribers = SubscriberManager::new();
 
 

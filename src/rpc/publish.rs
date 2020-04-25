@@ -13,6 +13,8 @@ use crate::daemon::Dsf;
 use crate::error::Error;
 use crate::io;
 
+use crate::core::subscribers::SubscriptionKind;
+
 
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
     /// Register a locally known service
@@ -87,9 +89,14 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             // TODO: send data to subscribers
             let req = net::Request::new(self.id(), net::RequestKind::PushData(service_id, vec![page]), Flags::default());
             
-            let subscriber_manager = self.subscribers();
-            let addresses: Vec<_> = subscriber_manager.find(&service_id)?.iter().map(|(s)| {
-                s.peer.address()
+            let subscriptions = self.subscribers().find(&service_id)?;
+
+            let addresses: Vec<_> = subscriptions.iter().filter_map(|s| {
+                if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
+                    self.peers().find(peer_id).map(|p| p.address() )
+                } else {
+                    None
+                }
             }).collect();
 
             (info, addresses, req)

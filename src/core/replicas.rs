@@ -1,13 +1,10 @@
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use dsf_core::prelude::*;
 use dsf_rpc::replica::ReplicaInfo;
-
-use crate::error::Error;
-use crate::store::Store;
-
 
 #[derive(Clone, Debug)]
 pub struct ReplicaInst {
@@ -32,8 +29,8 @@ impl From<Page> for ReplicaInst {
 
             //peer: None,
             issued: page.issued(),
-            updated: SystemTime::now(),
             expiry: page.expiry(),
+            updated: SystemTime::now(),
 
             active: false,
         };
@@ -44,55 +41,59 @@ impl From<Page> for ReplicaInst {
 
 #[derive(Clone)]
 pub struct ReplicaManager {
-    store: Arc<Mutex<Store>>
+    store: Arc<Mutex<HashMap<Id, Vec<ReplicaInst>>>>
 }
 
 impl ReplicaManager {
-    pub fn new(store: Arc<Mutex<Store>>) -> Self {
-        // Create replica manager instance
-        let mut m = ReplicaManager{
-            store,
-        };
-
-        // Load existing replicas from database
-        m.load();
-
-        // Return replica manager
-        m
+    /// Create a new replica manager
+    pub fn new() -> Self {
+        ReplicaManager{
+            store: Arc::new(Mutex::new(HashMap::new()))
+        }
     }
 
 
-    // Find replicas for a given service
-    pub fn find(&self, _service_id: &Id) -> Result<Vec<ReplicaInst>, Error> {
-        let store = self.store.lock().unwrap();
+    /// Find replicas for a given service
+    pub fn find(&self, service_id: &Id) -> Vec<ReplicaInst> {
+        let mut store = self.store.lock().unwrap();
 
-        //let replicas = store.load_replicas();
+        let v = store.entry(service_id.clone()).or_insert(vec![]);
 
+        v.clone()
+    }
+
+    /// Create or update a given replica instance
+    pub fn create_or_update(&self, service_id: &Id, peer_id: &Id, page: &Page) {
+        let mut store = self.store.lock().unwrap();
+        let replicas = store.entry(service_id.clone()).or_insert(vec![]);
+        let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
+
+        match replica {
+            Some(r) => {
+                *r = ReplicaInst::from(page.clone())
+            }, None => {
+                let r = ReplicaInst::from(page.clone());
+                replicas.push(r);
+            }
+        }
+    }
+
+    /// Update a specified replica
+    pub fn update_replica<F: Fn(&mut ReplicaInst)>(&self, service_id: &Id, peer_id: &Id, f: F) -> Result<(), ()> {
+        let mut store = self.store.lock().unwrap();
+        let replicas = store.entry(service_id.clone()).or_insert(vec![]);
+        let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
+
+        if let Some(mut r) = replica {
+            f(&mut r);
+        }
+
+        Ok(())
+    }
+
+    /// Remove a specified replica
+    pub fn remove(&self, _service_id: &Id, _peer_id: &Id) -> Result<Self, ()> {
         unimplemented!()
-    }
-
-    // Update a specified replica
-    pub fn update(&self, replica: &ReplicaInst) -> Result<Self, ()> {
-        unimplemented!()
-    }
-
-    pub fn update_fn<F: Fn(&mut ReplicaInst)>(&self, service_id: &Id, peer_id: &Id, f: F) -> Result<(), ()> {
-        unimplemented!()
-    }
-
-    // Remove a specified replica
-    pub fn remove(&self, replica: &ReplicaInst) -> Result<Self, ()> {
-        unimplemented!()
-    }
-
-    // Sync replicas for a given service
-    pub fn sync(&self, _service_id: &Id, replicas: &[ReplicaInst]) {
-        unimplemented!()
-    }
-
-
-    fn load(&mut self) {
-
     }
 }
 

@@ -12,8 +12,6 @@ use dsf_core::service::Subscriber;
 
 pub use dsf_rpc::service::{ServiceInfo, ServiceState};
 
-use super::peers::Peer;
-
 use crate::store::{Store, Base as _};
 
 pub mod inst;
@@ -27,14 +25,6 @@ pub use data::Data;
 pub struct ServiceManager {
     pub(crate) services: Arc<Mutex<HashMap<Id, Arc<RwLock<ServiceInst>>>>>,
     store: Arc<Mutex<Store>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct SubscriptionInfo {
-    pub(crate) peer: Peer,
-
-    pub(crate) updated: SystemTime,
-    pub(crate) expiry: SystemTime,
 }
 
 impl ServiceManager {
@@ -60,7 +50,7 @@ impl ServiceManager {
         let id = service.id();
 
         // Create a service instance wrapper
-        let mut inst = ServiceInst{
+        let inst = ServiceInst{
             service, state,
             index: services.len(),
             last_updated: updated,
@@ -94,13 +84,6 @@ impl ServiceManager {
             Some(v) => v,
             None => return None,
         };
-
-        let lockable = match service.try_write() {
-            Ok(_l) => true,
-            Err(_e) => false,
-        };
-
-        trace!("FIND id: {:?} lockable: {:?}", id, lockable);
 
         Some(service.clone())
     }

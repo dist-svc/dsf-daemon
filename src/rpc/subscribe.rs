@@ -9,11 +9,10 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 use dsf_core::net;
 use dsf_core::types::{Error as CoreError};
-use dsf_rpc::{SubscribeOptions, SubscriptionInfo};
+use dsf_rpc::{SubscribeOptions, SubscriptionInfo, SubscriptionKind};
 
 use crate::error::Error;
 use crate::core::services::ServiceState;
-use crate::core::replicas::ReplicaInst;
 
 use crate::daemon::Dsf;
 use crate::io;
@@ -55,7 +54,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             // TODO: lookup replicas in distributed database?
 
             // Fetch known replicas
-            let replicas = self.replicas().find(&id)?;
+            let replicas = self.replicas().find(&id);
 
             // Build peer search across known replicas
             let mut searches = Vec::with_capacity(replicas.len());
@@ -113,12 +112,12 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                     debug!("[DSF ({:?})] Subscription ack from: {:?}", own_id, response.from);
 
                     // Update replica status
-                    self.replicas().update_fn(&service_id, &response.from, |r| {
+                    self.replicas().update_replica(&service_id, &response.from, |r| {
                         r.info.active = true;
-                    });
+                    }).unwrap();
 
                     subscription_info.push(SubscriptionInfo {
-                        peer_id: response.from.clone(),
+                        kind: SubscriptionKind::Peer(response.from.clone()),
                         service_id: service_id.clone(),
                         updated: Some(SystemTime::now()),
                         expiry: None,
