@@ -37,7 +37,7 @@ fn test_manager() {
 
     let d = TempDir::new("/tmp/").unwrap(); 
 
-    let mut config = Options::default();
+    let config = Options::default();
     let db_file = format!("{}/dsf-test.db", d.path().to_str().unwrap());
     let store = Arc::new(Mutex::new(Store::new(&db_file).unwrap()));
     let mut mux = MockConnector::new();
@@ -211,10 +211,10 @@ fn test_manager() {
         let service_inst = dsf.services().find(&info.id).unwrap();
         let service_inst = service_inst.write().unwrap();
 
-        let subscribers = dsf.subscriptions().find(&info.id).unwrap();
+        let subscribers = dsf.subscribers().find(&info.id).unwrap();
 
-        assert_eq!(subscribers.len(), 1);
-        let _subscriber = subscribers.get(&s4.id()).expect("subscriber entry not found for service");
+        assert_eq!(subscribers.len(), 1, "No subscribers found");
+        let _subscriber = subscribers.iter().find(|s| s.info.service_id == info.id.clone() ).expect("subscriber entry not found for service");
 
 
         info!("Publishes data to subscribers");

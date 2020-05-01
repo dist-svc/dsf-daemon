@@ -12,10 +12,10 @@ use super::{Store, StoreError, Base, to_dt, from_dt};
 
 type ServiceFields = (String, i32, String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<NaiveDateTime>, i32, i32, bool, bool);
 
-impl Base<ServiceInfo> for Store {
+impl Store {
 
     // Store an item
-    fn save(&self, info: &ServiceInfo) -> Result<(), StoreError> {
+    pub fn save_service(&self, info: &ServiceInfo) -> Result<(), StoreError> {
         use crate::store::schema::services::dsl::*;
 
         let pri_key = info.private_key.map(|v| private_key.eq(v.to_string()) );
@@ -59,7 +59,7 @@ impl Base<ServiceInfo> for Store {
     }
 
     // Find an item or items
-    fn find(&self, id: &Id) -> Result<Vec<ServiceInfo>, StoreError> {
+    pub fn find_service(&self, id: &Id) -> Result<Option<ServiceInfo>, StoreError> {
         use crate::store::schema::services::dsl::*;
 
         let results = services
@@ -72,11 +72,11 @@ impl Base<ServiceInfo> for Store {
             v.push(Self::parse_service(r)?);
         }
 
-        Ok(v)
+        Ok(v.get(0).map(|v| v.clone()))
     }
 
     // Load all items
-    fn load(&self) -> Result<Vec<ServiceInfo>, StoreError> {
+    pub fn load_services(&self) -> Result<Vec<ServiceInfo>, StoreError> {
         use crate::store::schema::services::dsl::*;
 
         let results = services
@@ -91,7 +91,7 @@ impl Base<ServiceInfo> for Store {
         Ok(v)
     }
 
-    fn delete(&self, info: &ServiceInfo) -> Result<(), StoreError> {
+    pub fn delete_service(&self, info: &ServiceInfo) -> Result<(), StoreError> {
         use crate::store::schema::services::dsl::*;
 
         diesel::delete(services).filter(service_id.eq(info.id.to_string()))
@@ -99,10 +99,6 @@ impl Base<ServiceInfo> for Store {
 
         Ok(())
     }
-}
-
-
-impl Store {
 
     fn parse_service(v: &ServiceFields) -> Result<ServiceInfo, StoreError> {
         let (r_id, r_index, r_state, r_pub_key, r_pri_key, r_sec_key, r_pp, r_rp, r_upd, r_subs, r_reps, r_original, r_subscribed) = v;
@@ -151,9 +147,9 @@ mod test {
         let store = Store::new("/tmp/dsf-test-1.db")
             .expect("Error opening store");
 
-        store.delete().unwrap();
+        store.drop_tables().unwrap();
 
-        store.create().unwrap();
+        store.create_tables().unwrap();
 
         let (public_key, private_key) = new_pk().unwrap();
         let secret_key = new_sk().unwrap();
@@ -173,22 +169,23 @@ mod test {
             subscribers: 14,
             replicas: 12,
             origin: true,
-        };
+            subscribed: false, 
+       };
 
         // Check no matching service exists
-        assert_eq!(None, store.load::<ServiceInfo>(&s.id).unwrap());
+        assert_eq!(None, store.find_service(&s.id).unwrap());
 
         // Store service
-        store.save::<ServiceInfo>(&s).unwrap();
-        assert_eq!(Some(&s), store.load::<ServiceInfo>(&s.id).unwrap().as_ref());
+        store.save_service(&s).unwrap();
+        assert_eq!(Some(&s), store.find_service(&s.id).unwrap().as_ref());
 
         // update service
         s.subscribers = 0;
-        store.save::<ServiceInfo>(&s).unwrap();
-        assert_eq!(Some(&s), store.load::<ServiceInfo>(&s.id).unwrap().as_ref());
+        store.save_service(&s).unwrap();
+        assert_eq!(Some(&s), store.find_service(&s.id).unwrap().as_ref());
 
         // Delete service
-        store.delete::<ServiceInfo>(&s.id).unwrap();
-        assert_eq!(None, store.load::<ServiceInfo>(&s.id).unwrap());
+        store.delete_service(&s).unwrap();
+        assert_eq!(None, store.find_service(&s.id).unwrap());
     }
 }

@@ -8,7 +8,7 @@ use dsf_core::{types::Id, page::Page};
 pub use dsf_rpc::data::DataInfo;
 
 use crate::error::Error;
-use crate::store::{Store, Base as _};
+use crate::store::{Store};
 
 #[derive(Clone)]
 pub struct DataManager {
@@ -38,7 +38,7 @@ impl DataManager {
         let store = self.store.lock().unwrap();
 
         // Load data info
-        let info: Vec<DataInfo> = store.find(service_id)?;
+        let info: Vec<DataInfo> = store.find_data(service_id)?;
 
         // Load associated raw pages
         let mut data = Vec::with_capacity(info.len());
@@ -55,10 +55,10 @@ impl DataManager {
         let store = self.store.lock().unwrap();
 
         // Store data object
-        store.save(info)?;
+        store.save_data(info)?;
 
         // Store backing raw object
-        store.save(page)?;
+        store.save_page(page)?;
 
         Ok(())
     }

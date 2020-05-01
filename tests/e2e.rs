@@ -125,7 +125,10 @@ fn end_to_end() {
 
             let (_id, _config, client, _handle) = &mut daemons[i];
 
-            client.locate(&service_handle.id.clone()).await.expect("search failed");
+            client.locate(rpc::LocateOptions{
+                id: service_handle.id.clone(),
+                local_only: false,
+            }).await.expect("search failed");
 
             bar.inc(1);
         }

@@ -19,10 +19,10 @@ type PeerFields = (String, String, Option<String>, String, String, Option<NaiveD
 
 use crate::store::schema::peers::dsl::*;
 
-impl Base<PeerInfo> for Store {
+impl Store {
 
     // Store an item with it's associated page
-    fn save(&self, info: &PeerInfo) -> Result<(), StoreError> {
+    pub fn save_peer(&self, info: &PeerInfo) -> Result<(), StoreError> {
          
         let (s, k) = match info.state {
             PeerState::Known(k) => {
@@ -71,13 +71,13 @@ impl Base<PeerInfo> for Store {
     }
 
     // Find an item or items
-    fn find(&self, id: &Id) -> Result<Vec<PeerInfo>, StoreError> {
+    pub fn find_peer(&self, id: &Id) -> Result<Option<PeerInfo>, StoreError> {
         let results = peers
             .filter(peer_id.eq(id.to_string()))
             .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
             .load::<PeerFields>(&self.conn)?;
 
-        let p = results.iter().filter_map(|v| {
+        let p: Vec<PeerInfo> = results.iter().filter_map(|v| {
             match Self::parse_peer(v) {
                 Ok(i) => Some(i),
                 Err(e) => {
@@ -87,11 +87,15 @@ impl Base<PeerInfo> for Store {
             }
         } ).collect();
 
-        Ok(p)
+        if p.len() != 1 {
+            return Ok(None)
+        }
+
+        Ok(p.get(0).map(|v| v.clone() ))
     }
 
     // Load all items
-    fn load(&self) -> Result<Vec<PeerInfo>, StoreError> {
+    pub fn load_peers(&self) -> Result<Vec<PeerInfo>, StoreError> {
         let results = peers
             .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
             .load::<PeerFields>(&self.conn)?;
@@ -109,16 +113,13 @@ impl Base<PeerInfo> for Store {
         Ok(p)
     }
 
-    fn delete(&self, peer: &PeerInfo) -> Result<(), StoreError> {
+    pub fn delete_peer(&self, peer: &PeerInfo) -> Result<(), StoreError> {
         diesel::delete(peers).filter(peer_id.eq(peer.id.to_string()))
             .execute(&self.conn)?;
 
         Ok(())
     }
-}
 
-
-impl Store {
     fn parse_peer(v: &PeerFields) -> Result<PeerInfo, StoreError> {
 
         let (r_id, r_state, r_pk, r_address, r_address_mode, r_seen, r_sent, r_recv, r_blocked) = v;
@@ -151,14 +152,6 @@ impl Store {
         Ok(p)
     }
 
-
-    pub fn delete_peer(&self, id: &Id) -> Result<(), StoreError> {
-
-        diesel::delete(peers).filter(peer_id.eq(id.to_string()))
-            .execute(&self.conn)?;
-
-        Ok(())
-    }
 }
 
 
@@ -182,9 +175,9 @@ mod test {
         let store = Store::new("/tmp/dsf-test-2.db")
             .expect("Error opening store");
 
-        store.delete().unwrap();
+        store.drop_tables().unwrap();
 
-        store.create().unwrap();
+        store.create_tables().unwrap();
 
         let (public_key, _private_key) = new_pk().unwrap();
         let _secret_key = new_sk().unwrap();
@@ -202,20 +195,20 @@ mod test {
         };
 
         // Check no matching service exists
-        assert_eq!(None, store.load::<PeerInfo>(&p.id).unwrap());
+        assert_eq!(None, store.find_peer(&p.id).unwrap());
 
         // Store service
-        store.save::<PeerInfo>(&p).unwrap();
-        assert_eq!(Some(&p), store.load::<PeerInfo>(&p.id).unwrap().as_ref());
+        store.save_peer(&p).unwrap();
+        assert_eq!(Some(&p), store.find_peer(&p.id).unwrap().as_ref());
 
         // update service
         p.sent = 16;
-        store.save::<PeerInfo>(&p).unwrap();
-        assert_eq!(Some(&p), store.load::<PeerInfo>(&p.id).unwrap().as_ref());
+        store.save_peer(&p).unwrap();
+        assert_eq!(Some(&p), store.find_peer(&p.id).unwrap().as_ref());
 
         // Delete service
-        store.delete_peer(&p.id).unwrap();
-        assert_eq!(None, store.load::<PeerInfo>(&p.id).unwrap());
+        store.delete_peer(&p).unwrap();
+        assert_eq!(None, store.find_peer(&p.id).unwrap());
     }
 
 }

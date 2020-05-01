@@ -12,7 +12,7 @@ use dsf_core::service::Subscriber;
 
 pub use dsf_rpc::service::{ServiceInfo, ServiceState};
 
-use crate::store::{Store, Base as _};
+use crate::store::{Store};
 
 pub mod inst;
 pub use inst::{ServiceInst};
@@ -173,16 +173,16 @@ impl ServiceManager {
     pub(crate) fn sync_inst(&mut self, inst: &ServiceInst) {
         let store = self.store.lock().unwrap();
 
-        if let Err(e) = store.save(&inst.info()) {
+        if let Err(e) = store.save_service(&inst.info()) {
             error!("Error writing service instance {}: {:?}", inst.id(), e);
         }
 
         if let Some(p) = &inst.primary_page {
-            store.save(p).unwrap();
+            store.save_page(p).unwrap();
         }
 
         if let Some(p) = &inst.replica_page {
-            store.save(p).unwrap();
+            store.save_page(p).unwrap();
         }
     }
 
@@ -214,16 +214,16 @@ impl ServiceManager {
                 continue
             }
 
-            if let Err(e) = store.save(&i.info()) {
+            if let Err(e) = store.save_service(&i.info()) {
                 error!("Error writing service instance {}: {:?}", id, e);
             }
 
             if let Some(p) = &i.primary_page {
-                store.save(p).unwrap();
+                store.save_page(p).unwrap();
             }
 
             if let Some(p) = &i.replica_page {
-                store.save(p).unwrap();
+                store.save_page(p).unwrap();
             }
     
 
@@ -236,7 +236,7 @@ impl ServiceManager {
         let store = self.store.lock().unwrap();
         let mut services = self.services.lock().unwrap();
 
-        let service_info: Vec<ServiceInfo> = store.load().unwrap();
+        let service_info = store.load_services().unwrap();
 
         debug!("Loading {} services from database", service_info.len());
 

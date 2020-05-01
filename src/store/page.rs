@@ -3,15 +3,15 @@ use diesel::prelude::*;
 
 use dsf_core::prelude::*;
 
-use super::{Store, StoreError, Base};
+use super::{Store, StoreError};
 
 use crate::store::schema::object::dsl::*;
 
 pub type PageFields = (String, Vec<u8>, Option<String>, String);
 
-impl Base<Page> for Store {
+impl Store {
     // Store an item
-    fn save(&self, page: &Page) -> Result<(), StoreError> {
+    pub fn save_page(&self, page: &Page) -> Result<(), StoreError> {
         let sig = match &page.signature {
             Some(v) => signature.eq(v.to_string()),
             None => return Err(StoreError::MissingSignature),
@@ -48,7 +48,7 @@ impl Base<Page> for Store {
     }
 
     // Find an item or items
-    fn find(&self, id: &Id) -> Result<Vec<Page>, StoreError> {
+    pub fn find_pages(&self, id: &Id) -> Result<Vec<Page>, StoreError> {
         let results = object
             .filter(service_id.eq(id.to_string()))
             .select((service_id, raw_data, previous, signature))
@@ -61,26 +61,13 @@ impl Base<Page> for Store {
         Ok(v)
     }
 
-    // Load all items
-    fn load(&self) -> Result<Vec<Page>, StoreError> {
-        unimplemented!()
-    }
-
     // Delete an item
-    fn delete(&self, page: &Page) -> Result<(), StoreError> {
-        let sig = match page.signature {
-            Some(v) => v,
-            None => return Err(StoreError::MissingSignature),
-        };
-
+    pub fn delete_page(&self, sig: &Signature) -> Result<(), StoreError> {
         diesel::delete(object).filter(signature.eq(sig.to_string()))
         .execute(&self.conn)?;
 
         Ok(())
     }
-}
-
-impl Store {
 
     pub fn load_page(&self, sig: &Signature) -> Result<Option<Page>, StoreError>  {
         let results = object
@@ -105,9 +92,10 @@ mod test {
     extern crate tracing_subscriber;
     use tracing_subscriber::{FmtSubscriber, filter::LevelFilter};
 
-    use super::Store;
+    use super::{Store};
 
     use dsf_rpc::{DataInfo};
+    use dsf_core::page::Page;
     use dsf_core::service::{Service, Publisher};
     use dsf_core::crypto::{new_pk, new_sk, hash, pk_sign};
 
@@ -118,8 +106,8 @@ mod test {
         let store = Store::new("/tmp/dsf-test-4.db")
             .expect("Error opening store");
 
-        store.delete().unwrap();
-        store.create().unwrap();
+        store.drop_tables().unwrap();
+        store.create_tables().unwrap();
 
         let mut s = Service::default();
 
@@ -132,12 +120,12 @@ mod test {
         assert_eq!(None, store.load_page(&sig).unwrap());
 
         // Store data
-        store.save::<Page>(&page).unwrap();
+        store.save_page(&page).unwrap();
         assert_eq!(Some(&page), store.load_page(&sig).unwrap().as_ref());
-        assert_eq!(vec![page.clone()], store.load::<Page>(&s.id()).unwrap());
+        assert_eq!(vec![page.clone()], store.find_pages(&s.id()).unwrap());
 
         // Delete data
-        store.delete_page(&sig).unwrap();
+        store.delete_page(&page.signature.unwrap()).unwrap();
         assert_eq!(None, store.load_page(&sig).unwrap());
     }
 }

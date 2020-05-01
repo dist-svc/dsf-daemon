@@ -36,12 +36,13 @@ fn from_dt(n: &NaiveDateTime) -> SystemTime {
     dt.into()
 }
 
+#[cfg(nope)]
 pub trait Base<Item> {
     // Store an item
     fn save(&self, item: &Item) -> Result<(), StoreError>;
 
-    // Find an item or items
-    fn find(&self, id: &Id) -> Result<Vec<Item>, StoreError>;
+    // Find an item or items by associated service
+    fn find(&self, service_id: &Id) -> Result<Vec<Item>, StoreError>;
 
     // Load all items
     fn load(&self) -> Result<Vec<Item>, StoreError>;
@@ -59,7 +60,7 @@ impl Store {
 
         let s = Self{conn};
 
-        let _ = s.create();
+        let _ = s.create_tables();
 
         Ok(s)
     }
@@ -67,7 +68,7 @@ impl Store {
     /// Initialise the store
     /// 
     /// This is called automatically in the `new` function
-    pub fn create(&self) -> Result<(), StoreError> {
+    pub fn create_tables(&self) -> Result<(), StoreError> {
         sql_query("CREATE TABLE services (
             service_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
             service_index TEGER NOT NULL, 
@@ -132,7 +133,7 @@ impl Store {
         Ok(())
     }
 
-    pub fn delete(&self) -> Result<(), StoreError> {
+    pub fn drop_tables(&self) -> Result<(), StoreError> {
         sql_query("DROP TABLE IF EXISTS services;").execute(&self.conn)?;
 
         sql_query("DROP TABLE IF EXISTS peers;").execute(&self.conn)?;
@@ -185,7 +186,7 @@ impl Store {
 
         // Ensure the page has been written
         if let None = self.load_page(&page.signature.unwrap())? {
-            self.save(page)?;
+            self.save_page(page)?;
         }
 
         // Setup identity values
