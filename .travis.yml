@@ -8,6 +8,12 @@ cache:
 services:
 - docker
 
+addons:
+  apt:
+    packages: libsqlite3-dev
+  homebrew:
+    packages: sqlite
+
 env:
 - RUSTC_WRAPPER=sccache
 
@@ -23,7 +29,9 @@ jobs:
     os: windows
 
   allow_failures:
-  - os: windows
+  - env: TARGET=i686-pc-windows-msvc
+  - env: TARGET=armv7-unknown-linux-gnueabihf
+
 
 install:
 - cargo fetch
