@@ -18,7 +18,7 @@ jobs:
     
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental }}
     
     strategy:
@@ -26,18 +26,22 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
             output: dsfd
             use_cross: false
             experimental: false
           - target: armv7-unknown-linux-gnueabihf 
+            os: ubuntu-latest
             output: dsfd
             use_cross: true
             experimental: false
           - target: x86_64-apple-darwin
+            os: macos-latest
             output: dsfd
             use_cross: false
             experimental: true
           - target: i686-pc-windows-msvc
+            os: windows-latest
             output: dsfd.exe
             use_cross: false
             experimental: true
@@ -54,6 +58,7 @@ jobs:
         use-cross: ${{ matrix.use_cross }}
         command: build
         args: --target ${{ matrix.target }}
-
+    outputs:
+      bin: target/${{ matrix.target }}/release/${{ matrix.output }}
       
    
