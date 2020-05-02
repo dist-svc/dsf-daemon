@@ -6,7 +6,7 @@ use diesel::prelude::*;
 use dsf_core::prelude::*;
 use dsf_rpc::{DataInfo};
 
-use super::{Store, StoreError};
+use super::{Store, StoreError, Base};
 
 use crate::store::schema::data::dsl::*;
 
@@ -18,7 +18,6 @@ const BODY_ENCRYPTED: &str = "encrypted";
 
 impl Store {
     pub fn save_data(&self, info: &DataInfo) -> Result<(), StoreError> {
-
         let (bk, bv) = match &info.body {
             Body::None          => {
                 (BODY_NONE.to_string(), None)
@@ -60,43 +59,8 @@ impl Store {
         Ok(())
     }
 
-    fn parse_data(v: &DataFields) -> Result<DataInfo, StoreError> {
-        let (r_id, r_index, r_body_kind, r_body, r_previous, r_signature) = v;
-
-        let body = match (r_body_kind.as_ref(), r_body) {
-            (BODY_NONE, _) => Body::None,
-            (BODY_CLEARTEXT, Some(b)) => Body::Cleartext(b.to_vec()),
-            (BODY_ENCRYPTED, Some(b)) => Body::Encrypted(b.to_vec()),
-            _ => unreachable!(),
-        };
-
-        let d = DataInfo {
-            service: Id::from_str(r_id)?,
-            index: *r_index as u16,
-            body,
-            previous: r_previous.as_ref().map(|v| Signature::from_str(&v).unwrap() ),
-            signature: Signature::from_str(r_signature)?,
-        };
-
-        Ok(d)
-    }
-
-    pub fn load_data(&self, sig: &Signature) -> Result<Option<DataInfo>, StoreError>  {
-        let results = data
-            .filter(signature.eq(sig.to_string()))
-            .select((service_id, object_index, body_kind, body_value, previous, signature))
-            .load::<DataFields>(&self.conn)?;
-
-        if results.len() == 0 {
-            return Ok(None)
-        }
-
-        let p = Self::parse_data(&results[0])?;
-
-        Ok(Some(p))
-    }
-
-    pub fn load_service_data(&self, id: &Id) -> Result<Vec<DataInfo>, StoreError>  {
+    // Find an item or items
+    pub fn find_data(&self, id: &Id) -> Result<Vec<DataInfo>, StoreError> {
         let results = data
             .filter(service_id.eq(id.to_string()))
             .select((service_id, object_index, body_kind, body_value, previous, signature))
@@ -118,14 +82,52 @@ impl Store {
 
         Ok(())
     }
+
+    pub fn load_data(&self, sig: &Signature) -> Result<Option<DataInfo>, StoreError>  {
+        let results = data
+            .filter(signature.eq(sig.to_string()))
+            .select((service_id, object_index, body_kind, body_value, previous, signature))
+            .load::<DataFields>(&self.conn)?;
+
+        if results.len() == 0 {
+            return Ok(None)
+        }
+
+        let p = Self::parse_data(&results[0])?;
+
+        Ok(Some(p))
+    }
+
+    fn parse_data(v: &DataFields) -> Result<DataInfo, StoreError> {
+        let (r_id, r_index, r_body_kind, r_body, r_previous, r_signature) = v;
+
+        let body = match (r_body_kind.as_ref(), r_body) {
+            (BODY_NONE, _) => Body::None,
+            (BODY_CLEARTEXT, Some(b)) => Body::Cleartext(b.to_vec()),
+            (BODY_ENCRYPTED, Some(b)) => Body::Encrypted(b.to_vec()),
+            _ => unreachable!(),
+        };
+
+        let d = DataInfo {
+            service: Id::from_str(r_id)?,
+            index: *r_index as u16,
+            body,
+            previous: r_previous.as_ref().map(|v| Signature::from_str(&v).unwrap() ),
+            signature: Signature::from_str(r_signature)?,
+        };
+
+        Ok(d)
+    }
+
 }
+
 
 #[cfg(test)]
 mod test {
     extern crate tracing_subscriber;
     use tracing_subscriber::{FmtSubscriber, filter::LevelFilter};
 
-    use super::Store;
+    use super::{Store};
 
     use dsf_rpc::{DataInfo};
     use dsf_core::base::Body;
@@ -138,9 +140,8 @@ mod test {
         let store = Store::new("/tmp/dsf-test-3.db")
             .expect("Error opening store");
 
-        store.delete().unwrap();
-
-        store.create().unwrap();
+        store.drop_tables().unwrap();
+        store.create_tables().unwrap();
 
         let (public_key, private_key) = new_pk().unwrap();
         let _secret_key = new_sk().unwrap();
@@ -157,16 +158,16 @@ mod test {
         };
 
         // Check no matching service exists
-        assert_eq!(0, store.load_service_data(&id).unwrap().len());
+        assert_eq!(0, store.find_data(&id).unwrap().len());
 
         // Store data
         store.save_data(&d).unwrap();
-        assert_eq!(Some(&d), store.load_data(&d.signature).unwrap().as_ref());
-        assert_eq!(vec![d.clone()], store.load_service_data(&id).unwrap());
+        //assert_eq!(Some(&d), store.load::<DataInfo>(&d.signature).unwrap().as_ref());
+        assert_eq!(vec![d.clone()], store.find_data(&id).unwrap());
 
         // Delete data
         store.delete_data(&d.signature).unwrap();
-        assert_eq!(0, store.load_service_data(&id).unwrap().len());
+        assert_eq!(0, store.find_data(&id).unwrap().len());
     }
 
 }

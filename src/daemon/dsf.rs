@@ -9,13 +9,14 @@ use dsf_core::service::Publisher;
 use kad::prelude::*;
 
 use async_std::future::timeout;
-use async_std::task;
 
-use futures::future;
 use tracing::{Level, span};
 
 use crate::core::peers::{Peer, PeerManager};
 use crate::core::services::{ServiceManager};
+use crate::core::replicas::{ReplicaManager};
+use crate::core::subscribers::{SubscriberManager};
+use crate::core::data::{DataManager};
 
 use crate::io::Connector;
 use crate::store::Store;
@@ -24,8 +25,10 @@ use crate::error::Error;
 use super::Options;
 use super::dht::{Ctx, DhtAdaptor, dht_reducer};
 
+
 /// Re-export of Dht type used for DSF
 pub type Dht<C> = StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, Ctx>;
+
 
 #[derive(Clone)]
 pub struct Dsf<C> {
@@ -37,6 +40,16 @@ pub struct Dsf<C> {
 
     /// Service manager
     services: ServiceManager,
+
+    /// Subscriber manager
+    subscribers: SubscriberManager,
+
+    /// Replica manager
+    replicas: ReplicaManager,
+
+    /// Data manager
+    data: DataManager,
+
 
     /// Distributed Database
     dht: StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, Ctx>,
@@ -62,6 +75,11 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         //let store = Arc::new(Mutex::new(Store::new(&config.database_file)?));
         let peers = PeerManager::new(store.clone());
         let services = ServiceManager::new(store.clone());
+        let data = DataManager::new(store.clone());
+
+        let replicas = ReplicaManager::new();
+        let subscribers = SubscriberManager::new();
+
 
         let id = service.id();
 
@@ -76,8 +94,14 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         // Create DSF object
         let s = Self {
             service,
+
             peers,
             services,
+            
+            subscribers,
+            replicas,
+            data,
+
             dht,
             dht_store,
             store,
@@ -105,6 +129,18 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         self.services.clone()
     }
 
+    pub(crate) fn replicas(&mut self) -> ReplicaManager {
+        self.replicas.clone()
+    }
+
+    pub(crate) fn subscribers(&mut self) -> SubscriberManager {
+        self.subscribers.clone()
+    }
+
+    pub(crate) fn data(&mut self) -> DataManager {
+        self.data.clone()
+    }
+
     pub(crate) fn connector(&mut self) -> &mut C {
         &mut self.connector
     }
@@ -127,7 +163,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     }
 
     /// Store pages in the database at the provided ID
-    pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
+    pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<usize, Error> {
 
         let span = span!(Level::DEBUG, "store", "{}", self.id());
         let _enter = span.enter();
@@ -153,7 +189,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             Ok(n) => {
                 debug!("Store complete ({} peers)", n);
                 // TODO: use search results
-                Ok(())
+                Ok(n)
             },
             Err(e) => {
                 error!("Store failed: {:?}", e);
@@ -244,25 +280,30 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
         info!("DSF bootstrap ({} peers)", peers.len());
 
-        let mut handles = vec![];
+        //let mut handles = vec![];
 
         // Build peer connect requests
+        // TODO: switched to serial due to locking issue somewhere,
+        // however, it should be possible to execute this in parallel
+        let mut success = 0;
         for (id, p) in peers {
-            let timeout = Duration::from_secs(10).into();
-            let mut s = self.clone();
+            let timeout = Duration::from_millis(200).into();
+            let mut _s = self.clone();
 
-            let h = task::spawn(async move {
-                s.connect(dsf_rpc::ConnectOptions{address: p.address(), id: Some(id.clone()), timeout }).await
-            });
-
-            handles.push(h);
+            if let Ok(_) = self.connect(dsf_rpc::ConnectOptions{address: p.address(), id: Some(id.clone()), timeout }).await {
+                success += 1;
+            }
         }
 
         // We're not really worried about failures here
-        let _ = future::join_all(handles).await;
+        //let _ = timeout(Duration::from_secs(3), future::join_all(handles)).await;
+
+        info!("DSF bootstrap connect done (contacted {} peers)", success);
 
         // Run updates
         self.update(true).await?;
+
+        info!("DSF bootstrap update done");
 
         Ok(())
     }

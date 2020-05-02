@@ -12,10 +12,7 @@ use dsf_core::service::Subscriber;
 
 pub use dsf_rpc::service::{ServiceInfo, ServiceState};
 
-use super::peers::Peer;
-use super::data::DataInfo;
-
-use crate::store::Store;
+use crate::store::{Store};
 
 pub mod inst;
 pub use inst::{ServiceInst};
@@ -28,14 +25,6 @@ pub use data::Data;
 pub struct ServiceManager {
     pub(crate) services: Arc<Mutex<HashMap<Id, Arc<RwLock<ServiceInst>>>>>,
     store: Arc<Mutex<Store>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct SubscriptionInfo {
-    pub(crate) peer: Peer,
-
-    pub(crate) updated: SystemTime,
-    pub(crate) expiry: SystemTime,
 }
 
 impl ServiceManager {
@@ -54,25 +43,21 @@ impl ServiceManager {
     }
 
     /// Register a local service for tracking
-    pub fn register(&mut self, service: Service, page: &Page, state: ServiceState, updated: Option<SystemTime>) -> Result<Arc<RwLock<ServiceInst>>, DsfError> {
+    pub fn register(&mut self, service: Service, primary_page: &Page, state: ServiceState, updated: Option<SystemTime>) -> Result<Arc<RwLock<ServiceInst>>, DsfError> {
         let services = self.services.clone();
         let mut services = services.lock().unwrap();
 
         let id = service.id();
 
         // Create a service instance wrapper
-        let mut inst = ServiceInst{service, state,
+        let inst = ServiceInst{
+            service, state,
             index: services.len(),
             last_updated: updated,
-            primary_page: Some(page.clone()),
+            primary_page: Some(primary_page.clone()),
             replica_page: None,
-            data: Vec::new(),
-            replicas: HashMap::new(),
-            subscribers: HashMap::new(),
             changed: true,
         };
-
-        inst.add_data(page)?;
 
         // Write new instance to disk
         self.sync_inst(&inst);
@@ -99,13 +84,6 @@ impl ServiceManager {
             Some(v) => v,
             None => return None,
         };
-
-        let lockable = match service.try_write() {
-            Ok(_l) => true,
-            Err(_e) => false,
-        };
-
-        trace!("FIND id: {:?} lockable: {:?}", id, lockable);
 
         Some(service.clone())
     }
@@ -138,6 +116,7 @@ impl ServiceManager {
     }
 
     /// Fetch data for a given service
+    #[cfg(nope)]
     pub fn data(&self, id: &Id, n: usize) -> Result<Vec<DataInfo>, DsfError> {
         let service = match self.find(id) {
             Some(s) => s,
@@ -259,6 +238,8 @@ impl ServiceManager {
 
         let service_info = store.load_services().unwrap();
 
+        debug!("Loading {} services from database", service_info.len());
+
         for i in service_info {
             let primary_page = match i.primary_page {
                 Some(p) => {
@@ -274,8 +255,10 @@ impl ServiceManager {
                 store.load_page(&s).unwrap()
             }).flatten();
 
-            let service = Service::load(&primary_page).unwrap();            
+            let mut service = Service::load(&primary_page).unwrap();            
 
+            service.set_private_key(i.private_key);
+            service.set_secret_key(i.secret_key);
             
             // URGENT TODO: rehydrate other components here
             // TODO: maybe replicas and subscribers should not be stored against the service inst but in separate core modules?
@@ -287,12 +270,6 @@ impl ServiceManager {
                 last_updated: i.last_updated,
                 primary_page: Some(primary_page),
                 replica_page,
-
-                replicas: HashMap::new(),
-
-                subscribers: HashMap::new(),
-
-                data: vec![],
 
                 changed: false,
             };

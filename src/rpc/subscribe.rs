@@ -1,5 +1,6 @@
 
 
+use std::time::SystemTime;
 
 use futures::future::join_all;
 
@@ -7,10 +8,12 @@ use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 use dsf_core::net;
-use dsf_rpc::{SubscribeOptions, SubscribeInfo};
+use dsf_core::types::{Error as CoreError};
+use dsf_rpc::{SubscribeOptions, SubscriptionInfo, SubscriptionKind};
 
 use crate::error::Error;
 use crate::core::services::ServiceState;
+
 use crate::daemon::Dsf;
 use crate::io;
 
@@ -18,7 +21,7 @@ use crate::io;
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
     // Subscribe to data from a given service
-    pub async fn subscribe(&mut self, options: SubscribeOptions) -> Result<SubscribeInfo, Error> { 
+    pub async fn subscribe(&mut self, options: SubscribeOptions) -> Result<Vec<SubscriptionInfo>, Error> { 
 
         let span = span!(Level::DEBUG, "subscribe");
         let _enter = span.enter();
@@ -46,16 +49,21 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             let service_inst = service_arc.read().unwrap();
             let service_id = service_inst.id();
 
-            debug!("Service: {:?}", service_inst);
+            debug!("Service: {:?}", service_id);
 
-            // Build search across listed replicas
-            let mut searches = Vec::with_capacity(service_inst.replicas.len());
-            for (id, _r) in service_inst.replicas.iter() {
+            // TODO: lookup replicas in distributed database?
+
+            // Fetch known replicas
+            let replicas = self.replicas().find(&id);
+
+            // Build peer search across known replicas
+            let mut searches = Vec::with_capacity(replicas.len());
+            for inst in replicas.iter() {
                 let mut s = self.clone();
-                let id = id.clone();
+                let peer_id = inst.info.peer_id.clone();
 
                 searches.push(async move {
-                    s.lookup(&id).await
+                    s.lookup(&peer_id).await
                 });
             }
 
@@ -86,7 +94,8 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
         // Fetch the known service from the service list
         let service_arc = self.services().find(&id).unwrap();
         let mut service = service_arc.write().unwrap();
-        let mut count = 0;
+        
+        let mut subscription_info = vec![];
         
         for r in &subscribe_responses {
             
@@ -102,11 +111,18 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                 net::ResponseKind::Status(net::Status::Ok) => {
                     debug!("[DSF ({:?})] Subscription ack from: {:?}", own_id, response.from);
 
-                    service.update_replica(response.from, |mut r| {
-                        r.active = true;
+                    // Update replica status
+                    self.replicas().update_replica(&service_id, &response.from, |r| {
+                        r.info.active = true;
+                    }).unwrap();
+
+                    subscription_info.push(SubscriptionInfo {
+                        kind: SubscriptionKind::Peer(response.from.clone()),
+                        service_id: service_id.clone(),
+                        updated: Some(SystemTime::now()),
+                        expiry: None,
                     });
 
-                    count += 1;
                 },
                 net::ResponseKind::Status(net::Status::InvalidRequest) => {
                     debug!("[DSF ({:?})] Subscription denied from: {:?}", own_id, response.from);
@@ -117,7 +133,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             }
         }
 
-        if count > 0 {
+        if subscription_info.len() > 0 {
             info!("[DSF ({:?})] Subscription complete, updating service state", own_id);
             service.update(|s| {
                 if s.state == ServiceState::Located {
@@ -126,10 +142,10 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             });
         } else {
             warn!("[DSF ({:?})] Subscription failed, no viable replicas found", own_id);
-            return Err(Error::NoReplicasFound)
+            return Err(Error::Core(CoreError::NoReplicasFound))
         }
 
-        Ok(SubscribeInfo{count})
+        Ok(subscription_info)
 
     }
 }

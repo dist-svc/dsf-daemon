@@ -42,12 +42,14 @@ impl From<mpsc::SendError> for UnixError {
 pub struct UnixMessage {
     pub connection_id: u32,
     pub data: Bytes,
-    tx: Option<mpsc::Sender<UnixMessage>>,
+
+    sink: Option<mpsc::Sender<UnixMessage>>,
+    exit: Option<mpsc::Sender<()>>,
 }
 
 impl UnixMessage {
     fn new(connection_id: u32, data: Bytes) -> Self {
-        Self{connection_id, data, tx: None}
+        Self{connection_id, data, sink: None, exit: None}
     }
 
     /// Generate a response for an existing unix message
@@ -55,13 +57,20 @@ impl UnixMessage {
         Self{
             connection_id: self.connection_id,
             data,
-            tx: self.tx.clone(),
+            sink: self.sink.clone(),
+            exit: self.exit.clone(),
         }
     }
 
     pub(crate) async fn send(&self) -> Result<(), mpsc::SendError> {
-        let mut ch = self.tx.as_ref().unwrap().clone();
+        let mut ch = self.sink.as_ref().unwrap().clone();
         ch.send(self.clone()).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn close(&self) -> Result<(), mpsc::SendError> {
+        let mut ch = self.exit.as_ref().unwrap().clone();
+        ch.send(()).await?;
         Ok(())
     }
 }
@@ -74,16 +83,18 @@ impl PartialEq for UnixMessage {
 
 pub struct Unix {
     connections: Arc<Mutex<HashMap<u32, Connection>>>,
-    rx_stream: mpsc::Receiver<UnixMessage>,
+    rx_stream:  mpsc::Receiver<UnixMessage>,
 
-    _handle: JoinHandle<Result<(), UnixError>>,
+    handle: JoinHandle<Result<(), UnixError>>,
 }
 
 struct Connection {
     index: u32,
-    sink: mpsc::Sender<UnixMessage>,
 
-    _handle: JoinHandle<Result<(), UnixError>>,
+    sink: mpsc::Sender<UnixMessage>,
+    exit_sink: mpsc::Sender<()>,
+
+    handle: JoinHandle<Result<(), UnixError>>,
 }
 
 impl Unix {
@@ -100,6 +111,7 @@ impl Unix {
         let c = connections.clone();
         let (rx_sink, rx_stream) = mpsc::channel::<UnixMessage>(0);
 
+        // Create listening task
         let handle = task::spawn(async move {
             let mut incoming = listener.incoming();
 
@@ -108,6 +120,7 @@ impl Unix {
 
                 let conn = Connection::new(stream, index, rx_sink.clone());
 
+                trace!("connections lock");
                 c.lock().unwrap().insert(index, conn);
 
                 index += 1;
@@ -116,30 +129,37 @@ impl Unix {
             Ok(())
         }.instrument(span!(Level::TRACE, "UNIX", path)) );
 
-        Ok(Self{connections, rx_stream, _handle: handle})
+        Ok(Self{connections, rx_stream, handle})
     }
 
     /// Send a network message
-    pub async fn send(&mut self, msg: UnixMessage) -> Result<(), UnixError> {
+    pub async fn send(&mut self, msg: UnixMessage, close: bool) -> Result<(), UnixError> {
         // Sink must be cloned here so the connection lock can be dropped
         // before the await point, interestingly explicitly dropping doesn't
         // work, but, adding a scope does...
 
-        let mut sink: mpsc::Sender<UnixMessage> = {
+        let connection_id = msg.connection_id;
+
+        let (mut tx_sink, mut exit_sink) = {
            
+            trace!("response lock");
             let mut connections = self.connections.lock().unwrap();
             
-            let interface = match connections.get_mut(&msg.connection_id) {
+            let interface = match connections.get_mut(&connection_id) {
                 Some(v) => v,
                 None => return Err(UnixError::NoMatchingConnection),
             };
 
             debug!("send on interface: {}", interface.index);
 
-            interface.sink.clone()
+            (interface.sink.clone(), interface.exit_sink.clone())
         };
 
-        sink.send(msg).await?;
+        tx_sink.send(msg).await?;
+
+        if close {
+            exit_sink.send(()).await?;
+        }
 
         Ok(())
     }
@@ -149,49 +169,60 @@ impl Stream for Unix {
     type Item = UnixMessage;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Option<Self::Item>> {
-        #[cfg(feature = "profile")]
-        let _fg = ::flame::start_guard("unix::poll_next");
-
         Pin::new(&mut self.rx_stream).poll_next(ctx)
+    }
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        // TODO: how to stop tasks?
     }
 }
 
 impl Connection {
     fn new(unix_stream: UnixStream, index: u32, rx_sink: mpsc::Sender<UnixMessage>) -> Connection {
 
-        let mut unix_stream = unix_stream;
         let mut rx_sink = rx_sink;
 
         let (tx_sink, tx_stream) = mpsc::channel::<UnixMessage>(0);
         let tx = Some(tx_sink.clone());
 
-        let _handle: JoinHandle<Result<(), UnixError>> = task::spawn(async move {
-            debug!("new connection");
+        let (exit_sink, mut exit_stream) = mpsc::channel::<()>(0);
+        let exit = Some(exit_sink.clone());
+
+        let (mut unix_rx, mut unix_tx) = unix_stream.split();
+
+        let handle: JoinHandle<Result<(), UnixError>> = task::spawn(async move {
+            debug!("new UNIX task {}", index);
 
             let mut buff = vec![0u8; UNIX_BUFF_LEN];
             let mut tx_stream = tx_stream.fuse();
+            //let mut unix_rx = unix_rx.fuse();
 
             loop {
                 #[cfg(feature = "profile")]
                 let _fg = ::flame::start_guard("unix::tick");
 
                 select!{
+                    // Send outgoing messages
                     tx = tx_stream.next() => {
                         if let Some(tx) = tx {
                             trace!("unix tx: {:?}", tx.data);
-                            unix_stream.write(&tx.data).await?;
+                            unix_tx.write(&tx.data).await?;
                         }
                     },
-                    res = unix_stream.read(&mut buff).fuse() => {
+                    // Forward incoming messages
+                    res = unix_rx.read(&mut buff).fuse() => {
                         match res {
                             Ok(n) => {
-                                // Skip zero length messages
+                                // Exit on 0 length message
                                 if n == 0 {
-                                    continue
+                                    break
                                 }
 
                                 let mut u = UnixMessage::new(index, Bytes::copy_from_slice(&buff[..n]));
-                                u.tx = tx.clone();
+                                u.sink = tx.clone();
+                                u.exit = exit.clone();
 
                                 trace!("unix rx: {:?}", &u.data);
                                 rx_sink.send(u).await?;
@@ -201,16 +232,23 @@ impl Connection {
                                 break;
                             },
                         }
-                    }
+                    },
+                    // Handle the exit signal
+                    res = exit_stream.next() => {
+                        if let Some(r) = res {
+                            debug!("Received exit");
+                            break;
+                        }
+                    },
                 }
             }
 
-            trace!("connection closed {}", index);
+            debug!("task UNIX closed {}", index);
 
             Ok(())
         }.instrument(span!(Level::TRACE, "UNIX", index)) );
 
-        Connection{index, _handle, sink: tx_sink}
+        Connection{index, handle, sink: tx_sink, exit_sink}
     }
 }
 
@@ -246,7 +284,7 @@ mod test {
             assert_eq!(res, UnixMessage::new(0, data.clone()));
 
             // Server to client
-            unix.send(UnixMessage::new(0, data.clone())).await
+            unix.send(UnixMessage::new(0, data.clone()), false).await
                 .expect("Error sending message to client");
 
             let n = stream.read(&mut buff).await

@@ -37,7 +37,7 @@ fn test_manager() {
 
     let d = TempDir::new("/tmp/").unwrap(); 
 
-    let mut config = Options::default();
+    let config = Options::default();
     let db_file = format!("{}/dsf-test.db", d.path().to_str().unwrap());
     let store = Arc::new(Mutex::new(Store::new(&db_file).unwrap()));
     let mut mux = MockConnector::new();
@@ -189,7 +189,10 @@ fn test_manager() {
         transactions.append(&mut stores);
 
         mux.expect(transactions.clone());
-        dsf.register(rpc::RegisterOptions{service: rpc::ServiceIdentifier{id: Some(info.id.clone()), index: None}, no_replica: true}).await.expect("Registration error");
+        dsf.register(rpc::RegisterOptions{
+            service: rpc::ServiceIdentifier::id(info.id.clone()), 
+            no_replica: true 
+        }).await.expect("Registration error");
         mux.finalise();
 
         info!("Publishes data");
@@ -207,8 +210,11 @@ fn test_manager() {
 
         let service_inst = dsf.services().find(&info.id).unwrap();
         let service_inst = service_inst.write().unwrap();
-        assert_eq!(service_inst.subscribers.len(), 1);
-        let _subscriber = service_inst.subscribers.get(&s4.id()).expect("subscriber entry not found for service");
+
+        let subscribers = dsf.subscribers().find(&info.id).unwrap();
+
+        assert_eq!(subscribers.len(), 1, "No subscribers found");
+        let _subscriber = subscribers.iter().find(|s| s.info.service_id == info.id.clone() ).expect("subscriber entry not found for service");
 
 
         info!("Publishes data to subscribers");

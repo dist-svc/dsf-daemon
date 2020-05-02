@@ -1,10 +1,6 @@
-use std::collections::HashMap;
 
 use std::time::{SystemTime, Duration};
-use std::convert::TryInto;
 use std::ops::Add;
-
-
 
 use dsf_core::prelude::*;
 use dsf_core::service::{Subscriber, Publisher};
@@ -14,15 +10,10 @@ use dsf_core::options::Options;
 use dsf_rpc::service::{ServiceInfo, ServiceState};
 
 
-use crate::core::peers::Peer;
-use crate::core::replicas::Replica;
-
-use super::SubscriptionInfo;
-use super::data::Data;
-
 #[derive(Debug, Serialize, Deserialize, Queryable)]
 pub struct ServiceInst {
     pub(crate) service: Service,
+
     pub(crate) state: ServiceState,
     pub(crate) index: usize,
     pub(crate) last_updated: Option<SystemTime>,
@@ -35,14 +26,6 @@ pub struct ServiceInst {
     pub(crate) replica_page: Option<Page>,
 
     #[serde(skip)]
-    pub (crate) replicas: HashMap<Id, Replica>,
-
-    #[serde(skip)]
-    pub(crate) subscribers: HashMap<Id, SubscriptionInfo>,
-
-    pub(crate) data: Vec<Data>,
-
-    #[serde(skip)]
     pub(crate) changed: bool,
 }
 
@@ -50,6 +33,10 @@ pub struct ServiceInst {
 impl ServiceInst {
     pub(crate) fn id(&self) -> Id {
         self.service.id()
+    }
+
+    pub(crate) fn service(&mut self) -> &mut Service {
+        &mut self.service
     }
 
     pub(crate) fn info(&self) -> ServiceInfo {
@@ -63,62 +50,17 @@ impl ServiceInst {
             primary_page: self.primary_page.as_ref().map(|v| v.signature()).flatten(),
             replica_page: self.replica_page.as_ref().map(|v| v.signature()).flatten(),
             public_key: service.public_key(),
+            private_key: service.private_key(),
             secret_key: service.secret_key(),
-            replicas: self.replicas.len(),
-            subscribers: self.subscribers.len(),
+            // TODO: fix replica / subscriber info (split objects?)
+            replicas: 0,
+            subscribers: 0,
             origin: service.is_origin(),
+            subscribed: false,
         }
     }
 
-    pub(crate) fn add_data(&mut self, page: &Page) -> Result<(), DsfError> {
-        // Validate page (assuming sig has been pre-verified)
-        self.service.validate_page(page)?;
-
-        if let Some(raw) = page.raw() {
-            debug!("Using raw data object");
-            self.data.push(Data::from(&raw[..]));
-
-        } else {
-            debug!("Encoding data object");
-            // Encode base object for storage
-            let mut b: Base = page.into();
-            let mut d = vec![0u8; 4096];
-            let n = b.encode(None, None, &mut d)?;
-
-            self.data.push(Data::from(&d[..n]));
-        }
-
-        self.changed = true;
-
-        Ok(())
-    }
-
-    pub(crate) fn get_data(&self, n: usize) -> impl Iterator<Item=Page> + '_ {
-        let public_key = self.service.public_key();
-        let secret_key = self.service.secret_key();
-
-        (&self.data).iter().rev().take(n)
-            .filter_map(move |v| {
-            let (b, _n) = match Base::parse(&v.0, |_id| Some(public_key), |_id| secret_key ) {
-                Ok(b) => b,
-                Err(e) => {
-                    error!("Error fetching data object: {:?}", e);
-                    return None
-                }
-            };
-
-            let p: Page = match b.try_into() {
-                Ok(p) => p,
-                Err(e) => {
-                    error!("Error converting data object: {:?}", e);
-                    return None
-                }
-            };
-
-            Some(p)
-        })
-    }
-
+    /// Publish a service, creating a new primary page
     pub(crate) fn publish(&mut self, force_update: bool) -> Result<Page, DsfError> {
         // Check the private key exists for signing the primary page
         let _private_key = match self.service.private_key() {
@@ -157,6 +99,7 @@ impl ServiceInst {
         Ok(primary_page)
     }
 
+    /// Replicate a service, creating a new replica page
     pub(crate) fn replicate(&mut self, peer_service: &mut Service, force_update: bool) -> Result<Page, DsfError> {
         let mut version = 0;
 
@@ -193,59 +136,19 @@ impl ServiceInst {
         Ok(replica_page)
     }
 
-    pub(crate) fn sync_replicas(&mut self, replicas: &[Replica]) {
-        use std::collections::hash_map::Entry::{Vacant, Occupied};
-        info!("syncing {} replicas", replicas.len());
+    /// Apply an updated service page
+    pub(crate) fn apply_update(&mut self, page: &Page) -> Result<bool, DsfError> {
+        let changed = self.service.apply_primary(page)?;
 
-        for r in replicas {
-            match self.replicas.entry(r.id) {
-                Vacant(v) => {
-                    v.insert(r.clone());
-                },
-                Occupied(mut o) => {
-                    let o = o.get_mut();
-                    if o.version < r.version {
-                        o.version = r.version;
-                        o.issued = r.issued;
-                        o.expiry = r.expiry;
-                        o.active = r.active;
-                    }
-                }
-            }
-        }
+        // TODO: mark update required
+
+        Ok(changed)
     }
+
 
     pub fn update<F>(&mut self, f: F)
     where F: Fn(&mut ServiceInst) {
         (f)(self);
-        self.changed = true;
-    }
-
-    pub(crate) fn update_replica<F>(&mut self, id: Id, f: F)
-    where F: Fn(&mut Replica) {
-        use std::collections::hash_map::Entry::{Occupied};
-
-        if let Occupied(mut o) = self.replicas.entry(id) {
-            f(o.get_mut());
-        }
-
-    }
-
-    pub(crate) fn update_subscription(&mut self, _id: Id, peer: Peer, updated: SystemTime, expiry: SystemTime) {
-        use std::collections::hash_map::Entry::{Vacant, Occupied};
-
-        match self.subscribers.entry(peer.id()) {
-            Vacant(v) => {
-                v.insert(SubscriptionInfo{ peer, updated, expiry });
-            },
-            Occupied(mut o) => {
-                let mut s = o.get_mut();
-                // TODO: check bounds here
-                s.expiry = expiry;
-                s.updated = updated;
-            }
-        }
-
         self.changed = true;
     }
 

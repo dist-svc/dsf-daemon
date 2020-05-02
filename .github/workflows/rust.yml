@@ -32,7 +32,7 @@ jobs:
           - target: i686-pc-windows-msvc
             output: dsfd.exe
             use_cross: false 
-          - target: x86_64-apple-darwinu
+          - target: x86_64-apple-darwin
             output: dsfd
             use_cross: false 
 

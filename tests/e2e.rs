@@ -1,5 +1,7 @@
 use std::time::Duration;
 use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+use std::sync::{Arc, atomic::AtomicBool};
+
 
 extern crate futures;
 
@@ -53,6 +55,8 @@ fn end_to_end() {
         config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)];
         config.daemon_socket = format!("{}/dsf.sock", d);
 
+        let running = Arc::new(AtomicBool::new(true));
+
         // Create daemons
         info!("Creating daemons");
         let bar = ProgressBar::new(NUM_DAEMONS as u64);
@@ -65,8 +69,9 @@ fn end_to_end() {
             let mut e = Engine::new(c1).await.expect("Error creating engine");
 
             // Build and run daemon
+            let r = running.clone();
             let handle = task::spawn(async move {
-                e.run().await.unwrap();
+                e.run(r).await.unwrap();
             }.instrument(tracing::debug_span!("instance", "{}", addr)) );
 
             // Create client
@@ -122,6 +127,7 @@ fn end_to_end() {
 
             client.locate(rpc::LocateOptions{
                 id: service_handle.id.clone(),
+                local_only: false,
             }).await.expect("search failed");
 
             bar.inc(1);

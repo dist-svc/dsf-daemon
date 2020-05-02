@@ -83,6 +83,7 @@ pub struct Net {
 struct Binding {
     handle: JoinHandle<Result<(), NetError>>,
     sink: mpsc::Sender<NetMessage>,
+    exit: mpsc::Sender<()>,
     info: NetInfo,
 }
 
@@ -126,10 +127,12 @@ impl Net {
 
     /// Unbind from an existing interface
     pub async fn unbind(&mut self, interface: u32) -> Result<(), NetError> {
-        let _interface = match self.bindings.remove(&interface) {
+        let mut interface = match self.bindings.remove(&interface) {
             Some(v) => v,
             None => return Err(NetError::NoMatchingInterface),
         };
+
+        interface.exit.send(()).await?;
 
         Ok(())
     }
@@ -155,6 +158,8 @@ impl Net {
         let mut rx_sink = self.rx_sink.clone();
         let (tx_sink, mut tx_stream) = mpsc::channel::<NetMessage>(0);
 
+        let (exit_sink, mut exit_stream) = mpsc::channel::<()>(0);
+
         debug!("Starting UDP listener {}: {}", interface, address);
 
         let handle = task::spawn(async move {
@@ -162,11 +167,12 @@ impl Net {
 
             loop {
                 select! {
+                    // Handle incoming messages
                     res = socket.recv_from(&mut buff).fuse() => {
                         match res {
                             Ok((n, address)) => {
                                 let data = Bytes::copy_from_slice(&buff[..n]);
-                                event!(Level::TRACE, kind="UDP receive", address = %address, data = ?data);
+                                event!(Level::TRACE, kind="UDP receive", address = %address);
 
                                 let msg = NetMessage{
                                     interface,
@@ -181,14 +187,22 @@ impl Net {
                             },
                         }
                     },
+                    // Handle outgoing messages
                     res = tx_stream.next() => {
                         match res {
                             Some(d) => {
-                                event!(Level::TRACE, kind="UDP transmit", address = %d.address, data = ?d.data);
+                                event!(Level::TRACE, kind="UDP transmit", address = %d.address);
 
                                 socket.send_to(&d.data, &d.address).await?;
                             },
                             None => debug!("tx stream closed"),
+                        }
+                    },
+                    // Handle the exit signal
+                    res = exit_stream.next() => {
+                        if let Some(r) = res {
+                            debug!("Received exit");
+                            break;
                         }
                     },
                 }
@@ -197,7 +211,7 @@ impl Net {
             Ok(())
         }.instrument(span!(Level::TRACE, "UDP", interface, address=%address)) );
 
-        let binding = Binding{ handle, sink: tx_sink, info: NetInfo::new(address, NetKind::Udp) };
+        let binding = Binding{ handle, sink: tx_sink, exit: exit_sink, info: NetInfo::new(address, NetKind::Udp) };
 
         self.bindings.insert(interface, binding);
         self.index += 1;

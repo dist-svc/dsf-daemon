@@ -8,3 +8,6 @@ pub mod replicas;
 
 pub mod services;
 
+pub mod subscribers;
+
+

@@ -160,6 +160,7 @@ impl Wire {
         let req_id = resp.id;
 
         // Find pending request
+        trace!("pending request lock");
         let mut a = match self.requests.lock().unwrap().remove(&req_id) {
             Some(a) => a,
             None => {
@@ -238,7 +239,9 @@ impl Connector for WireConnector {
             let (tx, mut rx) = mpsc::channel(0);
 
             // Add response channel to map
+            trace!("new request lock");
             self.requests.lock().unwrap().insert(req_id, tx);
+            trace!("got new request lock");
 
             // Pass message to internal sink
             let mut sink = self.sink.clone();
@@ -255,21 +258,17 @@ impl Connector for WireConnector {
                 },
                 // TODO: this seems like it should be a retry point..?
                 Ok(None) => {
-                    error!("No response received");
+                    debug!("No response received");
                     Err(Error::Timeout)
                 },
                 Err(e) => {
-                    error!("Response error: {:?}", e);
+                    debug!("Response error: {:?}", e);
                     Err(Error::Timeout)
                 },
             };
 
             // Remove request from tracking
-            if let Err(e) = &res {
-                error!("Connection error: {:?}, removing {} from tracking", e, req_id);
-                self.requests.lock().unwrap().remove(&req_id);
-            }
-
+            self.requests.lock().unwrap().remove(&req_id);
 
             res
         }

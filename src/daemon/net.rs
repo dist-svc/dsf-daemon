@@ -1,5 +1,6 @@
 use std::time::{SystemTime, Duration};
 use std::ops::Add;
+use std::convert::TryFrom;
 use std::net::SocketAddr;
 
 use futures::prelude::*;
@@ -8,6 +9,7 @@ use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 use dsf_core::net;
+use dsf_core::service::Subscriber;
 
 use kad::prelude::*;
 
@@ -18,7 +20,7 @@ use crate::error::Error;
 use crate::daemon::dht::{Adapt, TryAdapt};
 
 use crate::core::peers::{Peer, PeerAddress, PeerState};
-
+use crate::core::data::{DataInfo};
 
 impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 {
@@ -74,13 +76,13 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
     // Internal function to send a request and await a response
     /// This MUST be used in place of self.connector.clone.request for correct system behaviour
-    pub(crate) async fn request(&mut self, address: Address, req: net::Request) -> Result<net::Response, Error> {
+    pub(crate) async fn request(&mut self, address: Address, req: net::Request, timeout: Duration) -> Result<net::Response, Error> {
         let req = req.clone();
 
         debug!("Sending request to: {:?} request: {:?}", address, &req);
 
         // Issue request and await response
-        let resp = self.connector().request(req.id, address.clone(), req, Duration::from_secs(10)).await?;
+        let resp = self.connector().request(req.id, address.clone(), req, timeout).await?;
         
         debug!("Received response from: {:?} request: {:?}", &address, &resp);
 
@@ -176,20 +178,28 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             net::RequestKind::Hello => {
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             },
-            net::RequestKind::Subscribe(id) => {
-                info!("Subscribe request from: {} for service: {}", from, id);
-                let service = match self.services().find(&id) {
+            net::RequestKind::Subscribe(service_id) => {
+                info!("Subscribe request from: {} for service: {}", from, service_id);
+                let service = match self.services().find(&service_id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
-                        error!("no service found (id: {})", id);
+                        error!("no service found (id: {})", service_id);
                         return Ok(net::ResponseKind::Status(net::Status::InvalidRequest));
                     }
                 };
 
-                let mut service = service.write().unwrap();
-                // TODO: pass subscription expiry time through here
-                service.update_subscription(id, peer, SystemTime::now(), SystemTime::now().add(Duration::from_secs(3600)));
+                let _service = service.write().unwrap();
+
+                // TODO: verify this is coming from an active upstream subscriber
+
+                // TODO: update subscriber count?
+
+                // TODO: update peer subscription information here
+                self.subscribers().update_peer(&service_id, &peer.id(), |inst| {
+                    inst.info.updated = Some(SystemTime::now());
+                    inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
+                }).unwrap();
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             },
@@ -225,8 +235,38 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
                 let mut service = service.write().unwrap();
 
+                
+
+                // TODO: check we-re subscribed to the service (otherwise we shouldn't accept this data)
+
                 // Store data against service
-                service.add_data(&data[0]).unwrap();
+                for p in &data {
+                    // Validate data against service
+                    if let Err(e) = service.service().validate_page(p) {
+                        // TODO: handle errors properly here
+                        error!("Error validating page: {:?}", e);
+                        continue;
+                    }
+
+                    if p.kind().is_page() {
+                        // Apply page to service
+                        if let Err(e) = service.apply_update(p) {
+                            error!("Error applying service update: {:?}", e);
+                        }
+                    }
+
+                    if p.kind().is_data() {
+                        // Store data
+                        if let Ok(info) = DataInfo::try_from(p) {
+                            self.data().store_data(&info, p).unwrap();
+                        };
+                    }
+
+                    
+                    
+                }
+
+                // TODO: update service with newly received data
                 self.services().sync_inst(&service);
 
                 info!("Data push complete");

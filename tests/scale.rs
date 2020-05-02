@@ -1,5 +1,6 @@
 use std::time::Duration;
 use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use rand::random;
 
@@ -60,6 +61,8 @@ fn scale(n: usize, level: LevelFilter) {
         config.database_file = format!("{}/dsf-scale.db", d);
         config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)];
 
+        let running = Arc::new(AtomicBool::new(true));
+
         // Create instances
         info!("Creating {} virtual daemon instances", n);
         let bar = ProgressBar::new(n as u64);
@@ -74,8 +77,9 @@ fn scale(n: usize, level: LevelFilter) {
             let net_addr = e.addrs()[0];
 
             // Build and run daemon
+            let r = running.clone();
             let handle = task::spawn(async move {
-                e.run().await.unwrap();
+                e.run(r).await.unwrap();
             }.instrument(tracing::debug_span!("instance", "{}", addr)) );
 
             // Create client

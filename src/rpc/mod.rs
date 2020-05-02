@@ -32,6 +32,9 @@ pub mod query;
 // Subscribe to a service
 pub mod subscribe;
 
+// 
+pub mod debug;
+
 
 impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 {
@@ -64,6 +67,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         match res {
             Ok(v) => Ok(v),
             Err(Error::Core(e)) => Ok(ResponseKind::Error(e)),
+            Err(Error::Timeout) => Ok(ResponseKind::Error(CoreError::Timeout)),
             Err(e) => {
                 error!("Unsupported RPC error: {:?}", e);
                 Ok(ResponseKind::Error(CoreError::Unknown))
@@ -83,9 +87,24 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         use rpc::*;
 
         let res = match req {
-            DebugCommands::Datastore => {
+            DebugCommands::Datastore(_opts) => {
                 println!("{:?}", self.datastore());
                 ResponseKind::None
+
+            },
+            DebugCommands::Dht(DhtCommands::Data(service)) => {
+                let id = self.resolve_identifier(&service)?;
+
+                let pages = self.search(&id).await?;
+
+                ResponseKind::Pages(pages)
+            },
+            DebugCommands::Dht(DhtCommands::Peer(id)) => {
+                let id = self.resolve_peer_identifier(&id)?;
+
+                let peer = self.lookup(&id).await?;
+
+                ResponseKind::Peers(vec![(id, peer.info())])
             },
             DebugCommands::Update => {
                 self.update(true).await.map(|_| { ResponseKind::None })?
@@ -145,12 +164,12 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                 ResponseKind::Services(self.get_services())
             },
             ServiceCommands::Create(options) => {
-                self.create(options).await.map(ResponseKind::Created)?
+                self.create(options).await.map(ResponseKind::Service)?
             },
             ServiceCommands::Register(options) => {
                 self.register(options).await.map(ResponseKind::Registered)?
             },
-            ServiceCommands::Search(options) => {
+            ServiceCommands::Locate(options) => {
                 self.locate(options).await.map(ResponseKind::Located)?
             },
             ServiceCommands::Subscribe(options) => {
@@ -181,8 +200,8 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     }
 
     pub(super) fn get_data(&mut self, id: &Id, count: usize) -> Result<Vec<dsf_rpc::DataInfo>, Error> {
-        let d = self.services().data(id, count)?;
-        Ok(d)
+        let d = self.data().fetch_data(id, count)?;
+        Ok(d.iter().map(|i| i.info.clone() ).collect())
     }
 
     pub(super) fn get_services(&mut self) -> Vec<dsf_rpc::ServiceInfo> {
@@ -205,6 +224,26 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             None => {
                 error!("no service matching index: {}", index);
                 Err(Error::UnknownService)
+            }
+        }
+    }
+
+    pub(super) fn resolve_peer_identifier(&mut self, identifier: &ServiceIdentifier) -> Result<Id, Error> {
+        // Short circuit if ID specified or error if none
+        let index = match (identifier.id, identifier.index) {
+            (Some(id), _) => return Ok(id),
+            (None, None) => {
+                error!("service id or index must be specified");
+                return Err(Error::Core(CoreError::NoPeerId))
+            },
+            (_, Some(index)) => index
+        };
+
+        match self.peers().index_to_id(index) {
+            Some(id) => Ok(id),
+            None => {
+                error!("no peer matching index: {}", index);
+                Err(Error::Core(CoreError::UnknownPeer))
             }
         }
     }

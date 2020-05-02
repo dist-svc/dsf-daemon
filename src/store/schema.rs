@@ -9,6 +9,7 @@ table! {
         state -> Text,
 
         public_key -> Text,
+        private_key -> Nullable<Text>,
         secret_key -> Nullable<Text>,
 
         primary_page -> Nullable<Text>,
@@ -19,12 +20,14 @@ table! {
         subscribers -> Integer,
         replicas -> Integer,
         original -> Bool,
+        subscribed -> Bool,
     }
 }
 
 table! {
     peers (peer_id) {
         peer_id -> Text,
+        peer_index -> Integer,
         state -> Text,
         public_key -> Nullable<Text>,
         
@@ -62,6 +65,16 @@ table! {
 }
 
 table! {
+    subscribers (service_id, peer_id) {
+        service_id -> Text,
+        peer_id -> Text,
+
+        last_updated -> Nullable<Timestamp>,
+        expiry -> Nullable<Timestamp>,
+    }
+}
+
+table! {
     data (signature) {
         service_id -> Text,
         object_index -> Integer,
@@ -83,5 +96,16 @@ table! {
 
         previous -> Nullable<Text>,
         signature -> Text,
+    }
+}
+
+table! {
+    identity (service_id) {
+        service_id -> Text,
+
+        private_key -> Text,
+        secret_key -> Nullable<Text>,
+
+        last_page -> Text,
     }
 }

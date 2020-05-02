@@ -1,4 +1,5 @@
 
+use std::convert::TryFrom;
 
 use tracing::{span, Level};
 
@@ -6,11 +7,13 @@ use dsf_core::prelude::*;
 
 use dsf_core::net;
 use dsf_core::service::publisher::{Publisher, DataOptionsBuilder};
-use dsf_rpc::{PublishOptions, PublishInfo};
+use dsf_rpc::{PublishOptions, PublishInfo, DataInfo};
 
 use crate::daemon::Dsf;
 use crate::error::Error;
 use crate::io;
+
+use crate::core::subscribers::SubscriptionKind;
 
 
 impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
@@ -74,14 +77,26 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             drop(service);
 
             info!("Storing data page");
+
+            let data_info = DataInfo::try_from(&page).unwrap();
+
+            self.data().store_data(&data_info, &page)?;
+
             // Store data against service
-            service_inst.add_data(&page)?;
+            //service_inst.add_data(&page)?;
             services.sync_inst(&service_inst);
 
             // TODO: send data to subscribers
             let req = net::Request::new(self.id(), net::RequestKind::PushData(service_id, vec![page]), Flags::default());
-            let addresses: Vec<_> = service_inst.subscribers.iter().map(|(_id, s)| {
-                s.peer.address()
+            
+            let subscriptions = self.subscribers().find(&service_id)?;
+
+            let addresses: Vec<_> = subscriptions.iter().filter_map(|s| {
+                if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
+                    self.peers().find(peer_id).map(|p| p.address() )
+                } else {
+                    None
+                }
             }).collect();
 
             (info, addresses, req)

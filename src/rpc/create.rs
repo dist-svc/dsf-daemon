@@ -78,7 +78,10 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
         } else {
             info!("Registering and replicating service");
             // TODO URGENT: re-enable this when register is back
-            let _register_info = self.register(RegisterOptions{service: ServiceIdentifier{id: Some(id.clone()), index: None}, no_replica: false }).await?;
+            let _register_info = self.register(RegisterOptions{
+                service: ServiceIdentifier{id: Some(id.clone()), index: None}, 
+                no_replica: false
+            }).await?;
 
             // Update local service state
             let mut s = service.write().unwrap();
