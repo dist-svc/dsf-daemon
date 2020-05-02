@@ -11,8 +11,6 @@ services:
 addons:
   apt:
     packages: libsqlite3-dev
-  homebrew:
-    packages: sqlite
 
 env:
 - RUSTC_WRAPPER=sccache
