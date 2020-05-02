@@ -6,7 +6,7 @@ use diesel::prelude::*;
 use dsf_core::prelude::*;
 use dsf_rpc::{DataInfo};
 
-use super::{Store, StoreError, Base};
+use super::{Store, StoreError};
 
 use crate::store::schema::data::dsl::*;
 

@@ -7,7 +7,7 @@ use chrono::NaiveDateTime;
 use dsf_core::prelude::*;
 use dsf_rpc::{PeerInfo, PeerState, PeerAddress};
 
-use super::{Store, StoreError, Base, from_dt, to_dt};
+use super::{Store, StoreError, from_dt, to_dt};
 
 const KNOWN:    &str = "known";
 const UNKNOWN:  &str = "unknown";

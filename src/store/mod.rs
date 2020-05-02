@@ -51,6 +51,7 @@ pub trait Base<Item> {
     fn delete(&self, item: &Item) -> Result<(), StoreError>;
 }
 
+
 impl Store {
     /// Create or connect to a store with the provided filename
     pub fn new(path: &str) -> Result<Self, StoreError> {

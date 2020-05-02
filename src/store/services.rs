@@ -8,7 +8,7 @@ use chrono::NaiveDateTime;
 use dsf_core::prelude::*;
 use dsf_rpc::{ServiceInfo, ServiceState};
 
-use super::{Store, StoreError, Base, to_dt, from_dt};
+use super::{Store, StoreError, to_dt, from_dt};
 
 type ServiceFields = (String, i32, String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<NaiveDateTime>, i32, i32, bool, bool);
 

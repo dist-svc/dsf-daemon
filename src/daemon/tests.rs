@@ -208,9 +208,6 @@ fn test_manager() {
             Response::new(id1.clone(), rand::random(), ResponseKind::Status(net::Status::Ok), Flags::default()),
         );
 
-        let service_inst = dsf.services().find(&info.id).unwrap();
-        let service_inst = service_inst.write().unwrap();
-
         let subscribers = dsf.subscribers().find(&info.id).unwrap();
 
         assert_eq!(subscribers.len(), 1, "No subscribers found");

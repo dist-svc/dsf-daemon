@@ -94,10 +94,8 @@ mod test {
 
     use super::{Store};
 
-    use dsf_rpc::{DataInfo};
     use dsf_core::page::Page;
     use dsf_core::service::{Service, Publisher};
-    use dsf_core::crypto::{new_pk, new_sk, hash, pk_sign};
 
     #[test]
     fn store_page_inst() {
