@@ -8,13 +8,16 @@ cache:
 services:
 - docker
 
+env:
+- RUSTC_WRAPPER=sccache
+
 jobs:
   include:
-  - env: TARGET=x86_64-unknown-linux-gnu OUTPUT=dsfd CARGO=cross
+  - env: TARGET=x86_64-unknown-linux-gnu OUTPUT=dsfd CARGO=cargo
     os: linux
   - env: TARGET=armv7-unknown-linux-gnueabihf OUTPUT=dsfd CARGO=cross
     os: linux
-  - env: TARGET=x86_64-apple-darwin OUTPUT=dsfd CARGO=cargo
+  - env: TARGET=x86_64-apple-darwin OUTPUT=dsfd CARGO=cargo 
     os: osx
   - env: TARGET=i686-pc-windows-msvc OUTPUT=dsfd.exe CARGO=cargo
     os: windows
@@ -26,7 +29,7 @@ install:
 - cargo fetch
 - rustup target add $TARGET
 - rustup component add rustfmt
-- cargo install cross || true
+- cargo install cross sccache || true
 
 script:
 - "$CARGO test"
