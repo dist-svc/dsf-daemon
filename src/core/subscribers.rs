@@ -108,7 +108,7 @@ impl SubscriberManager {
             if let SubscriptionKind::Socket(i) = &s.info.kind {
                 return *i == socket_id;
             }
-            return false;
+            false
         });
 
         // Create new subscriber if not found

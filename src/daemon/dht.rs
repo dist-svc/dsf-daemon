@@ -155,9 +155,8 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
     // Convert map to array, and remove any invalid pages
     // TODO: this currently removes all pages :-/
     let id: Id = svc_id.unwrap();
-    
-    map
-        .iter()
+
+    map.iter()
         .filter(|(_k, p)| p.id() == &id)
         .map(|(_k, p)| (*p).clone())
         .collect()
