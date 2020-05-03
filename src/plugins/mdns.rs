@@ -19,7 +19,7 @@ use dsf_core::types::Id;
 
 use mdns::RecordKind;
 
-const SERVICE_NAME: &'static str = "_dsf._udp.local";
+const SERVICE_NAME: &str = "_dsf._udp.local";
 
 /// Commands that are handled by the MDNS actor
 #[derive(Clone, Debug)]

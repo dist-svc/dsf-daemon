@@ -240,7 +240,7 @@ where
             }
             Err(e) => {
                 error!("Search failed: {:?}", e);
-                return Err(Error::NotFound);
+                Err(Error::NotFound)
             }
         }
     }

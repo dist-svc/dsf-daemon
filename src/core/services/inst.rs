@@ -181,6 +181,6 @@ impl ServiceInst {
             return true;
         }
 
-        return false;
+        false
     }
 }

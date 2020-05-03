@@ -64,7 +64,7 @@ impl SubscriberManager {
             if let SubscriptionKind::Peer(i) = &s.info.kind {
                 return i == peer_id;
             }
-            return false;
+            false
         });
 
         // Create new subscriber if not found

@@ -9,7 +9,7 @@ publish = false
 
 [features]
 profile = []
-default = [] 
+default = [ "libsqlite3-sys/bundled" ] 
 
 # Debian packaging metadata (for cargo-deb)
 [package.metadata.deb]
@@ -70,7 +70,6 @@ features = [ "sqlite", "extras", "chrono" ]
 version = "1.4.3"
 
 [dependencies.libsqlite3-sys]
-features = [ "bundled" ]
 version = "0.9.1"
 
 [dependencies.serde]

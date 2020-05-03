@@ -1,6 +1,5 @@
 use std::fmt;
 
-use base64;
 use serde::{de, de::Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

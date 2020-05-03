@@ -255,7 +255,7 @@ impl Engine {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     async fn handle_net_tx(

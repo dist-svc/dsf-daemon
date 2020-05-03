@@ -74,9 +74,6 @@ where
 
             let service_id = service.id();
 
-            // Drop to ensure mutex is closed out prior to later update
-            drop(service);
-
             info!("Storing data page");
 
             let data_info = DataInfo::try_from(&page).unwrap();
