@@ -185,7 +185,9 @@ impl Adapt<RequestKind> for DhtRequest<Id, Data> {
             DhtRequest::Ping => RequestKind::Ping,
             DhtRequest::FindNode(id) => RequestKind::FindNode(Id::from(id.clone())),
             DhtRequest::FindValue(id) => RequestKind::FindValue(Id::from(id.clone())),
-            DhtRequest::Store(id, values) => RequestKind::Store(Id::from(id.clone()), values.to_vec()),
+            DhtRequest::Store(id, values) => {
+                RequestKind::Store(Id::from(id.clone()), values.to_vec())
+            }
         }
     }
 }

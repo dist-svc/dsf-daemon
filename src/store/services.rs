@@ -30,12 +30,24 @@ impl Store {
     pub fn save_service(&self, info: &ServiceInfo) -> Result<(), StoreError> {
         use crate::store::schema::services::dsl::*;
 
-        let pri_key = info.private_key.as_ref().map(|v| private_key.eq(v.to_string()));
-        let sec_key = info.secret_key.as_ref().map(|v| secret_key.eq(v.to_string()));
+        let pri_key = info
+            .private_key
+            .as_ref()
+            .map(|v| private_key.eq(v.to_string()));
+        let sec_key = info
+            .secret_key
+            .as_ref()
+            .map(|v| secret_key.eq(v.to_string()));
         let up = info.last_updated.map(|v| last_updated.eq(to_dt(v)));
 
-        let pp = info.primary_page.as_ref().map(|v| primary_page.eq(v.to_string()));
-        let rp = info.replica_page.as_ref().map(|v| replica_page.eq(v.to_string()));
+        let pp = info
+            .primary_page
+            .as_ref()
+            .map(|v| primary_page.eq(v.to_string()));
+        let rp = info
+            .replica_page
+            .as_ref()
+            .map(|v| replica_page.eq(v.to_string()));
 
         let values = (
             service_id.eq(info.id.to_string()),

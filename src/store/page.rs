@@ -21,7 +21,10 @@ impl Store {
             None => return Err(StoreError::MissingRawData),
         };
 
-        let prev = page.previous_sig.as_ref().map(|v| previous.eq(v.to_string()));
+        let prev = page
+            .previous_sig
+            .as_ref()
+            .map(|v| previous.eq(v.to_string()));
         let values = (service_id.eq(page.id.to_string()), raw, prev, sig.clone());
 
         let r = object
