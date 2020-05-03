@@ -13,11 +13,26 @@ jobs:
           toolchain: nightly
           override: true
           components: rustfmt, clippy
-      - uses: actions-rs/cargo@v1
+
+      - name: Configure cargo cache
+        uses: actions/cache@v1
+        with:
+          key: cargo
+          path: ${{ env.HOME }}/.cargo"
+
+      - name: Configure target cache
+        uses: actions/cache@v1
+        with:
+          key: target
+          path: ./target
+
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: -- --check
-      - uses: actions-rs/cargo@v1
+      - name: Run cargo clippy
+        uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: -- -D warnings
@@ -36,13 +51,13 @@ jobs:
       - name: Configure cargo cache 
         uses: actions/cache@v1
         with:
-          key: cargo-${{ matrix.os }}-${{ matrix.target }}
+          key: cargo
           path: ${{ env.HOME }}/.cargo"
 
       - name: Configure target cache
         uses: actions/cache@v1
         with:
-          key: target-${{ matrix.os }}-${{ matrix.target }}
+          key: target
           path: ./target
         
       - name: Run cargo test
@@ -73,12 +88,7 @@ jobs:
             os: macos-latest
             output: dsfd
             use_cross: false
-            experimental: true
-          - target: i686-pc-windows-msvc
-            os: windows-latest
-            output: dsfd.exe
-            use_cross: false
-            experimental: true
+            experimental: false
 
     steps:
     - uses: actions/checkout@v2
