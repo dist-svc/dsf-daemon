@@ -1,26 +1,26 @@
-
 use std::time::Duration;
 
 use tracing::{span, Level};
 
-use kad::prelude::{DhtEntry};
+use kad::prelude::DhtEntry;
 
-use dsf_core::prelude::*;
 use dsf_core::net;
+use dsf_core::prelude::*;
 
-use dsf_rpc::{ConnectOptions, ConnectInfo};
+use dsf_rpc::{ConnectInfo, ConnectOptions};
 
-use crate::daemon::{Dsf};
 use crate::daemon::dht::Ctx;
+use crate::daemon::Dsf;
 use crate::io;
 
-use crate::error::{Error as DsfError};
-use crate::core::{peers::PeerAddress};
+use crate::core::peers::PeerAddress;
+use crate::error::Error as DsfError;
 
 use crate::daemon::dht::TryAdapt;
 
-
-impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
+impl<C> Dsf<C>
+where
+    C: io::Connector + Clone + Sync + Send + 'static,
 {
     pub async fn connect(&mut self, options: ConnectOptions) -> Result<ConnectInfo, DsfError> {
         let span = span!(Level::DEBUG, "connect");
@@ -28,9 +28,9 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
 
         info!("Connect: {:?}", options.address);
 
-//        if self.bind_address() == options.address {
-//            warn!("[DSF ({:?})] Cannot connect to self", self.id);
-//        }
+        //        if self.bind_address() == options.address {
+        //            warn!("[DSF ({:?})] Cannot connect to self", self.id);
+        //        }
 
         // Generate connection request message
         let flag = Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST;
@@ -40,7 +40,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
 
         //TODO: forward address here
         //req.common.remote_address = Some(self.ext_address());
-        
+
         req.common.public_key = Some(service.public_key());
 
         let our_id = self.id();
@@ -65,15 +65,17 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
             Ok(r) => r,
             Err(e) => {
                 warn!("Error connecting to {:?}: {:?}", address, e);
-                return Err(e)
-            },
+                return Err(e);
+            }
         };
 
         trace!("response from peer: {:?}", &resp.from);
 
         // Update peer information and prepare response
-        let peer = self.peers().find_or_create(resp.from.clone(), PeerAddress::Implicit(address), None);
-        let mut info = ConnectInfo{
+        let peer =
+            self.peers()
+                .find_or_create(resp.from.clone(), PeerAddress::Implicit(address), None);
+        let mut info = ConnectInfo {
             id: resp.from.clone(),
             peers: 0,
         };
@@ -83,20 +85,23 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static
         // Pass response to DHT to finish connecting
         let data = resp.data.try_to((our_id, self.peers())).unwrap();
         let ctx = Ctx::INCLUDE_PUBLIC_KEY | Ctx::PUB_KEY_REQUEST | Ctx::ADDRESS_REQUEST;
-        match self.dht().handle_connect_response(DhtEntry::new(resp.from, peer), data, ctx).await {
+        match self
+            .dht()
+            .handle_connect_response(DhtEntry::new(resp.from, peer), data, ctx)
+            .await
+        {
             Ok(nodes) => {
                 // Nodes already added to PeerManager in WireAdaptor
                 info.peers = nodes.len();
-            },
+            }
             Err(e) => {
                 error!("connect response error: {:?}", e);
-                return Err(DsfError::Unknown)
+                return Err(DsfError::Unknown);
             }
         }
-        
+
         info!("Connect complete! {:?}", info);
 
         Ok(info)
     }
-
 }

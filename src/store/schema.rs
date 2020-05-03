@@ -1,4 +1,3 @@
-
 use diesel::table;
 
 table! {
@@ -14,7 +13,7 @@ table! {
 
         primary_page -> Nullable<Text>,
         replica_page -> Nullable<Text>,
-        
+
         last_updated -> Nullable<Timestamp>,
 
         subscribers -> Integer,
@@ -30,7 +29,7 @@ table! {
         peer_index -> Integer,
         state -> Text,
         public_key -> Nullable<Text>,
-        
+
         address -> Text,
         address_mode -> Text,
 
@@ -42,11 +41,10 @@ table! {
     }
 }
 
-
 table! {
     peer_addresses (peer_id) {
         peer_id -> Text,
-        
+
         address -> Text,
         address_mode -> Text,
 
@@ -87,11 +85,10 @@ table! {
     }
 }
 
-
 table! {
     object (signature) {
         service_id -> Text,
-        
+
         raw_data -> Blob,
 
         previous -> Nullable<Text>,

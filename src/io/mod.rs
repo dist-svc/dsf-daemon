@@ -1,8 +1,7 @@
-
 use std::time::Duration;
 
 pub mod net;
-pub use net::{Net, NetError, NetMessage, NetKind};
+pub use net::{Net, NetError, NetKind, NetMessage};
 
 pub mod unix;
 pub use unix::{Unix, UnixError, UnixMessage};
@@ -20,11 +19,18 @@ use crate::error::Error;
 pub trait Connector {
     // Send a request and receive a response or error at some time in the future
     async fn request(
-        &self, req_id: RequestId, target: Address, req: NetRequest, timeout: Duration,
+        &self,
+        req_id: RequestId,
+        target: Address,
+        req: NetRequest,
+        timeout: Duration,
     ) -> Result<NetResponse, Error>;
 
     // Send a response message
     async fn respond(
-        &self, req_id: RequestId, target: Address, resp: NetResponse,
+        &self,
+        req_id: RequestId,
+        target: Address,
+        resp: NetResponse,
     ) -> Result<(), Error>;
 }

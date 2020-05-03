@@ -1,4 +1,3 @@
-
 use std::str::FromStr;
 
 use diesel::prelude::*;
@@ -8,22 +7,35 @@ use chrono::NaiveDateTime;
 use dsf_core::prelude::*;
 use dsf_rpc::{ServiceInfo, ServiceState};
 
-use super::{Store, StoreError, to_dt, from_dt};
+use super::{from_dt, to_dt, Store, StoreError};
 
-type ServiceFields = (String, i32, String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<NaiveDateTime>, i32, i32, bool, bool);
+type ServiceFields = (
+    String,
+    i32,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<NaiveDateTime>,
+    i32,
+    i32,
+    bool,
+    bool,
+);
 
 impl Store {
-
     // Store an item
     pub fn save_service(&self, info: &ServiceInfo) -> Result<(), StoreError> {
         use crate::store::schema::services::dsl::*;
 
-        let pri_key = info.private_key.map(|v| private_key.eq(v.to_string()) );
-        let sec_key = info.secret_key.map(|v| secret_key.eq(v.to_string()) );
-        let up = info.last_updated.map(|v| last_updated.eq(to_dt(v)) );
+        let pri_key = info.private_key.map(|v| private_key.eq(v.to_string()));
+        let sec_key = info.secret_key.map(|v| secret_key.eq(v.to_string()));
+        let up = info.last_updated.map(|v| last_updated.eq(to_dt(v)));
 
-        let pp = info.primary_page.map(|v| primary_page.eq(v.to_string()) );
-        let rp = info.replica_page.map(|v| replica_page.eq(v.to_string()) );
+        let pp = info.primary_page.map(|v| primary_page.eq(v.to_string()));
+        let rp = info.replica_page.map(|v| replica_page.eq(v.to_string()));
 
         let values = (
             service_id.eq(info.id.to_string()),
@@ -41,9 +53,11 @@ impl Store {
             subscribed.eq(info.subscribed),
         );
 
-        let r = services.filter(service_id.eq(info.id.to_string()))
-            .select(service_index).load::<i32>(&self.conn)?;
-        
+        let r = services
+            .filter(service_id.eq(info.id.to_string()))
+            .select(service_index)
+            .load::<i32>(&self.conn)?;
+
         if r.len() != 0 {
             diesel::update(services)
                 .filter(service_id.eq(info.id.to_string()))
@@ -64,7 +78,21 @@ impl Store {
 
         let results = services
             .filter(service_id.eq(id.to_string()))
-            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original, subscribed))
+            .select((
+                service_id,
+                service_index,
+                state,
+                public_key,
+                private_key,
+                secret_key,
+                primary_page,
+                replica_page,
+                last_updated,
+                subscribers,
+                replicas,
+                original,
+                subscribed,
+            ))
             .load::<ServiceFields>(&self.conn)?;
 
         let mut v = vec![];
@@ -80,7 +108,21 @@ impl Store {
         use crate::store::schema::services::dsl::*;
 
         let results = services
-            .select((service_id, service_index, state, public_key, private_key, secret_key, primary_page, replica_page, last_updated, subscribers, replicas, original, subscribed))
+            .select((
+                service_id,
+                service_index,
+                state,
+                public_key,
+                private_key,
+                secret_key,
+                primary_page,
+                replica_page,
+                last_updated,
+                subscribers,
+                replicas,
+                original,
+                subscribed,
+            ))
             .load::<ServiceFields>(&self.conn)?;
 
         let mut v = vec![];
@@ -94,28 +136,45 @@ impl Store {
     pub fn delete_service(&self, info: &ServiceInfo) -> Result<(), StoreError> {
         use crate::store::schema::services::dsl::*;
 
-        diesel::delete(services).filter(service_id.eq(info.id.to_string()))
+        diesel::delete(services)
+            .filter(service_id.eq(info.id.to_string()))
             .execute(&self.conn)?;
 
         Ok(())
     }
 
     fn parse_service(v: &ServiceFields) -> Result<ServiceInfo, StoreError> {
-        let (r_id, r_index, r_state, r_pub_key, r_pri_key, r_sec_key, r_pp, r_rp, r_upd, r_subs, r_reps, r_original, r_subscribed) = v;
+        let (
+            r_id,
+            r_index,
+            r_state,
+            r_pub_key,
+            r_pri_key,
+            r_sec_key,
+            r_pp,
+            r_rp,
+            r_upd,
+            r_subs,
+            r_reps,
+            r_original,
+            r_subscribed,
+        ) = v;
 
         let s = ServiceInfo {
             id: Id::from_str(r_id)?,
             index: *r_index as usize,
             state: ServiceState::from_str(r_state)?,
 
-            primary_page: r_pp.as_ref().map(|v| Signature::from_str(&v).unwrap() ),
-            replica_page: r_rp.as_ref().map(|v| Signature::from_str(&v).unwrap() ),
+            primary_page: r_pp.as_ref().map(|v| Signature::from_str(&v).unwrap()),
+            replica_page: r_rp.as_ref().map(|v| Signature::from_str(&v).unwrap()),
 
             public_key: PublicKey::from_str(r_pub_key)?,
-            private_key: r_pri_key.as_ref().map(|v| PrivateKey::from_str(&v).unwrap() ),
-            secret_key: r_sec_key.as_ref().map(|v| SecretKey::from_str(&v).unwrap() ),
-            
-            last_updated: r_upd.as_ref().map(|v| from_dt(v) ),
+            private_key: r_pri_key
+                .as_ref()
+                .map(|v| PrivateKey::from_str(&v).unwrap()),
+            secret_key: r_sec_key.as_ref().map(|v| SecretKey::from_str(&v).unwrap()),
+
+            last_updated: r_upd.as_ref().map(|v| from_dt(v)),
 
             subscribers: *r_subs as usize,
             replicas: *r_reps as usize,
@@ -127,25 +186,25 @@ impl Store {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use std::time::SystemTime;
 
     extern crate tracing_subscriber;
-    use tracing_subscriber::{FmtSubscriber, filter::LevelFilter};
+    use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 
     use super::Store;
 
+    use dsf_core::crypto::{hash, new_pk, new_sk, pk_sign};
     use dsf_rpc::{ServiceInfo, ServiceState};
-    use dsf_core::crypto::{new_pk, new_sk, pk_sign, hash};
 
     #[test]
     fn store_service_info() {
-        let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
+        let _ = FmtSubscriber::builder()
+            .with_max_level(LevelFilter::DEBUG)
+            .try_init();
 
-        let store = Store::new("/tmp/dsf-test-1.db")
-            .expect("Error opening store");
+        let store = Store::new("/tmp/dsf-test-1.db").expect("Error opening store");
 
         store.drop_tables().unwrap();
 
@@ -169,8 +228,8 @@ mod test {
             subscribers: 14,
             replicas: 12,
             origin: true,
-            subscribed: false, 
-       };
+            subscribed: false,
+        };
 
         // Check no matching service exists
         assert_eq!(None, store.find_service(&s.id).unwrap());

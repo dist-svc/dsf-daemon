@@ -1,17 +1,16 @@
-
-use std::net::SocketAddr;
 use std::io;
+use std::net::SocketAddr;
 use std::pin::Pin;
 
 use std::collections::HashMap;
 
-use futures::prelude::*;
-use futures::{select, Stream};
 use futures::channel::mpsc;
-use futures::task::{Poll, Context};
+use futures::prelude::*;
+use futures::task::{Context, Poll};
+use futures::{select, Stream};
 
+use async_std::net::UdpSocket;
 use async_std::task::{self, JoinHandle};
-use async_std::net::{UdpSocket};
 
 use tracing::{span, Level};
 use tracing_futures::Instrument;
@@ -35,7 +34,7 @@ pub enum NetCommand {
     Unbind(NetKind, SocketAddr),
 }
 
-/// Network message 
+/// Network message
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetMessage {
     pub interface: u32,
@@ -45,7 +44,11 @@ pub struct NetMessage {
 
 impl NetMessage {
     pub fn new(interface: u32, address: SocketAddr, data: Bytes) -> Self {
-        Self{interface, address, data}
+        Self {
+            interface,
+            address,
+            data,
+        }
     }
 }
 
@@ -96,7 +99,7 @@ pub struct NetInfo {
 
 impl NetInfo {
     pub fn new(addr: SocketAddr, kind: NetKind) -> Self {
-        Self{addr, kind}
+        Self { addr, kind }
     }
 }
 
@@ -107,12 +110,17 @@ impl Net {
 
         //let rx_stream = Box::pin(rx_stream);
 
-        Net{ bindings: HashMap::new(), index: 0, rx_sink, rx_stream }
+        Net {
+            bindings: HashMap::new(),
+            index: 0,
+            rx_sink,
+            rx_stream,
+        }
     }
 
     /// List bound network interfaces
     pub fn list(&self) -> Vec<NetInfo> {
-        self.bindings.iter().map(|(_k, b)| b.info.clone() ).collect()
+        self.bindings.iter().map(|(_k, b)| b.info.clone()).collect()
     }
 
     /// Bind to a new interface
@@ -162,56 +170,64 @@ impl Net {
 
         debug!("Starting UDP listener {}: {}", interface, address);
 
-        let handle = task::spawn(async move {
-            let mut buff = vec![0u8; UDP_BUFF_SIZE];
+        let handle = task::spawn(
+            async move {
+                let mut buff = vec![0u8; UDP_BUFF_SIZE];
 
-            loop {
-                select! {
-                    // Handle incoming messages
-                    res = socket.recv_from(&mut buff).fuse() => {
-                        match res {
-                            Ok((n, address)) => {
-                                let data = Bytes::copy_from_slice(&buff[..n]);
-                                event!(Level::TRACE, kind="UDP receive", address = %address);
+                loop {
+                    select! {
+                        // Handle incoming messages
+                        res = socket.recv_from(&mut buff).fuse() => {
+                            match res {
+                                Ok((n, address)) => {
+                                    let data = Bytes::copy_from_slice(&buff[..n]);
+                                    event!(Level::TRACE, kind="UDP receive", address = %address);
 
-                                let msg = NetMessage{
-                                    interface,
-                                    address,
-                                    data,
-                                };
-                                rx_sink.send(msg).await?;
-                            },
-                            Err(e) => {
-                                error!("recieve error: {:?}", e);
-                                break
-                            },
-                        }
-                    },
-                    // Handle outgoing messages
-                    res = tx_stream.next() => {
-                        match res {
-                            Some(d) => {
-                                event!(Level::TRACE, kind="UDP transmit", address = %d.address);
+                                    let msg = NetMessage{
+                                        interface,
+                                        address,
+                                        data,
+                                    };
+                                    rx_sink.send(msg).await?;
+                                },
+                                Err(e) => {
+                                    error!("recieve error: {:?}", e);
+                                    break
+                                },
+                            }
+                        },
+                        // Handle outgoing messages
+                        res = tx_stream.next() => {
+                            match res {
+                                Some(d) => {
+                                    event!(Level::TRACE, kind="UDP transmit", address = %d.address);
 
-                                socket.send_to(&d.data, &d.address).await?;
-                            },
-                            None => debug!("tx stream closed"),
-                        }
-                    },
-                    // Handle the exit signal
-                    res = exit_stream.next() => {
-                        if let Some(r) = res {
-                            debug!("Received exit");
-                            break;
-                        }
-                    },
+                                    socket.send_to(&d.data, &d.address).await?;
+                                },
+                                None => debug!("tx stream closed"),
+                            }
+                        },
+                        // Handle the exit signal
+                        res = exit_stream.next() => {
+                            if let Some(r) = res {
+                                debug!("Received exit");
+                                break;
+                            }
+                        },
+                    }
                 }
+
+                Ok(())
             }
+            .instrument(span!(Level::TRACE, "UDP", interface, address=%address)),
+        );
 
-            Ok(())
-        }.instrument(span!(Level::TRACE, "UDP", interface, address=%address)) );
-
-        let binding = Binding{ handle, sink: tx_sink, exit: exit_sink, info: NetInfo::new(address, NetKind::Udp) };
+        let binding = Binding {
+            handle,
+            sink: tx_sink,
+            exit: exit_sink,
+            info: NetInfo::new(address, NetKind::Udp),
+        };
 
         self.bindings.insert(interface, binding);
         self.index += 1;
@@ -242,38 +258,42 @@ mod test {
         let addr_a = "127.0.0.1:19993".parse().unwrap();
         let addr_b = "127.0.0.1:19994".parse().unwrap();
 
-        let _ = FmtSubscriber::builder().with_max_level(Level::DEBUG).try_init();
+        let _ = FmtSubscriber::builder()
+            .with_max_level(Level::DEBUG)
+            .try_init();
 
-        task::block_on( async {
+        task::block_on(async {
             let mut net = Net::new();
             assert_eq!(net.list().len(), 0);
 
             // Bind to a UDP port
-            net.bind(NetKind::Udp, addr_a).await
+            net.bind(NetKind::Udp, addr_a)
+                .await
                 .expect("error binding udp interface 1");
             assert_eq!(net.list().len(), 1);
 
-            net.bind(NetKind::Udp, addr_b).await
+            net.bind(NetKind::Udp, addr_b)
+                .await
                 .expect("error binding udp interface 2");
             assert_eq!(net.list().len(), 2);
 
             // Send some messages
             let data = Bytes::copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
 
-            net.send(NetMessage::new(0, addr_b, data.clone())).await
+            net.send(NetMessage::new(0, addr_b, data.clone()))
+                .await
                 .expect("Error sending net message");
 
-            let res = net.next().await
-                .expect("Error awaiting net message");
-            
+            let res = net.next().await.expect("Error awaiting net message");
+
             assert_eq!(res, NetMessage::new(1, addr_a, data.clone()));
 
-            net.send(NetMessage::new(1, addr_a, data.clone())).await
-            .expect("Error sending net message");
+            net.send(NetMessage::new(1, addr_a, data.clone()))
+                .await
+                .expect("Error sending net message");
 
-            let res = net.next().await
-                .expect("Error awaiting net message");
-            
+            let res = net.next().await.expect("Error awaiting net message");
+
             assert_eq!(res, NetMessage::new(0, addr_b, data.clone()));
 
             // Unbind from UDP port
@@ -282,6 +302,4 @@ mod test {
             assert_eq!(net.list().len(), 0);
         })
     }
-
 }
-

@@ -1,4 +1,4 @@
-#![recursion_limit="512"]
+#![recursion_limit = "512"]
 #![allow(dead_code)]
 extern crate async_std;
 
@@ -39,12 +39,11 @@ extern crate kad;
 
 pub mod core;
 pub mod daemon;
-pub mod rpc;
 pub mod error;
 pub mod plugins;
+pub mod rpc;
 
 pub mod engine;
-
 
 pub mod io;
 

@@ -1,10 +1,9 @@
-
 use std::time::SystemTime;
 
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;
-use dsf_rpc::{RegisterOptions, RegisterInfo};
+use dsf_rpc::{RegisterInfo, RegisterOptions};
 
 use crate::core::services::ServiceState;
 
@@ -19,8 +18,10 @@ pub enum RegisterError {
     Inner(DsfError),
 }
 
-
-impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
+impl<C> Dsf<C>
+where
+    C: io::Connector + Clone + Sync + Send + 'static,
+{
     /// Register a locally known service
     pub async fn register(&mut self, options: RegisterOptions) -> Result<RegisterInfo, Error> {
         let span = span!(Level::DEBUG, "register");
@@ -42,7 +43,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                 None => {
                     // Only known services can be registered
                     error!("unknown service (id: {})", id);
-                    return Err(Error::UnknownService.into())
+                    return Err(Error::UnknownService.into());
                 }
             };
 
@@ -60,25 +61,25 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                 replica_version: None,
                 peers: 0,
             };
-    
+
             let mut pages = vec![primary_page];
-    
+
             // Generate replica page unless disabled
             if !options.no_replica {
                 debug!("Generating replica page");
-    
+
                 // Generate a replica page
                 let mut s = service.try_write().unwrap();
-    
+
                 let replica_page = match s.replicate(self.service(), false) {
                     Ok(v) => v,
                     Err(e) => return Err(e.into()),
                 };
-    
+
                 info.replica_version = Some(replica_page.version());
-    
+
                 pages.push(replica_page);
-    
+
                 drop(s);
             }
 
@@ -88,14 +89,13 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             (info, pages)
         };
 
-
         debug!("Registering service");
         trace!("Pages: {:?}", pages);
 
         // Store pages
         // TODO: get store info / number of peers storing
         info.peers = self.store(&id, pages).await?;
-        
+
         // Update local storage info
         services.update_inst(&id, |s| {
             s.state = ServiceState::Registered;

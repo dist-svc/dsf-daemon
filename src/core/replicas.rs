@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -14,14 +13,13 @@ pub struct ReplicaInst {
 
 impl From<Page> for ReplicaInst {
     fn from(page: Page) -> Self {
-
         // Replica pages are _always_ secondary types
         let peer_id = match page.info() {
             PageInfo::Secondary(s) => s.peer_id,
-            _ => unimplemented!()
+            _ => unimplemented!(),
         };
 
-        let info = ReplicaInfo{
+        let info = ReplicaInfo {
             peer_id,
 
             version: page.version(),
@@ -35,23 +33,22 @@ impl From<Page> for ReplicaInst {
             active: false,
         };
 
-        Self{page, info}
+        Self { page, info }
     }
 }
 
 #[derive(Clone)]
 pub struct ReplicaManager {
-    store: Arc<Mutex<HashMap<Id, Vec<ReplicaInst>>>>
+    store: Arc<Mutex<HashMap<Id, Vec<ReplicaInst>>>>,
 }
 
 impl ReplicaManager {
     /// Create a new replica manager
     pub fn new() -> Self {
-        ReplicaManager{
-            store: Arc::new(Mutex::new(HashMap::new()))
+        ReplicaManager {
+            store: Arc::new(Mutex::new(HashMap::new())),
         }
     }
-
 
     /// Find replicas for a given service
     pub fn find(&self, service_id: &Id) -> Vec<ReplicaInst> {
@@ -69,9 +66,8 @@ impl ReplicaManager {
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 
         match replica {
-            Some(r) => {
-                *r = ReplicaInst::from(page.clone())
-            }, None => {
+            Some(r) => *r = ReplicaInst::from(page.clone()),
+            None => {
                 let r = ReplicaInst::from(page.clone());
                 replicas.push(r);
             }
@@ -79,7 +75,12 @@ impl ReplicaManager {
     }
 
     /// Update a specified replica
-    pub fn update_replica<F: Fn(&mut ReplicaInst)>(&self, service_id: &Id, peer_id: &Id, f: F) -> Result<(), ()> {
+    pub fn update_replica<F: Fn(&mut ReplicaInst)>(
+        &self,
+        service_id: &Id,
+        peer_id: &Id,
+        f: F,
+    ) -> Result<(), ()> {
         let mut store = self.store.lock().unwrap();
         let replicas = store.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
@@ -96,4 +97,3 @@ impl ReplicaManager {
         unimplemented!()
     }
 }
-

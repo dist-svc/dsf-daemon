@@ -1,15 +1,12 @@
-
-
 use tracing::{span, Level};
-
 
 use dsf_core::prelude::*;
 
 use dsf_rpc::{self as rpc, ServiceIdentifier};
 
-use crate::error::{Error, CoreError};
-use crate::io::Connector;
 use crate::daemon::Dsf;
+use crate::error::{CoreError, Error};
+use crate::io::Connector;
 
 // Connect to an existing peer
 pub mod connect;
@@ -32,11 +29,12 @@ pub mod query;
 // Subscribe to a service
 pub mod subscribe;
 
-// 
+//
 pub mod debug;
 
-
-impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
+impl<C> Dsf<C>
+where
+    C: Connector + Clone + Sync + Send + 'static,
 {
     /// Execute an RPC command
     // TODO: Actually execute RPC commands
@@ -59,7 +57,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             _ => {
                 error!("Unrecognized RPC request: {:?}", req);
                 Ok(ResponseKind::Unrecognised)
-            },
+            }
         };
 
         debug!("Result: {:?}", res);
@@ -76,7 +74,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     }
 
     pub(crate) fn status(&mut self) -> rpc::StatusInfo {
-        rpc::StatusInfo{
+        rpc::StatusInfo {
             id: self.id(),
             peers: self.peers().count(),
             services: self.services().count(),
@@ -90,28 +88,23 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             DebugCommands::Datastore(_opts) => {
                 println!("{:?}", self.datastore());
                 ResponseKind::None
-
-            },
+            }
             DebugCommands::Dht(DhtCommands::Data(service)) => {
                 let id = self.resolve_identifier(&service)?;
 
                 let pages = self.search(&id).await?;
 
                 ResponseKind::Pages(pages)
-            },
+            }
             DebugCommands::Dht(DhtCommands::Peer(id)) => {
                 let id = self.resolve_peer_identifier(&id)?;
 
                 let peer = self.lookup(&id).await?;
 
                 ResponseKind::Peers(vec![(id, peer.info())])
-            },
-            DebugCommands::Update => {
-                self.update(true).await.map(|_| { ResponseKind::None })?
-            },
-            DebugCommands::Bootstrap => {
-                self.bootstrap().await.map(|_| { ResponseKind::None })?
-            },
+            }
+            DebugCommands::Update => self.update(true).await.map(|_| ResponseKind::None)?,
+            DebugCommands::Bootstrap => self.bootstrap().await.map(|_| ResponseKind::None)?,
         };
 
         Ok(res)
@@ -126,10 +119,12 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             PeerCommands::List(_options) => ResponseKind::Peers(self.peer_info()),
             PeerCommands::Connect(options) => {
                 s.connect(options).await.map(ResponseKind::Connected)?
-            },
+            }
             PeerCommands::Search(options) => {
                 // TODO: pass timeout here
-                s.lookup(&options.id).await.map(|p| ResponseKind::Peers(vec![(p.id(), p.info())]))?
+                s.lookup(&options.id)
+                    .await
+                    .map(|p| ResponseKind::Peers(vec![(p.id(), p.info())]))?
             }
             _ => ResponseKind::Unrecognised,
         };
@@ -141,40 +136,40 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         use rpc::*;
 
         let res = match req {
-            DataCommands::List(data::ListOptions{service, n}) => {
+            DataCommands::List(data::ListOptions { service, n }) => {
                 let id = self.resolve_identifier(&service)?;
                 self.get_data(&id, n).map(ResponseKind::Data)?
-            },
+            }
             DataCommands::Publish(options) => {
                 self.publish(options).await.map(ResponseKind::Published)?
-            },
-            _ => {
-                ResponseKind::Unrecognised
             }
+            _ => ResponseKind::Unrecognised,
         };
 
         Ok(res)
     }
 
-    async fn exec_service(&mut self, req: rpc::ServiceCommands) -> Result<rpc::ResponseKind, Error> {
+    async fn exec_service(
+        &mut self,
+        req: rpc::ServiceCommands,
+    ) -> Result<rpc::ResponseKind, Error> {
         use rpc::*;
 
         let res = match req {
-            ServiceCommands::List(_options) => {
-                ResponseKind::Services(self.get_services())
-            },
+            ServiceCommands::List(_options) => ResponseKind::Services(self.get_services()),
             ServiceCommands::Create(options) => {
                 self.create(options).await.map(ResponseKind::Service)?
-            },
+            }
             ServiceCommands::Register(options) => {
                 self.register(options).await.map(ResponseKind::Registered)?
-            },
+            }
             ServiceCommands::Locate(options) => {
                 self.locate(options).await.map(ResponseKind::Located)?
-            },
-            ServiceCommands::Subscribe(options) => {
-                self.subscribe(options).await.map(ResponseKind::Subscribed)?
-            },
+            }
+            ServiceCommands::Subscribe(options) => self
+                .subscribe(options)
+                .await
+                .map(ResponseKind::Subscribed)?,
             ServiceCommands::SetKey(options) => {
                 let id = self.resolve_identifier(&options.service)?;
 
@@ -187,7 +182,6 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                     Some(s) => ResponseKind::Services(vec![s]),
                     None => ResponseKind::None,
                 }
-                
             }
             _ => ResponseKind::Unrecognised,
         };
@@ -196,27 +190,38 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     }
 
     pub(super) fn peer_info(&mut self) -> Vec<(Id, rpc::PeerInfo)> {
-        self.peers().list().drain(..).map(|(id, p)| (id, p.info()) ).collect()
+        self.peers()
+            .list()
+            .drain(..)
+            .map(|(id, p)| (id, p.info()))
+            .collect()
     }
 
-    pub(super) fn get_data(&mut self, id: &Id, count: usize) -> Result<Vec<dsf_rpc::DataInfo>, Error> {
+    pub(super) fn get_data(
+        &mut self,
+        id: &Id,
+        count: usize,
+    ) -> Result<Vec<dsf_rpc::DataInfo>, Error> {
         let d = self.data().fetch_data(id, count)?;
-        Ok(d.iter().map(|i| i.info.clone() ).collect())
+        Ok(d.iter().map(|i| i.info.clone()).collect())
     }
 
     pub(super) fn get_services(&mut self) -> Vec<dsf_rpc::ServiceInfo> {
         self.services().list()
     }
 
-    pub(super) fn resolve_identifier(&mut self, identifier: &ServiceIdentifier) -> Result<Id, Error> {
+    pub(super) fn resolve_identifier(
+        &mut self,
+        identifier: &ServiceIdentifier,
+    ) -> Result<Id, Error> {
         // Short circuit if ID specified or error if none
         let index = match (identifier.id, identifier.index) {
             (Some(id), _) => return Ok(id),
             (None, None) => {
                 error!("service id or index must be specified");
-                return Err(Error::UnknownService)
-            },
-            (_, Some(index)) => index
+                return Err(Error::UnknownService);
+            }
+            (_, Some(index)) => index,
         };
 
         match self.services().index_to_id(index) {
@@ -228,15 +233,18 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         }
     }
 
-    pub(super) fn resolve_peer_identifier(&mut self, identifier: &ServiceIdentifier) -> Result<Id, Error> {
+    pub(super) fn resolve_peer_identifier(
+        &mut self,
+        identifier: &ServiceIdentifier,
+    ) -> Result<Id, Error> {
         // Short circuit if ID specified or error if none
         let index = match (identifier.id, identifier.index) {
             (Some(id), _) => return Ok(id),
             (None, None) => {
                 error!("service id or index must be specified");
-                return Err(Error::Core(CoreError::NoPeerId))
-            },
-            (_, Some(index)) => index
+                return Err(Error::Core(CoreError::NoPeerId));
+            }
+            (_, Some(index)) => index,
         };
 
         match self.peers().index_to_id(index) {

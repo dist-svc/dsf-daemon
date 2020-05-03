@@ -1,14 +1,12 @@
-
-
-use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-use std::sync::{Arc, Mutex};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use structopt::StructOpt;
 
-use async_std::task;
 use async_std::stream;
+use async_std::task;
 
 use futures::prelude::*;
 use futures::select;
@@ -17,21 +15,20 @@ use tracing::{span, Level};
 
 use bytes::Bytes;
 
+use dsf_core::net::Message as DsfMessage;
+use dsf_core::service::{Publisher, ServiceBuilder};
 use dsf_core::types::Id;
-use dsf_core::service::{ServiceBuilder, Publisher};
-use dsf_core::net::{Message as DsfMessage};
 
 use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
 
-use kad::{Config as DhtConfig};
+use kad::Config as DhtConfig;
 
+use crate::daemon::*;
 use crate::error::Error;
 use crate::io::*;
 use crate::store::*;
-use crate::daemon::*;
 
-
-use crate::daemon::{Options as DaemonOptions};
+use crate::daemon::Options as DaemonOptions;
 
 pub struct Engine {
     dsf: Dsf<WireConnector>,
@@ -39,7 +36,6 @@ pub struct Engine {
     unix: Unix,
     wire: Wire,
     net: Net,
-
 
     options: Options,
 }
@@ -56,11 +52,20 @@ pub struct Options {
     /// These may be reconfigured at runtime
     pub bind_addresses: Vec<SocketAddr>,
 
-    #[structopt(long = "database-file", default_value = "/var/dsf/dsf.db", env="DSF_DB_FILE")]
+    #[structopt(
+        long = "database-file",
+        default_value = "/var/dsf/dsf.db",
+        env = "DSF_DB_FILE"
+    )]
     /// Database file for storage by the daemon
     pub database_file: String,
 
-    #[structopt(short = "s", long = "daemon-socket", default_value = "/tmp/dsf.sock", env="DSF_SOCK")]
+    #[structopt(
+        short = "s",
+        long = "daemon-socket",
+        default_value = "/tmp/dsf.sock",
+        env = "DSF_SOCK"
+    )]
     /// Unix socket for communication with the daemon
     pub daemon_socket: String,
 
@@ -75,13 +80,16 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            bind_addresses: vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 10100)],
+            bind_addresses: vec![SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                10100,
+            )],
             daemon_socket: DEFAULT_UNIX_SOCKET.to_string(),
             database_file: DEFAULT_DATABASE_FILE.to_string(),
             no_bootstrap: false,
             daemon_options: DaemonOptions {
                 dht: DhtConfig::default(),
-            }
+            },
         }
     }
 }
@@ -90,22 +98,23 @@ impl Options {
     /// Helper constructor to run multiple instances alongside each other
     pub fn with_suffix(&self, suffix: usize) -> Self {
         Self {
-            bind_addresses: vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 10100 + suffix as u16)],
+            bind_addresses: vec![SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                10100 + suffix as u16,
+            )],
             daemon_socket: format!("{}.{}", self.daemon_socket, suffix),
             database_file: format!("{}.{}", self.database_file, suffix),
             no_bootstrap: self.no_bootstrap,
             daemon_options: DaemonOptions {
                 dht: self.daemon_options.dht.clone(),
-            }
+            },
         }
     }
 }
 
-
 impl Engine {
     /// Create a new daemon instance
     pub async fn new(options: Options) -> Result<Self, Error> {
-        
         // Create new local data store
         let store = Store::new(&options.database_file)?;
 
@@ -114,7 +123,7 @@ impl Engine {
             Some(s) => {
                 info!("Loaded existing peer service: {}", s.id());
                 s
-            },
+            }
             None => {
                 let s = ServiceBuilder::default().peer().build().unwrap();
                 info!("Created new peer service: {}", s.id());
@@ -127,10 +136,8 @@ impl Engine {
         let (n, mut page) = service.publish_primary(&mut buff)?;
         page.raw = Some(buff[..n].to_vec());
 
-
         // Store service and page
         store.set_peer_service(&service, &page)?;
-        
 
         let span = span!(Level::DEBUG, "engine", "{}", service.id());
         let _enter = span.enter();
@@ -138,7 +145,10 @@ impl Engine {
         info!("Creating new engine");
 
         // Create new network connector
-        debug!("Creating network connector on addresses: {:?}", options.bind_addresses);
+        debug!(
+            "Creating network connector on addresses: {:?}",
+            options.bind_addresses
+        );
         let mut net = Net::new();
         for addr in &options.bind_addresses {
             net.bind(NetKind::Udp, *addr).await?;
@@ -150,14 +160,23 @@ impl Engine {
         // Create new wire adaptor
         let wire = Wire::new(service.private_key().unwrap());
 
-
-
         // Create new DSF instance
-        let dsf = Dsf::new(options.daemon_options.clone(), service, Arc::new(Mutex::new(store)), wire.connector())?;
+        let dsf = Dsf::new(
+            options.daemon_options.clone(),
+            service,
+            Arc::new(Mutex::new(store)),
+            wire.connector(),
+        )?;
 
         debug!("Engine created!");
 
-        Ok(Self{dsf, wire, net, unix, options})
+        Ok(Self {
+            dsf,
+            wire,
+            net,
+            unix,
+            options,
+        })
     }
 
     pub fn id(&self) -> Id {
@@ -165,14 +184,13 @@ impl Engine {
     }
 
     pub fn addrs(&self) -> Vec<SocketAddr> {
-        self.net.list().drain(..).map(|info| info.addr ).collect()
+        self.net.list().drain(..).map(|info| info.addr).collect()
     }
 
     // Run the DSF daemon
     pub async fn run(&mut self, running: Arc<AtomicBool>) -> Result<(), Error> {
         let span = span!(Level::DEBUG, "engine", "{}", self.dsf.id());
         let _enter = span.enter();
-
 
         if !self.options.no_bootstrap {
             let mut d = self.dsf.clone();
@@ -182,7 +200,6 @@ impl Engine {
                 let _ = d.bootstrap().await;
             });
         }
-        
 
         // Create periodic timer
         let mut update_timer = stream::interval(Duration::from_secs(30));
@@ -192,7 +209,7 @@ impl Engine {
             #[cfg(feature = "profile")]
             let _fg = ::flame::start_guard("engine::tick");
 
-            select!{
+            select! {
                 // Incoming network messages
                 net_rx = self.net.next().fuse() => {
                     trace!("engine::net_rx");
@@ -238,15 +255,25 @@ impl Engine {
             }
         }
 
-        return Ok(())
+        return Ok(());
     }
 
-    async fn handle_net_tx(_dsf: &mut Dsf<WireConnector>, net: &mut Net, _wire: &mut Wire, m: NetMessage) -> Result<(), Error> {
+    async fn handle_net_tx(
+        _dsf: &mut Dsf<WireConnector>,
+        net: &mut Net,
+        _wire: &mut Wire,
+        m: NetMessage,
+    ) -> Result<(), Error> {
         net.send(m).await.unwrap();
         Ok(())
     }
 
-    async fn handle_net_rx(dsf: &mut Dsf<WireConnector>, net: &mut Net, wire: &mut Wire, m: NetMessage) -> Result<(), Error> {
+    async fn handle_net_rx(
+        dsf: &mut Dsf<WireConnector>,
+        net: &mut Net,
+        wire: &mut Wire,
+        m: NetMessage,
+    ) -> Result<(), Error> {
         // Pass through wire module
         // This will route responses internally and return requests
         let address = m.address.clone();
@@ -258,7 +285,9 @@ impl Engine {
 
             trace!("Engine response: {:?}", resp);
 
-            let net_tx = wire.handle_outgoing(address, DsfMessage::Response(resp)).unwrap();
+            let net_tx = wire
+                .handle_outgoing(address, DsfMessage::Response(resp))
+                .unwrap();
 
             // Send the response
             net.send(net_tx).await.unwrap();
@@ -267,14 +296,13 @@ impl Engine {
         Ok(())
     }
 
-    
     async fn handle_rpc(dsf: &mut Dsf<WireConnector>, unix_req: UnixMessage) -> Result<(), Error> {
         // Parse out message
         let req: RpcRequest = serde_json::from_slice(&unix_req.data).unwrap();
 
-        let span = span!(Level::TRACE, "rpc", id=req.req_id());
+        let span = span!(Level::TRACE, "rpc", id = req.req_id());
         let _enter = span.enter();
-        
+
         // Handle RPC request
         let resp_kind = dsf.exec(req.kind()).await?;
 
@@ -293,4 +321,3 @@ impl Engine {
         Ok(())
     }
 }
-

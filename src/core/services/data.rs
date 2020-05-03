@@ -1,13 +1,11 @@
-
 use std::fmt;
 
 use base64;
 use serde::{de, de::Visitor};
-use serde::{Serialize, Serializer, Deserialize, Deserializer};
-
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Data (pub Vec<u8>);
+pub struct Data(pub Vec<u8>);
 
 impl From<Vec<u8>> for Data {
     fn from(d: Vec<u8>) -> Self {
@@ -32,7 +30,7 @@ impl Serialize for Data {
     }
 }
 
-impl <'de> Deserialize<'de> for Data {
+impl<'de> Deserialize<'de> for Data {
     fn deserialize<D>(deserializer: D) -> Result<Data, D::Error>
     where
         D: Deserializer<'de>,
@@ -51,8 +49,8 @@ impl <'de> Deserialize<'de> for Data {
                 E: de::Error,
             {
                 let s = base64::decode_config(value, base64::URL_SAFE)
-                    .map_err(|_e| de::Error::custom("decoding b64") )?;
-                
+                    .map_err(|_e| de::Error::custom("decoding b64"))?;
+
                 Ok(Data(s))
             }
         }

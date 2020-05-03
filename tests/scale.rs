@@ -1,6 +1,6 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::{atomic::AtomicBool, Arc};
 use std::time::Duration;
-use std::net::{SocketAddr, IpAddr, Ipv4Addr};
-use std::sync::{Arc, atomic::AtomicBool};
 
 use rand::random;
 
@@ -13,7 +13,7 @@ use async_std::task;
 extern crate tracing;
 
 extern crate tracing_subscriber;
-use tracing_subscriber::{FmtSubscriber, filter::LevelFilter};
+use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 
 extern crate tracing_futures;
 use tracing_futures::Instrument;
@@ -44,7 +44,6 @@ fn large_scale() {
 }
 
 fn scale(n: usize, level: LevelFilter) {
-
     let d = TempDir::new("dsf-scale").unwrap();
     let d = d.path().to_str().unwrap().to_string();
 
@@ -52,10 +51,9 @@ fn scale(n: usize, level: LevelFilter) {
 
     let mut daemons = vec![];
     let mut ids = vec![];
-    
+
     // Create the runtime
     task::block_on(async move {
-
         // Set common configuration
         let mut config = Options::default();
         config.database_file = format!("{}/dsf-scale.db", d);
@@ -67,7 +65,6 @@ fn scale(n: usize, level: LevelFilter) {
         info!("Creating {} virtual daemon instances", n);
         let bar = ProgressBar::new(n as u64);
         for i in 0..n {
-            
             let c = config.with_suffix(i);
             let c1 = c.clone();
 
@@ -78,12 +75,16 @@ fn scale(n: usize, level: LevelFilter) {
 
             // Build and run daemon
             let r = running.clone();
-            let handle = task::spawn(async move {
-                e.run(r).await.unwrap();
-            }.instrument(tracing::debug_span!("instance", "{}", addr)) );
+            let handle = task::spawn(
+                async move {
+                    e.run(r).await.unwrap();
+                }
+                .instrument(tracing::debug_span!("instance", "{}", addr)),
+            );
 
             // Create client
-            let mut client = Client::new(&addr, Duration::from_secs(1)).expect("Error connecting to client");
+            let mut client =
+                Client::new(&addr, Duration::from_secs(1)).expect("Error connecting to client");
 
             // Fetch client status and ID
             let status = client.status().await.expect("Error fetching client info");
@@ -92,7 +93,7 @@ fn scale(n: usize, level: LevelFilter) {
             // Add the new daemon to the list
             ids.push(id.clone());
             daemons.push((id, net_addr, client, handle));
-            
+
             bar.inc(1);
         }
         bar.finish();
@@ -101,9 +102,16 @@ fn scale(n: usize, level: LevelFilter) {
         let base_addr = daemons[0].1;
 
         info!("Connecting daemons via {}", d);
-        let bar = ProgressBar::new((daemons.len()-1) as u64);
+        let bar = ProgressBar::new((daemons.len() - 1) as u64);
         for (_id, _addr, client, _handle) in &mut daemons[1usize..] {
-            client.connect(rpc::ConnectOptions{address: base_addr, id: None, timeout: Some(Duration::from_secs(10)) }).await.expect("connecting failed");
+            client
+                .connect(rpc::ConnectOptions {
+                    address: base_addr,
+                    id: None,
+                    timeout: Some(Duration::from_secs(10)),
+                })
+                .await
+                .expect("connecting failed");
             bar.inc(1);
         }
         bar.finish();
@@ -112,7 +120,6 @@ fn scale(n: usize, level: LevelFilter) {
         info!("Attempting peer searches");
         let bar = ProgressBar::new((daemons.len()) as u64);
         for i in 0..daemons.len() {
-        
             let mut j = random::<usize>() % daemons.len();
             if i == j {
                 j = random::<usize>() % daemons.len();
@@ -121,12 +128,13 @@ fn scale(n: usize, level: LevelFilter) {
             let (_id, _addr, client, _handle) = &mut daemons[i];
             let id = ids[j].clone();
 
-            client.find(rpc::peer::SearchOptions{id, timeout: None}).await.expect("search failed");
+            client
+                .find(rpc::peer::SearchOptions { id, timeout: None })
+                .await
+                .expect("search failed");
             bar.inc(1);
         }
         bar.finish();
         info!("Completed searches");
-
-
     });
 }

@@ -1,4 +1,3 @@
-
 use std::convert::TryFrom;
 
 use tracing::{span, Level};
@@ -6,8 +5,8 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 
 use dsf_core::net;
-use dsf_core::service::publisher::{Publisher, DataOptionsBuilder};
-use dsf_rpc::{PublishOptions, PublishInfo, DataInfo};
+use dsf_core::service::publisher::{DataOptionsBuilder, Publisher};
+use dsf_rpc::{DataInfo, PublishInfo, PublishOptions};
 
 use crate::daemon::Dsf;
 use crate::error::Error;
@@ -15,8 +14,10 @@ use crate::io;
 
 use crate::core::subscribers::SubscriptionKind;
 
-
-impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
+impl<C> Dsf<C>
+where
+    C: io::Connector + Clone + Sync + Send + 'static,
+{
     /// Register a locally known service
     pub async fn publish(&mut self, options: PublishOptions) -> Result<PublishInfo, Error> {
         let span = span!(Level::DEBUG, "publish");
@@ -34,7 +35,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                 None => {
                     // Only known services can be registered
                     error!("unknown service (id: {})", id);
-                    return Err(Error::UnknownService)
+                    return Err(Error::UnknownService);
                 }
             };
 
@@ -47,7 +48,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                 None => {
                     // Only known services can be registered
                     error!("no service private key (id: {})", id);
-                    return Err(Error::NoPrivateKey)
+                    return Err(Error::NoPrivateKey);
                 }
             };
 
@@ -59,7 +60,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             if let Some(body) = options.data {
                 data_options.body(Body::Cleartext(body));
             }
-            
+
             let data_options = data_options.build().unwrap();
 
             info!("Generating data page");
@@ -67,7 +68,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             let (n, mut page) = service.publish_data(data_options, &mut buff).unwrap();
             page.raw = Some(buff[..n].to_vec());
 
-            let info = PublishInfo{
+            let info = PublishInfo {
                 index: page.version(),
             };
 
@@ -87,27 +88,33 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             services.sync_inst(&service_inst);
 
             // TODO: send data to subscribers
-            let req = net::Request::new(self.id(), net::RequestKind::PushData(service_id, vec![page]), Flags::default());
-            
+            let req = net::Request::new(
+                self.id(),
+                net::RequestKind::PushData(service_id, vec![page]),
+                Flags::default(),
+            );
+
             let subscriptions = self.subscribers().find(&service_id)?;
 
-            let addresses: Vec<_> = subscriptions.iter().filter_map(|s| {
-                if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
-                    self.peers().find(peer_id).map(|p| p.address() )
-                } else {
-                    None
-                }
-            }).collect();
+            let addresses: Vec<_> = subscriptions
+                .iter()
+                .filter_map(|s| {
+                    if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
+                        self.peers().find(peer_id).map(|p| p.address())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
             (info, addresses, req)
         };
 
         info!("Sending data push messages");
         self.request_all(&addresses, req).await;
-          
+
         // TODO: update info
 
         Ok(info)
     }
-
 }

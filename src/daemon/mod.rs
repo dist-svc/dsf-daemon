@@ -1,4 +1,3 @@
-
 use structopt::StructOpt;
 
 use kad::prelude::*;
@@ -26,4 +25,3 @@ impl Default for Options {
         }
     }
 }
-

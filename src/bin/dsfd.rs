@@ -1,4 +1,3 @@
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -19,9 +18,8 @@ extern crate tracing;
 extern crate flame;
 
 extern crate tracing_subscriber;
-use tracing_subscriber::FmtSubscriber;
 use tracing_subscriber::filter::LevelFilter;
-
+use tracing_subscriber::FmtSubscriber;
 
 use dsf_daemon::engine::{Engine, Options};
 
@@ -29,7 +27,6 @@ use dsf_daemon::engine::{Engine, Options};
 #[structopt(name = "DSF Daemon")]
 /// Distributed Service Framework (DSF) daemon
 struct Config {
-
     #[structopt(flatten)]
     daemon_opts: Options,
 
@@ -46,8 +43,10 @@ fn main() {
     let opts = Config::from_args();
 
     // Initialise logging
-    let _ = FmtSubscriber::builder().with_max_level(opts.level.clone()).try_init();
-    
+    let _ = FmtSubscriber::builder()
+        .with_max_level(opts.level.clone())
+        .try_init();
+
     // Create running flag
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -55,7 +54,8 @@ fn main() {
     // Bind exit handler
     ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
-    }).expect("Error setting Ctrl-C handler");
+    })
+    .expect("Error setting Ctrl-C handler");
 
     // Create async task
     let res = task::block_on(async move {
@@ -64,7 +64,7 @@ fn main() {
             Ok(d) => d,
             Err(e) => {
                 error!("Error running daemon: {:?}", e);
-                return Err(e)
+                return Err(e);
             }
         };
 
@@ -73,7 +73,7 @@ fn main() {
         // Run daemon
         if let Err(e) = d.run(running).await {
             error!("Daemon runtime error: {:?}", e);
-            return Err(e)
+            return Err(e);
         }
 
         Ok(())

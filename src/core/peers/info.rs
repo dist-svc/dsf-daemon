@@ -1,10 +1,8 @@
-
 use std::sync::{Arc, RwLock};
-use std::time::{SystemTime};
+use std::time::SystemTime;
 
 use dsf_core::prelude::*;
-pub use dsf_rpc::peer::{PeerInfo, PeerState, PeerAddress};
-
+pub use dsf_rpc::peer::{PeerAddress, PeerInfo, PeerState};
 
 /// Peer object used to store peer related state and information
 /// This is a global singleton representing a known peer and may be shared
@@ -53,8 +51,9 @@ impl Peer {
         info.clone()
     }
 
-    pub fn update<F>(&mut self, mut f: F) 
-    where F: FnMut(&mut PeerInfo)
+    pub fn update<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut PeerInfo),
     {
         let mut info = &mut self.info.write().unwrap();
 
@@ -70,11 +69,9 @@ impl Peer {
     }
 }
 
-
 #[cfg(disabled)]
 impl fmt::Display for PeerInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-
         if f.sign_plus() {
             write!(f, "id: {}", self.id)?;
         } else {
@@ -86,7 +83,7 @@ impl fmt::Display for PeerInfo {
         } else {
             write!(f, "{}", self.address())?;
         }
-        
+
         if f.sign_plus() {
             write!(f, "\n  - state: {}", self.state)?;
         } else {
@@ -123,7 +120,7 @@ impl fmt::Display for PeerState {
 
         let s = match self {
             PeerState::Unknown => "unknown".red(),
-            PeerState::Known(_) =>   "known  ".green(),
+            PeerState::Known(_) => "known  ".green(),
         };
 
         write!(f, "{}", s)?;
@@ -131,4 +128,3 @@ impl fmt::Display for PeerState {
         Ok(())
     }
 }
-

@@ -1,11 +1,10 @@
-
 use std::time::SystemTime;
 
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 use dsf_core::service::Subscriber;
-use dsf_rpc::{LocateOptions, LocateInfo};
+use dsf_rpc::{LocateInfo, LocateOptions};
 
 use crate::core::services::ServiceState;
 
@@ -13,9 +12,10 @@ use crate::daemon::Dsf;
 use crate::error::Error;
 use crate::io;
 
-
-impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
-
+impl<C> Dsf<C>
+where
+    C: io::Connector + Clone + Sync + Send + 'static,
+{
     pub async fn locate(&mut self, options: LocateOptions) -> Result<LocateInfo, Error> {
         let span = span!(Level::DEBUG, "locate");
         let _enter = span.enter();
@@ -26,7 +26,10 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
         // Skip search for owned services...
         if let Some(service) = services.info(&options.id) {
             if service.origin {
-                return Ok(LocateInfo{origin: true, updated: false})
+                return Ok(LocateInfo {
+                    origin: true,
+                    updated: false,
+                });
             }
         }
 
@@ -37,22 +40,31 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
 
         debug!("locate, found {} pages", pages.len());
         // Fetch primary page
-        let primary_page = match pages.iter().find(|p| p.kind().is_page() && !p.flags().contains(Flags::SECONDARY) && p.id() == &options.id ) {
+        let primary_page = match pages.iter().find(|p| {
+            p.kind().is_page() && !p.flags().contains(Flags::SECONDARY) && p.id() == &options.id
+        }) {
             Some(p) => p.clone(),
             None => return Err(Error::NotFound),
         };
 
         // Fetch replica pages
-        let replicas: Vec<(Id, Page)> = pages.drain(..).filter(|p| p.kind().is_page() && p.flags().contains(Flags::SECONDARY) 
-        && p.application_id() == 0 && p.kind() == PageKind::Replica.into() )
-        .filter_map(|p| {
-            let peer_id = match p.info().peer_id() {
+        let replicas: Vec<(Id, Page)> = pages
+            .drain(..)
+            .filter(|p| {
+                p.kind().is_page()
+                    && p.flags().contains(Flags::SECONDARY)
+                    && p.application_id() == 0
+                    && p.kind() == PageKind::Replica.into()
+            })
+            .filter_map(|p| {
+                let peer_id = match p.info().peer_id() {
                     Some(v) => v,
-                _ => return None,
-            };
+                    _ => return None,
+                };
 
-            Some((peer_id.clone(), p))
-        }).collect();
+                Some((peer_id.clone(), p))
+            })
+            .collect();
 
         info!("locate, found {} replicas", replicas.len());
 
@@ -61,7 +73,7 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             Some(s) => {
                 info!("updating existing service");
                 s
-            },
+            }
             None => {
                 info!("creating new service entry");
                 let service = match Service::load(&primary_page) {
@@ -69,20 +81,27 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
                     Err(e) => return Err(e.into()),
                 };
 
-                services.register(service, &primary_page, ServiceState::Located, Some(SystemTime::now())).unwrap()
+                services
+                    .register(
+                        service,
+                        &primary_page,
+                        ServiceState::Located,
+                        Some(SystemTime::now()),
+                    )
+                    .unwrap()
             }
         };
 
         // Update service
         let mut inst = service_inst.write().unwrap();
-                
+
         // Apply page update
         let updated = match inst.service().apply_primary(&primary_page) {
             Ok(r) => r,
             Err(e) => {
                 error!("error updating service: {:?}", e);
                 return Err(e.into());
-            },
+            }
         };
 
         // Add updated instance information
@@ -96,6 +115,9 @@ impl <C> Dsf <C> where C: io::Connector + Clone + Sync + Send + 'static {
             replica_manager.create_or_update(&options.id, peer_id, page);
         }
 
-        Ok(LocateInfo{origin: false, updated: true})
+        Ok(LocateInfo {
+            origin: false,
+            updated: true,
+        })
     }
 }

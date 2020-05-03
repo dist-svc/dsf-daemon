@@ -1,9 +1,8 @@
-
-use std::net::AddrParseError;
+use base64::DecodeError as B64Error;
+use diesel::result::Error as DieselError;
 use diesel::ConnectionError;
-use diesel::result::{Error as DieselError};
-use strum::{ParseError as StrumError};
-use base64::{DecodeError as B64Error};
+use std::net::AddrParseError;
+use strum::ParseError as StrumError;
 
 #[derive(Debug, PartialEq)]
 pub enum StoreError {

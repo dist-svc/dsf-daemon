@@ -1,8 +1,7 @@
 //! Local address discovery plugin
 //! Allows the daemon to perform local address discovery
 
-
-use std::net::{IpAddr};
+use std::net::IpAddr;
 
 extern crate get_if_addrs;
 use get_if_addrs::get_if_addrs;
@@ -18,7 +17,7 @@ pub enum AddressCommand {
 pub enum AddressUpdate {
     None,
     Discovered(Vec<IpAddr>),
-    Removed(IpAddr)
+    Removed(IpAddr),
 }
 
 /// AddressActor provides local address lookup / update services
@@ -28,7 +27,7 @@ pub struct AddressPlugin {
 
 impl AddressPlugin {
     pub fn new() -> Self {
-        Self{known: vec![]}
+        Self { known: vec![] }
     }
 
     /// Update known addresses
@@ -65,9 +64,10 @@ impl AddressPlugin {
     pub async fn get_addrs(&mut self) -> Result<Vec<IpAddr>, std::io::Error> {
         let a = get_if_addrs()?;
 
-        let a = a.iter()
-            .map(|v| v.ip().clone() )
-            .filter(|v| !v.is_loopback() )
+        let a = a
+            .iter()
+            .map(|v| v.ip().clone())
+            .filter(|v| !v.is_loopback())
             .collect();
 
         Ok(a)

@@ -1,23 +1,23 @@
 //! mDNS plugin, provides mDNS support to the DSF daemon
-//! 
+//!
 
-use std::time::{Duration, SystemTime};
+use std::collections::HashMap;
+use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
-use std::io;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use std::time::{Duration, SystemTime};
 
 use futures::prelude::*;
 
 use async_std::task::{self, JoinHandle};
 
-extern crate mdns;
 extern crate libmdns;
+extern crate mdns;
 
 use dsf_core::types::Id;
 
-use mdns::{RecordKind};
+use mdns::RecordKind;
 
 const SERVICE_NAME: &'static str = "_dsf._udp.local";
 
@@ -66,8 +66,13 @@ impl MdnsPlugin {
         let registered_services = vec![];
         let discovered_services = Arc::new(Mutex::new(HashMap::new()));
 
-
-        Ok(Self{ id, responder, registered_services, discovered_services, discover_handle: None })
+        Ok(Self {
+            id,
+            responder,
+            registered_services,
+            discovered_services,
+            discover_handle: None,
+        })
     }
 
     /// Attempt to register a service on the provided port
@@ -79,9 +84,7 @@ impl MdnsPlugin {
             SERVICE_NAME.to_owned(),
             "DSF Daemon".to_owned(),
             port,
-            &[
-                &format!("id={}", self.id),
-            ],
+            &[&format!("id={}", self.id)],
         );
 
         self.registered_services.push(svc);
@@ -104,13 +107,11 @@ impl MdnsPlugin {
         let services = self.discovered_services.clone();
 
         let h = task::spawn(async move {
-            
             let stream = discovery.listen();
             let mut stream = Box::pin(stream);
 
             // Listen for peers
             while let Some(Ok(r)) = stream.next().await {
-
                 // Filter out fields
                 let addr = r.records().filter_map(to_addr).next();
                 let port = r.records().filter_map(to_srv).next();
@@ -134,7 +135,7 @@ impl MdnsPlugin {
                     // TODO: emit this
                 }
             }
-            
+
             Ok(())
         });
 
@@ -143,7 +144,6 @@ impl MdnsPlugin {
         Ok(())
     }
 }
-
 
 fn to_addr(record: &mdns::Record) -> Option<IpAddr> {
     match record.kind {
@@ -155,14 +155,19 @@ fn to_addr(record: &mdns::Record) -> Option<IpAddr> {
 
 fn to_srv(record: &mdns::Record) -> Option<u16> {
     match record.kind {
-        RecordKind::SRV{priority: _, weight: _, port, target: _} => Some(port),
+        RecordKind::SRV {
+            priority: _,
+            weight: _,
+            port,
+            target: _,
+        } => Some(port),
         _ => None,
     }
 }
 
 fn to_id(record: &mdns::Record) -> Option<Id> {
     match &record.kind {
-        RecordKind::TXT(values) => values.iter().filter_map(|v| Id::from_str(v).ok() ).next(),
+        RecordKind::TXT(values) => values.iter().filter_map(|v| Id::from_str(v).ok()).next(),
         _ => None,
     }
 }

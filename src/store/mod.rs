@@ -1,22 +1,20 @@
-
-use std::time::SystemTime;
 use std::str::FromStr;
+use std::time::SystemTime;
 
+use diesel::dsl::sql_query;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use diesel::dsl::sql_query;
 
+use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 
-use chrono::{DateTime, TimeZone, Local, NaiveDateTime};
-
-use dsf_core::prelude::*;
 use crate::dsf_core::service::Subscriber;
+use dsf_core::prelude::*;
 
-pub mod error;
-pub mod schema;
-pub mod peers;
-pub mod services;
 pub mod data;
+pub mod error;
+pub mod peers;
+pub mod schema;
+pub mod services;
 
 pub mod page;
 
@@ -51,7 +49,6 @@ pub trait Base<Item> {
     fn delete(&self, item: &Item) -> Result<(), StoreError>;
 }
 
-
 impl Store {
     /// Create or connect to a store with the provided filename
     pub fn new(path: &str) -> Result<Self, StoreError> {
@@ -59,7 +56,7 @@ impl Store {
 
         let conn = SqliteConnection::establish(path)?;
 
-        let s = Self{conn};
+        let s = Self { conn };
 
         let _ = s.create_tables();
 
@@ -67,10 +64,11 @@ impl Store {
     }
 
     /// Initialise the store
-    /// 
+    ///
     /// This is called automatically in the `new` function
     pub fn create_tables(&self) -> Result<(), StoreError> {
-        sql_query("CREATE TABLE services (
+        sql_query(
+            "CREATE TABLE services (
             service_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
             service_index TEGER NOT NULL, 
             state TEXT NOT NULL, 
@@ -87,9 +85,12 @@ impl Store {
             replicas INTEGER NOT NULL,
             original BOOLEAN NOT NULL,
             subscribed BOOLEAN NOT NULL
-        );").execute(&self.conn)?;
+        );",
+        )
+        .execute(&self.conn)?;
 
-        sql_query("CREATE TABLE peers (
+        sql_query(
+            "CREATE TABLE peers (
             peer_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
             peer_index INTEGER, 
             state TEXT NOT NULL, 
@@ -102,9 +103,12 @@ impl Store {
             sent INTEGER NOT NULL, 
             received INTEGER NOT NULL, 
             blocked BOOLEAN NOT NULL
-        );").execute(&self.conn)?;
+        );",
+        )
+        .execute(&self.conn)?;
 
-        sql_query("CREATE TABLE data (
+        sql_query(
+            "CREATE TABLE data (
             signature TEXT NOT NULL UNIQUE PRIMARY KEY, 
             service_id TEXT NOT NULL,
 
@@ -113,23 +117,31 @@ impl Store {
             body_value BLOB,
 
             previous TEXT
-        );").execute(&self.conn)?;
+        );",
+        )
+        .execute(&self.conn)?;
 
-        sql_query("CREATE TABLE object (
+        sql_query(
+            "CREATE TABLE object (
             service_id TEXT NOT NULL,
 
             raw_data BLOB NOT NULL,
 
             previous TEXT,
             signature TEXT NOT NULL PRIMARY KEY
-        );").execute(&self.conn)?;
+        );",
+        )
+        .execute(&self.conn)?;
 
-        sql_query("CREATE TABLE identity (
+        sql_query(
+            "CREATE TABLE identity (
             service_id TEXT NOT NULL PRIMARY KEY,
             private_key TEXT NOT NULL,
             secret_key TEXT,
             last_page TEXT NOT NULL
-        );").execute(&self.conn)?;
+        );",
+        )
+        .execute(&self.conn)?;
 
         Ok(())
     }
@@ -150,14 +162,14 @@ impl Store {
 
     pub fn load_peer_service(&self) -> Result<Option<Service>, StoreError> {
         use crate::store::schema::identity::dsl::*;
-        
+
         // Find service id and last page
         let results = identity
             .select((service_id, private_key, secret_key, last_page))
             .load::<(String, String, Option<String>, String)>(&self.conn)?;
 
         if results.len() != 1 {
-            return Ok(None)
+            return Ok(None);
         }
 
         let (_s_id, s_pri_key, s_sec_key, page_sig) = &results[0];
@@ -181,9 +193,9 @@ impl Store {
     pub fn set_peer_service(&self, service: &Service, page: &Page) -> Result<(), StoreError> {
         use crate::store::schema::identity::dsl::*;
 
-        let pri_key = service.private_key().map(|v| private_key.eq(v.to_string()) );
-        let sec_key = service.secret_key().map(|v| secret_key.eq(v.to_string()) );
-        let sig = page.signature.map(|v| last_page.eq(v.to_string()) );
+        let pri_key = service.private_key().map(|v| private_key.eq(v.to_string()));
+        let sec_key = service.secret_key().map(|v| secret_key.eq(v.to_string()));
+        let sig = page.signature.map(|v| last_page.eq(v.to_string()));
 
         // Ensure the page has been written
         if let None = self.load_page(&page.signature.unwrap())? {
@@ -203,9 +215,7 @@ impl Store {
 
         // Create or update
         if results.len() != 0 {
-            diesel::update(identity)
-                .set(values)
-                .execute(&self.conn)?;
+            diesel::update(identity).set(values).execute(&self.conn)?;
         } else {
             diesel::insert_into(identity)
                 .values(values)
@@ -215,4 +225,3 @@ impl Store {
         Ok(())
     }
 }
-

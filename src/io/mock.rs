@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use dsf_core::prelude::*;
 
-use crate::error::{Error, CoreError};
 use super::Connector;
+use crate::error::{CoreError, Error};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct MockTransaction {
@@ -23,12 +23,22 @@ impl MockTransaction {
             Err(e) => (None, Some(e)),
         };
 
-        Self{target, req: Some(req), resp: r, err: e}
+        Self {
+            target,
+            req: Some(req),
+            resp: r,
+            err: e,
+        }
     }
 
     /// Create a new mocked response
     pub fn response(target: Address, resp: NetResponse, err: Option<CoreError>) -> Self {
-        Self{target, req: None, resp: Some(resp), err}
+        Self {
+            target,
+            req: None,
+            resp: Some(resp),
+            err,
+        }
     }
 }
 
@@ -39,12 +49,14 @@ pub struct MockConnector {
 
 impl MockConnector {
     pub fn new() -> Self {
-        Self{ transactions: Arc::new(Mutex::new(VecDeque::new())) }
+        Self {
+            transactions: Arc::new(Mutex::new(VecDeque::new())),
+        }
     }
 
     /// Set expectations on the connector
     pub fn expect<T>(&mut self, transactions: T) -> Self
-    where 
+    where
         T: Into<VecDeque<MockTransaction>>,
     {
         *self.transactions.lock().unwrap() = transactions.into();
@@ -55,7 +67,7 @@ impl MockConnector {
     /// Finalise expectations on the connector
     pub fn finalise(&mut self) {
         debug!("Finalizing expectations");
-        
+
         let transactions: Vec<_> = self.transactions.lock().unwrap().drain(..).collect();
         let expectations = Vec::<MockTransaction>::new();
         assert_eq!(
@@ -65,14 +77,16 @@ impl MockConnector {
     }
 }
 
-
 #[async_trait]
 impl Connector for MockConnector {
     // Send a request and receive a response or error at some time in the future
     async fn request(
-        &self, _req_id: RequestId, target: Address, req: NetRequest, _timeout: Duration,
+        &self,
+        _req_id: RequestId,
+        target: Address,
+        req: NetRequest,
+        _timeout: Duration,
     ) -> Result<NetResponse, Error> {
-        
         let mut transactions = self.transactions.lock().unwrap();
         let transaction = transactions.pop_front().expect(&format!(
             "request error, no more transactions available (request: {:?})",
@@ -94,7 +108,10 @@ impl Connector for MockConnector {
 
     // Send a response message
     async fn respond(
-        &self, _req_id: RequestId, target: Address, resp: NetResponse,
+        &self,
+        _req_id: RequestId,
+        target: Address,
+        resp: NetResponse,
     ) -> Result<(), Error> {
         let mut transactions = self.transactions.lock().unwrap();
         let transaction = transactions.pop_front().expect(&format!(

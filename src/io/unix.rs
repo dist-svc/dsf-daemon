@@ -1,16 +1,15 @@
-
-use std::sync::{Arc, Mutex};
-use std::io;
 use std::collections::HashMap;
+use std::io;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
-use futures::prelude::*;
-use futures::{select};
 use futures::channel::mpsc;
-use futures::task::{Poll, Context};
+use futures::prelude::*;
+use futures::select;
+use futures::task::{Context, Poll};
 
-use async_std::task::{self, JoinHandle};
 use async_std::os::unix::net::{UnixListener, UnixStream};
+use async_std::task::{self, JoinHandle};
 
 use tracing::{span, Level};
 use tracing_futures::Instrument;
@@ -23,7 +22,7 @@ pub const UNIX_BUFF_LEN: usize = 10 * 1024;
 pub enum UnixError {
     Io(io::ErrorKind),
     Sender(mpsc::SendError),
-    NoMatchingConnection
+    NoMatchingConnection,
 }
 
 impl From<io::Error> for UnixError {
@@ -49,12 +48,17 @@ pub struct UnixMessage {
 
 impl UnixMessage {
     fn new(connection_id: u32, data: Bytes) -> Self {
-        Self{connection_id, data, sink: None, exit: None}
+        Self {
+            connection_id,
+            data,
+            sink: None,
+            exit: None,
+        }
     }
 
     /// Generate a response for an existing unix message
     pub fn response(&self, data: Bytes) -> Self {
-        Self{
+        Self {
             connection_id: self.connection_id,
             data,
             sink: self.sink.clone(),
@@ -83,7 +87,7 @@ impl PartialEq for UnixMessage {
 
 pub struct Unix {
     connections: Arc<Mutex<HashMap<u32, Connection>>>,
-    rx_stream:  mpsc::Receiver<UnixMessage>,
+    rx_stream: mpsc::Receiver<UnixMessage>,
 
     handle: JoinHandle<Result<(), UnixError>>,
 }
@@ -98,7 +102,6 @@ struct Connection {
 }
 
 impl Unix {
-
     /// Create a new unix socket IO connector
     pub async fn new(path: &str) -> Result<Self, UnixError> {
         debug!("Creating UnixActor with path: {}", path);
@@ -112,24 +115,31 @@ impl Unix {
         let (rx_sink, rx_stream) = mpsc::channel::<UnixMessage>(0);
 
         // Create listening task
-        let handle = task::spawn(async move {
-            let mut incoming = listener.incoming();
+        let handle = task::spawn(
+            async move {
+                let mut incoming = listener.incoming();
 
-            while let Some(stream) = incoming.next().await {
-                let stream = stream?;
+                while let Some(stream) = incoming.next().await {
+                    let stream = stream?;
 
-                let conn = Connection::new(stream, index, rx_sink.clone());
+                    let conn = Connection::new(stream, index, rx_sink.clone());
 
-                trace!("connections lock");
-                c.lock().unwrap().insert(index, conn);
+                    trace!("connections lock");
+                    c.lock().unwrap().insert(index, conn);
 
-                index += 1;
+                    index += 1;
+                }
+
+                Ok(())
             }
+            .instrument(span!(Level::TRACE, "UNIX", path)),
+        );
 
-            Ok(())
-        }.instrument(span!(Level::TRACE, "UNIX", path)) );
-
-        Ok(Self{connections, rx_stream, handle})
+        Ok(Self {
+            connections,
+            rx_stream,
+            handle,
+        })
     }
 
     /// Send a network message
@@ -141,10 +151,9 @@ impl Unix {
         let connection_id = msg.connection_id;
 
         let (mut tx_sink, mut exit_sink) = {
-           
             trace!("response lock");
             let mut connections = self.connections.lock().unwrap();
-            
+
             let interface = match connections.get_mut(&connection_id) {
                 Some(v) => v,
                 None => return Err(UnixError::NoMatchingConnection),
@@ -181,7 +190,6 @@ impl Drop for Connection {
 
 impl Connection {
     fn new(unix_stream: UnixStream, index: u32, rx_sink: mpsc::Sender<UnixMessage>) -> Connection {
-
         let mut rx_sink = rx_sink;
 
         let (tx_sink, tx_stream) = mpsc::channel::<UnixMessage>(0);
@@ -248,10 +256,14 @@ impl Connection {
             Ok(())
         }.instrument(span!(Level::TRACE, "UNIX", index)) );
 
-        Connection{index, handle, sink: tx_sink, exit_sink}
+        Connection {
+            index,
+            handle,
+            sink: tx_sink,
+            exit_sink,
+        }
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -261,40 +273,40 @@ mod test {
 
     #[test]
     fn test_unix() {
+        let _ = FmtSubscriber::builder()
+            .with_max_level(Level::DEBUG)
+            .try_init();
 
-        let _ = FmtSubscriber::builder().with_max_level(Level::DEBUG).try_init();
-
-        task::block_on( async {
-            let mut unix = Unix::new("/tmp/dsf-unix-test").await
+        task::block_on(async {
+            let mut unix = Unix::new("/tmp/dsf-unix-test")
+                .await
                 .expect("Error creating unix socket listener");
 
-            let mut stream = UnixStream::connect("/tmp/dsf-unix-test").await
+            let mut stream = UnixStream::connect("/tmp/dsf-unix-test")
+                .await
                 .expect("Error connecting to unix socket");
 
             let data = Bytes::copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
             let mut buff = vec![0u8; UNIX_BUFF_LEN];
 
             // Client to server
-            stream.write(&data).await
-                .expect("Error writing data");
+            stream.write(&data).await.expect("Error writing data");
 
-            let res = unix.next().await
-            .expect("Error awaiting unix message");
-        
+            let res = unix.next().await.expect("Error awaiting unix message");
+
             assert_eq!(res, UnixMessage::new(0, data.clone()));
 
             // Server to client
-            unix.send(UnixMessage::new(0, data.clone()), false).await
+            unix.send(UnixMessage::new(0, data.clone()), false)
+                .await
                 .expect("Error sending message to client");
 
-            let n = stream.read(&mut buff).await
+            let n = stream
+                .read(&mut buff)
+                .await
                 .expect("Error reading from client");
 
             assert_eq!(&buff[..n], &data);
-
-            
         })
     }
-
 }
-

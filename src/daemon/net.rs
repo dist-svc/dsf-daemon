@@ -1,28 +1,30 @@
-use std::time::{SystemTime, Duration};
-use std::ops::Add;
 use std::convert::TryFrom;
 use std::net::SocketAddr;
+use std::ops::Add;
+use std::time::{Duration, SystemTime};
 
-use futures::prelude::*;
 use async_std::future::timeout;
+use futures::prelude::*;
 use tracing::{span, Level};
 
-use dsf_core::prelude::*;
 use dsf_core::net;
+use dsf_core::prelude::*;
 use dsf_core::service::Subscriber;
 
 use kad::prelude::*;
 
 use crate::daemon::Dsf;
-use crate::io::Connector;
 use crate::error::Error;
+use crate::io::Connector;
 
 use crate::daemon::dht::{Adapt, TryAdapt};
 
+use crate::core::data::DataInfo;
 use crate::core::peers::{Peer, PeerAddress, PeerState};
-use crate::core::data::{DataInfo};
 
-impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
+impl<C> Dsf<C>
+where
+    C: Connector + Clone + Sync + Send + 'static,
 {
     /// Handle a received request message and generate a response
     pub fn handle(&mut self, addr: SocketAddr, req: net::Request) -> Result<net::Response, Error> {
@@ -37,26 +39,29 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         let from = req.from.clone();
         let from2 = from.clone();
 
-        trace!("handling request (from: {:?} / {})\n {:?}", from, addr, &req);
+        trace!(
+            "handling request (from: {:?} / {})\n {:?}",
+            from,
+            addr,
+            &req
+        );
 
         // Generic request processing here
         let peer = self.handle_base(&from, &addr, &req.common, Some(SystemTime::now()));
 
         // Handle specific DSF and DHT messages
         if let Some(kad_req) = req.data.try_to(()) {
-            self.handle_dht(from, peer, kad_req)
-            .map(move |resp| {
+            self.handle_dht(from, peer, kad_req).map(move |resp| {
                 let kind = resp.to();
                 net::Response::new(own_id, req_id, kind, Flags::default())
             })
         } else {
             self.handle_dsf(from, peer, req.data)
-            .map(move |kind| {
-                net::Response::new(own_id, req_id, kind, Flags::default())
-            })
+                .map(move |kind| net::Response::new(own_id, req_id, kind, Flags::default()))
 
-        // Generic response processing here
-        }.map(move |mut resp| {
+            // Generic response processing here
+        }
+        .map(move |mut resp| {
             if flags.contains(Flags::PUB_KEY_REQUEST) {
                 resp.common.public_key = Some(pub_key);
             }
@@ -76,15 +81,26 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
     // Internal function to send a request and await a response
     /// This MUST be used in place of self.connector.clone.request for correct system behaviour
-    pub(crate) async fn request(&mut self, address: Address, req: net::Request, timeout: Duration) -> Result<net::Response, Error> {
+    pub(crate) async fn request(
+        &mut self,
+        address: Address,
+        req: net::Request,
+        timeout: Duration,
+    ) -> Result<net::Response, Error> {
         let req = req.clone();
 
         debug!("Sending request to: {:?} request: {:?}", address, &req);
 
         // Issue request and await response
-        let resp = self.connector().request(req.id, address.clone(), req, timeout).await?;
-        
-        debug!("Received response from: {:?} request: {:?}", &address, &resp);
+        let resp = self
+            .connector()
+            .request(req.id, address.clone(), req, timeout)
+            .await?;
+
+        debug!(
+            "Received response from: {:?} request: {:?}",
+            &address, &resp
+        );
 
         // Handle received message
         self.handle_base(&resp.from, &address, &resp.common, Some(SystemTime::now()));
@@ -93,8 +109,11 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
     }
 
     /// Internal function to send a series of requests
-    pub(crate) async fn request_all(&mut self, addresses: &[Address], req: net::Request) -> Vec<Result<net::Response, Error>> {
-        
+    pub(crate) async fn request_all(
+        &mut self,
+        addresses: &[Address],
+        req: net::Request,
+    ) -> Vec<Result<net::Response, Error>> {
         let mut f = Vec::with_capacity(addresses.len());
 
         let c = self.connector();
@@ -104,8 +123,9 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             let mut req = req.clone();
             req.common.id = RequestId::default();
 
-            let req_future = c.request(req.id, a.clone(), req, Duration::from_secs(10))
-                .map(move |resp| (resp, a.clone()) );
+            let req_future = c
+                .request(req.id, a.clone(), req, Duration::from_secs(10))
+                .map(move |resp| (resp, a.clone()));
 
             f.push(req_future);
         }
@@ -118,27 +138,56 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
             }
         }
 
-        responses.drain(..).map(|(resp, _addr)| resp ).collect()
+        responses.drain(..).map(|(resp, _addr)| resp).collect()
     }
 
     /// Internal function to send a response
     /// This MUST be used in place of self.connector.clone.respond for correct system behavior
-    pub(crate) async fn respond(&mut self, address: Address, resp: net::Response) -> Result<(), Error> {
+    pub(crate) async fn respond(
+        &mut self,
+        address: Address,
+        resp: net::Response,
+    ) -> Result<(), Error> {
         let resp = resp.clone();
 
-        trace!("[DSF ({:?})] Sending response to: {:?} response: {:?}", self.id(), address, &resp);
+        trace!(
+            "[DSF ({:?})] Sending response to: {:?} response: {:?}",
+            self.id(),
+            address,
+            &resp
+        );
 
-        timeout(Duration::from_secs(10), self.connector().respond(resp.id, address, resp)).await??;
+        timeout(
+            Duration::from_secs(10),
+            self.connector().respond(resp.id, address, resp),
+        )
+        .await??;
 
         Ok(())
     }
 
     /// Handles a base message, updating internal state for the sender
-    pub(crate) fn handle_base(&mut self, id: &Id, address: &Address, c: &net::Common, _seen: Option<SystemTime>) -> Peer {
-        trace!("[DSF ({:?})] Handling base message from {:?} {:?} {:?}", self.id(), id, address, c.public_key);
+    pub(crate) fn handle_base(
+        &mut self,
+        id: &Id,
+        address: &Address,
+        c: &net::Common,
+        _seen: Option<SystemTime>,
+    ) -> Peer {
+        trace!(
+            "[DSF ({:?})] Handling base message from {:?} {:?} {:?}",
+            self.id(),
+            id,
+            address,
+            c.public_key
+        );
 
         // Find or create (and push) peer
-        let mut peer = self.peers().find_or_create(id.clone(), PeerAddress::Implicit(*address), c.public_key.clone());
+        let mut peer = self.peers().find_or_create(
+            id.clone(),
+            PeerAddress::Implicit(*address),
+            c.public_key.clone(),
+        );
 
         // Update peer info
         peer.update(|mut p| {
@@ -148,14 +197,20 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
 
         assert!(id != &self.id(), "handle_base called for self...");
 
-        trace!("[DSF ({:?})] Peer id: {:?} state: {:?} seen: {:?}", self.id(), id, peer.state(), peer.seen());
+        trace!(
+            "[DSF ({:?})] Peer id: {:?} state: {:?} seen: {:?}",
+            self.id(),
+            id,
+            peer.state(),
+            peer.seen()
+        );
 
         // Add public key if appropriate
         match (peer.state(), c.public_key) {
             (PeerState::Unknown, Some(pk)) => {
                 info!("Adding key: {:?} to peer: {:?}", pk, id);
-                peer.update(|p| p.set_state(PeerState::Known(pk.clone())) )
-            },
+                peer.update(|p| p.set_state(PeerState::Known(pk.clone())))
+            }
             _ => (),
         };
 
@@ -163,23 +218,27 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
         if let Some(a) = c.remote_address {
             if a != peer.address() {
                 info!("Setting explicit address {:?} for peer: {:?}", a, id);
-                peer.update(|p| p.update_address(PeerAddress::Explicit(a)) );
+                peer.update(|p| p.update_address(PeerAddress::Explicit(a)));
             }
         }
 
         peer
     }
-    
 
     /// Handle a DSF type message
-    fn handle_dsf(&mut self, from: Id, peer: Peer, req: net::RequestKind) -> Result<net::ResponseKind, Error> {
-    
+    fn handle_dsf(
+        &mut self,
+        from: Id,
+        peer: Peer,
+        req: net::RequestKind,
+    ) -> Result<net::ResponseKind, Error> {
         match req {
-            net::RequestKind::Hello => {
-                Ok(net::ResponseKind::Status(net::Status::Ok))
-            },
+            net::RequestKind::Hello => Ok(net::ResponseKind::Status(net::Status::Ok)),
             net::RequestKind::Subscribe(service_id) => {
-                info!("Subscribe request from: {} for service: {}", from, service_id);
+                info!(
+                    "Subscribe request from: {} for service: {}",
+                    from, service_id
+                );
                 let service = match self.services().find(&service_id) {
                     Some(s) => s,
                     None => {
@@ -196,13 +255,15 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                 // TODO: update subscriber count?
 
                 // TODO: update peer subscription information here
-                self.subscribers().update_peer(&service_id, &peer.id(), |inst| {
-                    inst.info.updated = Some(SystemTime::now());
-                    inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
-                }).unwrap();
+                self.subscribers()
+                    .update_peer(&service_id, &peer.id(), |inst| {
+                        inst.info.updated = Some(SystemTime::now());
+                        inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
+                    })
+                    .unwrap();
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
-            },
+            }
             net::RequestKind::Query(id) => {
                 info!("Query request from: {} for service: {}", from, id);
                 let service = match self.services().find(&id) {
@@ -221,7 +282,7 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                 info!("Query request complete");
 
                 Err(Error::Unimplemented)
-            },
+            }
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
                 let service = match self.services().find(&id) {
@@ -234,8 +295,6 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                 };
 
                 let mut service = service.write().unwrap();
-
-                
 
                 // TODO: check we-re subscribed to the service (otherwise we shouldn't accept this data)
 
@@ -261,9 +320,6 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                             self.data().store_data(&info, p).unwrap();
                         };
                     }
-
-                    
-                    
                 }
 
                 // TODO: update service with newly received data
@@ -272,22 +328,24 @@ impl <C> Dsf <C> where C: Connector + Clone + Sync + Send + 'static
                 info!("Data push complete");
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
-            },
-            _ => {
-                Err(Error::Unimplemented)
             }
+            _ => Err(Error::Unimplemented),
         }
-
     }
 
     /// Handle a DHT request message
-    fn handle_dht(&mut self, from: Id, peer: Peer, req: DhtRequest<Id, Data>) -> Result<DhtResponse<Id, Peer, Data>, Error> {
+    fn handle_dht(
+        &mut self,
+        from: Id,
+        peer: Peer,
+        req: DhtRequest<Id, Data>,
+    ) -> Result<DhtResponse<Id, Peer, Data>, Error> {
         // TODO: resolve this into existing entry
         let from = DhtEntry::new(from.into(), peer);
 
         // Pass to DHT
         let resp = self.dht().handle(&from, &req).unwrap();
-        
+
         Ok(resp)
     }
 }

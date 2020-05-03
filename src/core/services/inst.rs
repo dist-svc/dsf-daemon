@@ -1,14 +1,12 @@
-
-use std::time::{SystemTime, Duration};
 use std::ops::Add;
+use std::time::{Duration, SystemTime};
 
-use dsf_core::prelude::*;
-use dsf_core::service::{Subscriber, Publisher};
-use dsf_core::service::publisher::SecondaryOptionsBuilder;
 use dsf_core::options::Options;
+use dsf_core::prelude::*;
+use dsf_core::service::publisher::SecondaryOptionsBuilder;
+use dsf_core::service::{Publisher, Subscriber};
 
 use dsf_rpc::service::{ServiceInfo, ServiceState};
-
 
 #[derive(Debug, Serialize, Deserialize, Queryable)]
 pub struct ServiceInst {
@@ -28,7 +26,6 @@ pub struct ServiceInst {
     #[serde(skip)]
     pub(crate) changed: bool,
 }
-
 
 impl ServiceInst {
     pub(crate) fn id(&self) -> Id {
@@ -67,7 +64,7 @@ impl ServiceInst {
             Some(s) => s,
             None => {
                 error!("no service private key (id: {})", self.service.id());
-                return Err(DsfError::NoPrivateKey)
+                return Err(DsfError::NoPrivateKey);
             }
         };
 
@@ -82,7 +79,7 @@ impl ServiceInst {
             // If it hasn't expired, use this one
             if !expired && !force_update {
                 debug!("Using existing service page");
-                return Ok(page.clone())
+                return Ok(page.clone());
             }
         }
 
@@ -91,7 +88,7 @@ impl ServiceInst {
         let mut buff = vec![0u8; 1024];
         let (n, mut primary_page) = self.service.publish_primary(&mut buff).unwrap();
         primary_page.raw = Some(buff[..n].to_vec());
-        
+
         // Update local page version
         self.primary_page = Some(primary_page.clone());
         self.changed = true;
@@ -100,7 +97,11 @@ impl ServiceInst {
     }
 
     /// Replicate a service, creating a new replica page
-    pub(crate) fn replicate(&mut self, peer_service: &mut Service, force_update: bool) -> Result<Page, DsfError> {
+    pub(crate) fn replicate(
+        &mut self,
+        peer_service: &mut Service,
+        force_update: bool,
+    ) -> Result<Page, DsfError> {
         let mut version = 0;
 
         // Check if there's an existing page
@@ -145,22 +146,28 @@ impl ServiceInst {
         Ok(changed)
     }
 
-
     pub fn update<F>(&mut self, f: F)
-    where F: Fn(&mut ServiceInst) {
+    where
+        F: Fn(&mut ServiceInst),
+    {
         (f)(self);
         self.changed = true;
     }
 
-    pub(crate) fn update_required(&self, state: ServiceState, update_interval: Duration, force: bool) -> bool {
+    pub(crate) fn update_required(
+        &self,
+        state: ServiceState,
+        update_interval: Duration,
+        force: bool,
+    ) -> bool {
         // Filter for the specified service state
         if self.state != state {
-            return false
+            return false;
         }
 
         // Skip checking further if force is set
         if force {
-            return true
+            return true;
         }
 
         // If we've never updated them, definitely required
@@ -171,9 +178,9 @@ impl ServiceInst {
 
         // Otherwise, only if update time has expired
         if updated.add(update_interval) < SystemTime::now() {
-            return true
+            return true;
         }
-        
-        return false
+
+        return false;
     }
 }

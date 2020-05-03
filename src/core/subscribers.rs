@@ -1,7 +1,5 @@
-
-
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use futures::channel::mpsc;
@@ -15,13 +13,11 @@ use crate::error::Error;
 // TODO: isolate unixmessage from core subscriber somehow
 use crate::io::unix::UnixMessage;
 
-
 /// Subscribers are those connected to a service hosted by this daemon
 #[derive(Clone)]
 pub struct SubscriberInst {
     pub info: SubscriptionInfo,
 }
-
 
 #[derive(Clone, Debug)]
 pub struct UnixSubscriber {
@@ -37,13 +33,15 @@ pub struct SubscriberManager {
 
 impl SubscriberManager {
     pub fn new() -> Self {
-        Self{ store: Arc::new(Mutex::new(HashMap::new())) }
+        Self {
+            store: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     /// Fetch subscribers for a given service
     pub fn find(&self, service_id: &Id) -> Result<Vec<SubscriberInst>, Error> {
         let s = self.store.lock().unwrap();
-        
+
         match s.get(service_id) {
             Some(v) => Ok(v.clone()),
             None => Ok(vec![]),
@@ -51,7 +49,12 @@ impl SubscriberManager {
     }
 
     /// Update a specified peer subscription
-    pub fn update_peer<F: Fn(&mut SubscriberInst)>(&mut self, service_id: &Id, peer_id: &Id, f: F) -> Result<(), Error> {
+    pub fn update_peer<F: Fn(&mut SubscriberInst)>(
+        &mut self,
+        service_id: &Id,
+        peer_id: &Id,
+        f: F,
+    ) -> Result<(), Error> {
         let mut store = self.store.lock().unwrap();
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
@@ -73,7 +76,7 @@ impl SubscriberManager {
 
                     updated: Some(SystemTime::now()),
                     expiry: None,
-                }
+                },
             };
 
             subscribers.push(s);
@@ -91,7 +94,12 @@ impl SubscriberManager {
     }
 
     /// Update a specified socket subscription
-    pub fn update_socket<F: Fn(&mut SubscriberInst)>(&mut self, service_id: &Id, socket_id: u32, f: F) -> Result<(), Error> {
+    pub fn update_socket<F: Fn(&mut SubscriberInst)>(
+        &mut self,
+        service_id: &Id,
+        socket_id: u32,
+        f: F,
+    ) -> Result<(), Error> {
         let mut store = self.store.lock().unwrap();
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
@@ -106,14 +114,13 @@ impl SubscriberManager {
         // Create new subscriber if not found
         if let None = subscriber {
             let s = SubscriberInst {
-
                 info: SubscriptionInfo {
                     service_id: service_id.clone(),
                     kind: SubscriptionKind::Socket(socket_id),
 
                     updated: Some(SystemTime::now()),
                     expiry: None,
-                }
+                },
             };
 
             subscribers.push(s);
@@ -128,7 +135,6 @@ impl SubscriberManager {
 
         Ok(())
     }
-    
 }
 
 // TODO: write tests for this

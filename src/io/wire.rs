@@ -1,22 +1,22 @@
 //! Wire adaptor implements wire encoding/decoding for DSF messages
-//! 
+//!
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use std::pin::Pin;
-use std::task::{Poll, Context};
+use std::task::{Context, Poll};
 
-use futures::prelude::*;
 use futures::channel::mpsc;
+use futures::prelude::*;
 
 use async_std::future::timeout;
 
 //use tracing::{Level, span};
 
-use dsf_core::prelude::*;
 use dsf_core::net::{Message as DsfMessage, Request as DsfRequest, Response as DsfResponse};
+use dsf_core::prelude::*;
 use dsf_core::wire::Container;
 
 use crate::error::Error;
@@ -66,14 +66,22 @@ impl Wire {
 
         let connections = HashMap::new();
 
-        Self{requests, sink, stream, private_key, connections}
+        Self {
+            requests,
+            sink,
+            stream,
+            private_key,
+            connections,
+        }
     }
 
     /// Create a new connector instance linked to a wire adaptor
     pub fn connector(&self) -> WireConnector {
-        WireConnector{ sink: self.sink.clone(), requests: self.requests.clone() }
+        WireConnector {
+            sink: self.sink.clone(),
+            requests: self.requests.clone(),
+        }
     }
-
 
     pub fn encode(&self, msg: DsfMessage) -> Result<Vec<u8>, Error> {
         let mut buff = vec![0u8; 4096];
@@ -87,8 +95,8 @@ impl Wire {
         Ok((&buff[..n]).to_vec())
     }
 
-    pub fn decode<PK>(&self, data: &[u8], find_pub_key: PK) -> Result<DsfMessage, Error> 
-    where 
+    pub fn decode<PK>(&self, data: &[u8], find_pub_key: PK) -> Result<DsfMessage, Error>
+    where
         PK: Fn(&Id) -> Option<PublicKey>,
     {
         // Parse base container
@@ -97,18 +105,18 @@ impl Wire {
 
         // Parse out base object
         // TODO: pass secret keys for encode / decode here
-        let (base, _n) = Base::parse(&data, &find_pub_key, |_id| None )?;
+        let (base, _n) = Base::parse(&data, &find_pub_key, |_id| None)?;
 
         // TODO: use n here?
 
         // Convert into message type
-        let message = DsfMessage::convert(base, &find_pub_key )?;
+        let message = DsfMessage::convert(base, &find_pub_key)?;
 
         Ok(message)
     }
 
     fn find_pub_key(&self, id: &Id) -> Option<PublicKey> {
-        self.connections.get(id).and_then(|i| i.public_key )
+        self.connections.get(id).and_then(|i| i.public_key)
     }
 
     /// Handle incoming messages
@@ -117,23 +125,31 @@ impl Wire {
 
         // Decode network message to DSF message
         // TODO: provide ID to Key query..?
-        let decoded = match self.decode(&msg.data, |id| self.find_pub_key(id) ) {
+        let decoded = match self.decode(&msg.data, |id| self.find_pub_key(id)) {
             Ok(v) => v,
             Err(e) => {
                 debug!("Error {:?} decoding message from: {:?}", e, msg.address);
                 // TODO: feed back decoding error to stats / rate limiting
-                return Ok(None)
+                return Ok(None);
             }
         };
 
         trace!("handling message: {:?} from: {:?}", decoded, msg.address);
 
         let from_id = decoded.from();
-        let info = self.connections.entry(from_id.clone()).or_insert(ConnectionInfo::new());
+        let info = self
+            .connections
+            .entry(from_id.clone())
+            .or_insert(ConnectionInfo::new());
         info.rx_count += 1;
 
-        if !info.addresses.iter().any(|(addr, _seen)| addr == &msg.address ) {
-            info.addresses.push((msg.address.clone(), SystemTime::now()));
+        if !info
+            .addresses
+            .iter()
+            .any(|(addr, _seen)| addr == &msg.address)
+        {
+            info.addresses
+                .push((msg.address.clone(), SystemTime::now()));
         }
 
         match (info.public_key, decoded.pub_key()) {
@@ -141,11 +157,11 @@ impl Wire {
                 debug!("Registering new public key for ID: {:?}", from_id);
                 // TODO: emit this information / handle this
                 info.public_key = Some(pk);
-            },
+            }
             (Some(p1), Some(p2)) if p1 != p2 => {
                 error!("Public key mismatch for ID: {:?}", from_id);
                 // TODO: emit this information / handle this
-                return Ok(None)
+                return Ok(None);
             }
             _ => (),
         }
@@ -165,7 +181,7 @@ impl Wire {
             Some(a) => a,
             None => {
                 error!("Received response id {} with no pending request", req_id);
-                return Ok(None)
+                return Ok(None);
             }
         };
 
@@ -176,19 +192,21 @@ impl Wire {
     }
 
     // Send a response message
-    pub async fn respond(
-        &self, target: Address, resp: DsfResponse,
-    ) -> Result<(), Error> {
-        
+    pub async fn respond(&self, target: Address, resp: DsfResponse) -> Result<(), Error> {
         // Send message
         let mut sink = self.sink.clone();
-        sink.send((target, DsfMessage::Response(resp))).await.unwrap();
+        sink.send((target, DsfMessage::Response(resp)))
+            .await
+            .unwrap();
 
         Ok(())
     }
 
-    pub fn handle_outgoing(&mut self, target: Address, msg: DsfMessage) -> Result<NetMessage, Error> {
-
+    pub fn handle_outgoing(
+        &mut self,
+        target: Address,
+        msg: DsfMessage,
+    ) -> Result<NetMessage, Error> {
         // Encoding should never fail..?
         // what about oversize etc...
         let data = self.encode(msg).unwrap();
@@ -204,7 +222,6 @@ impl Stream for Wire {
     type Item = NetMessage;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Option<Self::Item>> {
-        
         let p = Pin::new(&mut self.stream).poll_next(ctx);
 
         match p {
@@ -212,7 +229,7 @@ impl Stream for Wire {
                 // Encode outgoing message
                 let net_message = self.handle_outgoing(address, message).unwrap();
                 Poll::Ready(Some(net_message))
-            },
+            }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
@@ -229,61 +246,75 @@ pub struct WireConnector {
 
 #[async_trait]
 impl Connector for WireConnector {
-        // Send a request and receive a response or error at some time in the future
-        async fn request(
-            &self, req_id: RequestId, target: Address, req: NetRequest, t: Duration,
-        ) -> Result<NetResponse, Error> {   
-            trace!("issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)", req, req_id, target, t.as_secs());
-            
-            // Create per-request channel
-            let (tx, mut rx) = mpsc::channel(0);
+    // Send a request and receive a response or error at some time in the future
+    async fn request(
+        &self,
+        req_id: RequestId,
+        target: Address,
+        req: NetRequest,
+        t: Duration,
+    ) -> Result<NetResponse, Error> {
+        trace!(
+            "issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)",
+            req,
+            req_id,
+            target,
+            t.as_secs()
+        );
 
-            // Add response channel to map
-            trace!("new request lock");
-            self.requests.lock().unwrap().insert(req_id, tx);
-            trace!("got new request lock");
+        // Create per-request channel
+        let (tx, mut rx) = mpsc::channel(0);
 
-            // Pass message to internal sink
-            let mut sink = self.sink.clone();
-            sink.send((target, DsfMessage::Request(req))).await.unwrap();
+        // Add response channel to map
+        trace!("new request lock");
+        self.requests.lock().unwrap().insert(req_id, tx);
+        trace!("got new request lock");
 
-            // Await and return message
-            let res = timeout(t, rx.next() ).await;
-            
-            // Handle timeouts
-            let res = match res {
-                Ok(Some(v)) => {
-                    trace!("received response: {:?}", v);
-                    Ok(v)
-                },
-                // TODO: this seems like it should be a retry point..?
-                Ok(None) => {
-                    debug!("No response received");
-                    Err(Error::Timeout)
-                },
-                Err(e) => {
-                    debug!("Response error: {:?}", e);
-                    Err(Error::Timeout)
-                },
-            };
+        // Pass message to internal sink
+        let mut sink = self.sink.clone();
+        sink.send((target, DsfMessage::Request(req))).await.unwrap();
 
-            // Remove request from tracking
-            self.requests.lock().unwrap().remove(&req_id);
+        // Await and return message
+        let res = timeout(t, rx.next()).await;
 
-            res
-        }
-    
-        // Send a response message
-        async fn respond(
-            &self, _req_id: RequestId, target: Address, resp: NetResponse,
-        ) -> Result<(), Error> {
-            
-            // Send message
-            let mut sink = self.sink.clone();
-            sink.send((target, DsfMessage::Response(resp))).await.unwrap();
+        // Handle timeouts
+        let res = match res {
+            Ok(Some(v)) => {
+                trace!("received response: {:?}", v);
+                Ok(v)
+            }
+            // TODO: this seems like it should be a retry point..?
+            Ok(None) => {
+                debug!("No response received");
+                Err(Error::Timeout)
+            }
+            Err(e) => {
+                debug!("Response error: {:?}", e);
+                Err(Error::Timeout)
+            }
+        };
 
-            Ok(())
-        }
+        // Remove request from tracking
+        self.requests.lock().unwrap().remove(&req_id);
+
+        res
+    }
+
+    // Send a response message
+    async fn respond(
+        &self,
+        _req_id: RequestId,
+        target: Address,
+        resp: NetResponse,
+    ) -> Result<(), Error> {
+        // Send message
+        let mut sink = self.sink.clone();
+        sink.send((target, DsfMessage::Response(resp)))
+            .await
+            .unwrap();
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -292,13 +323,13 @@ mod test {
 
     use async_std::task;
 
-    use tracing_subscriber::{FmtSubscriber, filter::LevelFilter};
+    use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 
-    use dsf_core::crypto::{new_pk, hash};
+    use dsf_core::crypto::{hash, new_pk};
     use dsf_core::net::*;
 
-    use crate::error::BaseError;
     use super::*;
+    use crate::error::BaseError;
 
     #[test]
     fn test_wire_encode_decode() {
@@ -307,11 +338,15 @@ mod test {
 
         let w = Wire::new(pri_key_0.clone());
 
-        let req = DsfMessage::Request(NetRequest::new(id_0.clone(), RequestKind::Hello, Flags::empty()));
+        let req = DsfMessage::Request(NetRequest::new(
+            id_0.clone(),
+            RequestKind::Hello,
+            Flags::empty(),
+        ));
 
         let enc = w.encode(req.clone()).unwrap();
 
-        let dec = w.decode(&enc, |_id| Some(pub_key_0) ).unwrap();
+        let dec = w.decode(&enc, |_id| Some(pub_key_0)).unwrap();
 
         assert_eq!(req, dec);
         assert_eq!(req.request_id(), dec.request_id());
@@ -329,12 +364,17 @@ mod test {
         let mut enc = w.encode(DsfMessage::request(req.clone())).unwrap();
         enc[100] = 0xff;
 
-        assert_eq!(w.decode(&enc, |_id| Some(pub_key_0) ), Err(Error::Base(BaseError::InvalidSignature)));
+        assert_eq!(
+            w.decode(&enc, |_id| Some(pub_key_0)),
+            Err(Error::Base(BaseError::InvalidSignature))
+        );
     }
 
     #[test]
     fn test_wire_interop() {
-        let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
+        let _ = FmtSubscriber::builder()
+            .with_max_level(LevelFilter::DEBUG)
+            .try_init();
 
         let _addr_0: Address = "127.0.0.1:19993".parse().unwrap();
         let addr_1: Address = "127.0.0.1:19994".parse().unwrap();
@@ -352,7 +392,8 @@ mod test {
         let _c1 = w1.connector();
 
         let req = NetRequest::new(id_0.clone(), RequestKind::Hello, Flags::empty());
-        let resp = NetResponse::new(id_1.clone(), req.id, ResponseKind::NoResult, Flags::empty()).with_public_key(pub_key_1);
+        let resp = NetResponse::new(id_1.clone(), req.id, ResponseKind::NoResult, Flags::empty())
+            .with_public_key(pub_key_1);
 
         let resp_encoded = w1.encode(DsfMessage::response(resp.clone())).unwrap();
         let resp_message = NetMessage::new(0, addr_1, resp_encoded.into());
@@ -364,7 +405,15 @@ mod test {
                 w0.handle(resp_message).await.unwrap();
             });
 
-            let r1 = c0.request(req.id, addr_1, req.clone().with_public_key(pub_key_1), Duration::from_secs(2)).await.unwrap();
+            let r1 = c0
+                .request(
+                    req.id,
+                    addr_1,
+                    req.clone().with_public_key(pub_key_1),
+                    Duration::from_secs(2),
+                )
+                .await
+                .unwrap();
 
             assert_eq!(r1, resp);
 
@@ -372,5 +421,4 @@ mod test {
             //let r2 = c0.request(req.id, addr_1, req.clone(), Duration::from_secs(2)).await.unwrap();
         });
     }
-
 }

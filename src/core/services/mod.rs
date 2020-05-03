@@ -1,21 +1,20 @@
 //! Services module maintains the service database
-//! 
-//! 
+//!
+//!
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{SystemTime, Duration};
-
+use std::time::{Duration, SystemTime};
 
 use dsf_core::prelude::*;
 use dsf_core::service::Subscriber;
 
 pub use dsf_rpc::service::{ServiceInfo, ServiceState};
 
-use crate::store::{Store};
+use crate::store::Store;
 
 pub mod inst;
-pub use inst::{ServiceInst};
+pub use inst::ServiceInst;
 
 pub mod data;
 pub use data::Data;
@@ -32,8 +31,8 @@ impl ServiceManager {
     pub fn new(store: Arc<Mutex<Store>>) -> Self {
         let services = HashMap::new();
 
-        let s = Self{
-            services: Arc::new(Mutex::new(services)), 
+        let s = Self {
+            services: Arc::new(Mutex::new(services)),
             store,
         };
 
@@ -43,15 +42,22 @@ impl ServiceManager {
     }
 
     /// Register a local service for tracking
-    pub fn register(&mut self, service: Service, primary_page: &Page, state: ServiceState, updated: Option<SystemTime>) -> Result<Arc<RwLock<ServiceInst>>, DsfError> {
+    pub fn register(
+        &mut self,
+        service: Service,
+        primary_page: &Page,
+        state: ServiceState,
+        updated: Option<SystemTime>,
+    ) -> Result<Arc<RwLock<ServiceInst>>, DsfError> {
         let services = self.services.clone();
         let mut services = services.lock().unwrap();
 
         let id = service.id();
 
         // Create a service instance wrapper
-        let inst = ServiceInst{
-            service, state,
+        let inst = ServiceInst {
+            service,
+            state,
             index: services.len(),
             last_updated: updated,
             primary_page: Some(primary_page.clone()),
@@ -92,25 +98,25 @@ impl ServiceManager {
     pub fn index(&self, index: usize) -> Option<Arc<RwLock<ServiceInst>>> {
         let services = self.services.clone();
         let services = services.lock().unwrap();
-        services.iter().find(|(_id, s)| {
-            s.read().unwrap().index == index
-        }).map(|(_id, s)| s.clone() )
+        services
+            .iter()
+            .find(|(_id, s)| s.read().unwrap().index == index)
+            .map(|(_id, s)| s.clone())
     }
 
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
         let services = self.services.clone();
         let services = services.lock().unwrap();
-        services.iter().find(|(_id, s)| {
-            s.read().unwrap().index == index
-        }).map(|(id, _s)| id.clone() )
+        services
+            .iter()
+            .find(|(_id, s)| s.read().unwrap().index == index)
+            .map(|(id, _s)| id.clone())
     }
 
     /// Fetch info for a given service
     pub fn info(&self, id: &Id) -> Option<ServiceInfo> {
         match self.find(id) {
-            Some(s) => {
-                Some(s.read().unwrap().info())
-            },
+            Some(s) => Some(s.read().unwrap().info()),
             None => None,
         }
     }
@@ -125,14 +131,12 @@ impl ServiceManager {
 
         let s = service.read().unwrap();
 
-        let d = s.get_data(n).map(|d| {
-            DataInfo{
-                service: id.clone(),
-                index: d.version(),
-                body: d.body().clone(),
-                previous: None,
-                signature: d.signature().unwrap(),
-            }
+        let d = s.get_data(n).map(|d| DataInfo {
+            service: id.clone(),
+            index: d.version(),
+            body: d.body().clone(),
+            previous: None,
+            signature: d.signature().unwrap(),
         });
 
         Ok(d.collect())
@@ -140,29 +144,39 @@ impl ServiceManager {
 
     /// Update a service instance (if found)
     pub fn update_inst<F>(&mut self, id: &Id, f: F) -> Option<ServiceInfo>
-    where F: Fn(&mut ServiceInst) {
+    where
+        F: Fn(&mut ServiceInst),
+    {
         match self.find(id) {
             Some(s) => {
                 let mut svc = s.write().unwrap();
                 (f)(&mut svc);
                 svc.changed = true;
                 Some(svc.info())
-            },
+            }
             None => None,
         }
     }
 
     /// Fetch services with a matching state requiring update
-    pub fn updates_required(&mut self, state: ServiceState, interval: Duration, force: bool) -> Vec<ServiceInfo> {
+    pub fn updates_required(
+        &mut self,
+        state: ServiceState,
+        interval: Duration,
+        force: bool,
+    ) -> Vec<ServiceInfo> {
         let services = self.services.lock().unwrap();
 
-        let updates: Vec<_>  = services.iter().filter_map(|(_id, svc)| {
-            let i = svc.read().unwrap();
-            match i.update_required(state, interval, force) {
-                true => Some(i.info()),
-                false => None,
-            }
-        }).collect();
+        let updates: Vec<_> = services
+            .iter()
+            .filter_map(|(_id, svc)| {
+                let i = svc.read().unwrap();
+                match i.update_required(state, interval, force) {
+                    true => Some(i.info()),
+                    false => None,
+                }
+            })
+            .collect();
 
         trace!("updates required (state: {:?}): {:?}", state, updates);
 
@@ -189,10 +203,11 @@ impl ServiceManager {
     /// Fetch a list of information for known services
     pub fn list(&self) -> Vec<ServiceInfo> {
         let services = self.services.lock().unwrap();
-        
-        services.iter().map(|(_k, v)| {
-            v.read().unwrap().info()
-        }).collect()
+
+        services
+            .iter()
+            .map(|(_k, v)| v.read().unwrap().info())
+            .collect()
     }
 
     /// Fetch the number of known services
@@ -211,7 +226,7 @@ impl ServiceManager {
             let i: &mut ServiceInst = &mut inst;
             // Skip unchanged instances
             if !i.changed {
-                continue
+                continue;
             }
 
             if let Err(e) = store.save_service(&i.info()) {
@@ -225,7 +240,6 @@ impl ServiceManager {
             if let Some(p) = &i.replica_page {
                 store.save_page(p).unwrap();
             }
-    
 
             i.changed = false;
         }
@@ -242,24 +256,23 @@ impl ServiceManager {
 
         for i in service_info {
             let primary_page = match i.primary_page {
-                Some(p) => {
-                    store.load_page(&p).unwrap().unwrap()
-                },
+                Some(p) => store.load_page(&p).unwrap().unwrap(),
                 None => {
                     warn!("No primary page for service: {:?}", i);
                     continue;
                 }
             };
 
-            let replica_page = i.replica_page.map(|s| {
-                store.load_page(&s).unwrap()
-            }).flatten();
+            let replica_page = i
+                .replica_page
+                .map(|s| store.load_page(&s).unwrap())
+                .flatten();
 
-            let mut service = Service::load(&primary_page).unwrap();            
+            let mut service = Service::load(&primary_page).unwrap();
 
             service.set_private_key(i.private_key);
             service.set_secret_key(i.secret_key);
-            
+
             // URGENT TODO: rehydrate other components here
             // TODO: maybe replicas and subscribers should not be stored against the service inst but in separate core modules?
             let s = ServiceInst {

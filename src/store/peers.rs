@@ -1,45 +1,50 @@
-
 use std::str::FromStr;
 
-use diesel::prelude::*;
 use chrono::NaiveDateTime;
+use diesel::prelude::*;
 
 use dsf_core::prelude::*;
-use dsf_rpc::{PeerInfo, PeerState, PeerAddress};
+use dsf_rpc::{PeerAddress, PeerInfo, PeerState};
 
-use super::{Store, StoreError, from_dt, to_dt};
+use super::{from_dt, to_dt, Store, StoreError};
 
-const KNOWN:    &str = "known";
-const UNKNOWN:  &str = "unknown";
+const KNOWN: &str = "known";
+const UNKNOWN: &str = "unknown";
 
 const IMPLICIT: &str = "implicit";
 const EXPLICIT: &str = "explicit";
 
-type PeerFields = (String, String, Option<String>, String, String, Option<NaiveDateTime>, i32, i32, bool);
+type PeerFields = (
+    String,
+    String,
+    Option<String>,
+    String,
+    String,
+    Option<NaiveDateTime>,
+    i32,
+    i32,
+    bool,
+);
 
 use crate::store::schema::peers::dsl::*;
 
 impl Store {
-
     // Store an item with it's associated page
     pub fn save_peer(&self, info: &PeerInfo) -> Result<(), StoreError> {
-         
         let (s, k) = match info.state {
-            PeerState::Known(k) => {
-                (state.eq(KNOWN.to_string()), Some(public_key.eq(k.to_string())))
-            },
-            PeerState::Unknown => {
-                (state.eq(UNKNOWN.to_string()), None)
-            }
+            PeerState::Known(k) => (
+                state.eq(KNOWN.to_string()),
+                Some(public_key.eq(k.to_string())),
+            ),
+            PeerState::Unknown => (state.eq(UNKNOWN.to_string()), None),
         };
 
         let am = match info.address {
             PeerAddress::Implicit(_) => IMPLICIT.to_string(),
             PeerAddress::Explicit(_) => EXPLICIT.to_string(),
         };
-        
 
-        let seen = info.seen.map(|v| last_seen.eq(to_dt(v)) );
+        let seen = info.seen.map(|v| last_seen.eq(to_dt(v)));
 
         let values = (
             peer_id.eq(info.id.to_string()),
@@ -53,8 +58,10 @@ impl Store {
             blocked.eq(info.blocked),
         );
 
-        let r = peers.filter(peer_id.eq(info.id.to_string()))
-            .select(peer_id).load::<String>(&self.conn)?;
+        let r = peers
+            .filter(peer_id.eq(info.id.to_string()))
+            .select(peer_id)
+            .load::<String>(&self.conn)?;
 
         if r.len() != 0 {
             diesel::update(peers)
@@ -74,54 +81,76 @@ impl Store {
     pub fn find_peer(&self, id: &Id) -> Result<Option<PeerInfo>, StoreError> {
         let results = peers
             .filter(peer_id.eq(id.to_string()))
-            .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
+            .select((
+                peer_id,
+                state,
+                public_key,
+                address,
+                address_mode,
+                last_seen,
+                sent,
+                received,
+                blocked,
+            ))
             .load::<PeerFields>(&self.conn)?;
 
-        let p: Vec<PeerInfo> = results.iter().filter_map(|v| {
-            match Self::parse_peer(v) {
+        let p: Vec<PeerInfo> = results
+            .iter()
+            .filter_map(|v| match Self::parse_peer(v) {
                 Ok(i) => Some(i),
                 Err(e) => {
                     error!("Error parsing peer: {:?}", e);
                     None
                 }
-            }
-        } ).collect();
+            })
+            .collect();
 
         if p.len() != 1 {
-            return Ok(None)
+            return Ok(None);
         }
 
-        Ok(p.get(0).map(|v| v.clone() ))
+        Ok(p.get(0).map(|v| v.clone()))
     }
 
     // Load all items
     pub fn load_peers(&self) -> Result<Vec<PeerInfo>, StoreError> {
         let results = peers
-            .select((peer_id, state, public_key, address, address_mode, last_seen, sent, received, blocked))
+            .select((
+                peer_id,
+                state,
+                public_key,
+                address,
+                address_mode,
+                last_seen,
+                sent,
+                received,
+                blocked,
+            ))
             .load::<PeerFields>(&self.conn)?;
 
-        let p = results.iter().filter_map(|v| {
-            match Self::parse_peer(v) {
+        let p = results
+            .iter()
+            .filter_map(|v| match Self::parse_peer(v) {
                 Ok(i) => Some(i),
                 Err(e) => {
                     error!("Error parsing peer: {:?}", e);
                     None
                 }
-            }
-        } ).collect();
+            })
+            .collect();
 
         Ok(p)
     }
 
     pub fn delete_peer(&self, peer: &PeerInfo) -> Result<(), StoreError> {
-        diesel::delete(peers).filter(peer_id.eq(peer.id.to_string()))
+        diesel::delete(peers)
+            .filter(peer_id.eq(peer.id.to_string()))
             .execute(&self.conn)?;
 
         Ok(())
     }
 
     fn parse_peer(v: &PeerFields) -> Result<PeerInfo, StoreError> {
-
         let (r_id, r_state, r_pk, r_address, r_address_mode, r_seen, r_sent, r_recv, r_blocked) = v;
 
         let s_state = match (r_state.as_ref(), &r_pk) {
@@ -142,7 +171,7 @@ impl Store {
             address: s_addr,
             index: 0,
 
-            seen: r_seen.as_ref().map(|v| from_dt(v) ),
+            seen: r_seen.as_ref().map(|v| from_dt(v)),
 
             sent: *r_sent as u64,
             received: *r_recv as u64,
@@ -151,29 +180,27 @@ impl Store {
 
         Ok(p)
     }
-
 }
-
-
 
 #[cfg(test)]
 mod test {
     use std::time::SystemTime;
 
     extern crate tracing_subscriber;
-    use tracing_subscriber::{FmtSubscriber, filter::LevelFilter};
+    use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 
     use super::Store;
 
-    use dsf_rpc::{PeerInfo, PeerState, PeerAddress};
-    use dsf_core::crypto::{new_pk, new_sk, hash};
+    use dsf_core::crypto::{hash, new_pk, new_sk};
+    use dsf_rpc::{PeerAddress, PeerInfo, PeerState};
 
     #[test]
     fn store_peer_inst() {
-        let _ = FmtSubscriber::builder().with_max_level(LevelFilter::DEBUG).try_init();
+        let _ = FmtSubscriber::builder()
+            .with_max_level(LevelFilter::DEBUG)
+            .try_init();
 
-        let store = Store::new("/tmp/dsf-test-2.db")
-            .expect("Error opening store");
+        let store = Store::new("/tmp/dsf-test-2.db").expect("Error opening store");
 
         store.drop_tables().unwrap();
 
@@ -210,5 +237,4 @@ mod test {
         store.delete_peer(&p).unwrap();
         assert_eq!(None, store.find_peer(&p.id).unwrap());
     }
-
 }

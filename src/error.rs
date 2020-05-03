@@ -1,9 +1,8 @@
-
-use futures::channel::mpsc::SendError;
 use async_std::future::TimeoutError;
+use futures::channel::mpsc::SendError;
 
-pub use dsf_core::types::{Error as CoreError};
 pub use dsf_core::base::BaseError;
+pub use dsf_core::types::Error as CoreError;
 
 pub use crate::io::{NetError, UnixError};
 pub use crate::store::StoreError;
@@ -67,4 +66,3 @@ impl From<TimeoutError> for Error {
         Self::Timeout
     }
 }
-

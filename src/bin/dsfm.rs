@@ -1,4 +1,3 @@
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -16,9 +15,8 @@ extern crate tracing;
 use tracing_futures::Instrument;
 
 extern crate tracing_subscriber;
-use tracing_subscriber::FmtSubscriber;
 use tracing_subscriber::filter::LevelFilter;
-
+use tracing_subscriber::FmtSubscriber;
 
 use dsf_daemon::engine::{Engine, Options};
 
@@ -47,7 +45,9 @@ fn main() {
     let opts = Config::from_args();
 
     // Initialise logging
-    let _ = FmtSubscriber::builder().with_max_level(opts.level.clone()).try_init();
+    let _ = FmtSubscriber::builder()
+        .with_max_level(opts.level.clone())
+        .try_init();
 
     // Create running flag
     let running = Arc::new(AtomicBool::new(true));
@@ -56,25 +56,25 @@ fn main() {
     // Bind exit handler
     ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
-    }).expect("Error setting Ctrl-C handler");
+    })
+    .expect("Error setting Ctrl-C handler");
 
     // Create async task
     let res = task::block_on(async move {
         let mut handles = vec![];
 
-        for i in opts.offset..opts.count+opts.offset {
+        for i in opts.offset..opts.count + opts.offset {
             let r = running.clone();
-            let o = opts.daemon_opts.with_suffix(i+1);
+            let o = opts.daemon_opts.with_suffix(i + 1);
 
             // Initialise daemon
             let mut d = match Engine::new(o).await {
                 Ok(d) => d,
                 Err(e) => {
                     error!("Error running daemon: {:?}", e);
-                    return Err(e)
+                    return Err(e);
                 }
             };
-
 
             let handle = task::spawn(async move {
                 // Run daemon
@@ -84,10 +84,9 @@ fn main() {
             handles.push(handle);
         }
 
-
         if let Err(e) = try_join_all(handles).await {
             error!("Daemon runtime error: {:?}", e);
-            return Err(e)
+            return Err(e);
         }
 
         Ok(())

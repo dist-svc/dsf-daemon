@@ -1,14 +1,12 @@
-
-
-use std::sync::{Arc, Mutex};
 use std::convert::TryFrom;
+use std::sync::{Arc, Mutex};
 
-use dsf_core::{types::Id, page::Page};
+use dsf_core::{page::Page, types::Id};
 
 pub use dsf_rpc::data::DataInfo;
 
 use crate::error::Error;
-use crate::store::{Store};
+use crate::store::Store;
 
 #[derive(Clone)]
 pub struct DataManager {
@@ -23,13 +21,13 @@ pub struct DataInst {
 impl From<Page> for DataInst {
     fn from(page: Page) -> Self {
         let info = DataInfo::try_from(&page).unwrap();
-        DataInst{info, page}
+        DataInst { info, page }
     }
 }
 
 impl DataManager {
     pub fn new(store: Arc<Mutex<Store>>) -> Self {
-        Self{store}
+        Self { store }
     }
 
     /// Fetch data for a given service
@@ -44,7 +42,10 @@ impl DataManager {
         let mut data = Vec::with_capacity(info.len());
         for i in info {
             let p = store.load_page(&i.signature)?;
-            data.push(DataInst{info: i, page: p.unwrap()})
+            data.push(DataInst {
+                info: i,
+                page: p.unwrap(),
+            })
         }
 
         Ok(data)
