@@ -96,9 +96,7 @@ jobs:
         args: --release --target ${{ matrix.target }}
     
     - name: Create archive
-      uses: juankaram/archive-action@v1.0.0
-      with:
-        args: tar -cvf target/dsfd-${{ matrix.target }}.tgz -C target/${{ matrix.target }}/release/ ${{ matrix.output }}
+      run: tar -cvf target/dsfd-${{ matrix.target }}.tgz -C target/${{ matrix.target }}/release/ ${{ matrix.output }}
     - name: Upload artifacts
       uses: actions/upload-artifact@v1
       with:
