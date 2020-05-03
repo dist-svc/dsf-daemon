@@ -61,7 +61,7 @@ impl PeerManager {
                     None => PeerState::Unknown,
                 };
 
-                let info = PeerInfo::new(id, address, state, *index, None);
+                let info = PeerInfo::new(id.clone(), address, state, *index, None);
 
                 if let Err(e) = store.save_peer(&info) {
                     error!("Error writing peer {} to db: {:?}", id, e);
@@ -132,7 +132,7 @@ impl PeerManager {
         for mut p in peer_info {
             p.index = *index;
 
-            peers.entry(p.id).or_insert(Peer {
+            peers.entry(p.id.clone()).or_insert(Peer {
                 info: Arc::new(RwLock::new(p)),
             });
 

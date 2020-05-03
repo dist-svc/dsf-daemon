@@ -87,7 +87,7 @@ where
         let ctx = Ctx::INCLUDE_PUBLIC_KEY | Ctx::PUB_KEY_REQUEST | Ctx::ADDRESS_REQUEST;
         match self
             .dht()
-            .handle_connect_response(DhtEntry::new(resp.from, peer), data, ctx)
+            .handle_connect_response(DhtEntry::new(resp.from.clone(), peer), data, ctx)
             .await
         {
             Ok(nodes) => {

@@ -124,12 +124,12 @@ impl MdnsPlugin {
                 };
 
                 // Track service
-                if let Some((addr, _id)) = v {
+                if let Some((addr, _id)) = &v {
                     debug!("discovered service: {:?}", v);
 
                     // Add to discovered services array
                     let mut s = services.lock().unwrap();
-                    let e = s.entry(addr).or_insert(SystemTime::now());
+                    let e = s.entry(*addr).or_insert(SystemTime::now());
                     *e = SystemTime::now();
 
                     // TODO: emit this

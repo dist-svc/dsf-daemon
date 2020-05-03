@@ -20,7 +20,6 @@ extern crate tempdir;
 use tempdir::TempDir;
 
 extern crate dsf_core;
-use dsf_core::api::*;
 
 extern crate dsf_daemon;
 use dsf_daemon::engine::{Engine, Options};

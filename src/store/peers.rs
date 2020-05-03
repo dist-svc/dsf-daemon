@@ -31,7 +31,7 @@ use crate::store::schema::peers::dsl::*;
 impl Store {
     // Store an item with it's associated page
     pub fn save_peer(&self, info: &PeerInfo) -> Result<(), StoreError> {
-        let (s, k) = match info.state {
+        let (s, k) = match &info.state {
             PeerState::Known(k) => (
                 state.eq(KNOWN.to_string()),
                 Some(public_key.eq(k.to_string())),

@@ -206,7 +206,7 @@ where
         );
 
         // Add public key if appropriate
-        match (peer.state(), c.public_key) {
+        match (peer.state(), &c.public_key) {
             (PeerState::Unknown, Some(pk)) => {
                 info!("Adding key: {:?} to peer: {:?}", pk, id);
                 peer.update(|p| p.set_state(PeerState::Known(pk.clone())))

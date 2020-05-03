@@ -116,7 +116,7 @@ impl Wire {
     }
 
     fn find_pub_key(&self, id: &Id) -> Option<PublicKey> {
-        self.connections.get(id).and_then(|i| i.public_key)
+        self.connections.get(id).and_then(|i| i.public_key.clone())
     }
 
     /// Handle incoming messages
@@ -152,11 +152,11 @@ impl Wire {
                 .push((msg.address.clone(), SystemTime::now()));
         }
 
-        match (info.public_key, decoded.pub_key()) {
+        match (&info.public_key, &decoded.pub_key()) {
             (None, Some(pk)) => {
                 debug!("Registering new public key for ID: {:?}", from_id);
                 // TODO: emit this information / handle this
-                info.public_key = Some(pk);
+                info.public_key = Some(pk.clone());
             }
             (Some(p1), Some(p2)) if p1 != p2 => {
                 error!("Public key mismatch for ID: {:?}", from_id);
@@ -346,7 +346,7 @@ mod test {
 
         let enc = w.encode(req.clone()).unwrap();
 
-        let dec = w.decode(&enc, |_id| Some(pub_key_0)).unwrap();
+        let dec = w.decode(&enc, |_id| Some(pub_key_0.clone())).unwrap();
 
         assert_eq!(req, dec);
         assert_eq!(req.request_id(), dec.request_id());
@@ -365,7 +365,7 @@ mod test {
         enc[100] = 0xff;
 
         assert_eq!(
-            w.decode(&enc, |_id| Some(pub_key_0)),
+            w.decode(&enc, |_id| Some(pub_key_0.clone())),
             Err(Error::Base(BaseError::InvalidSignature))
         );
     }
@@ -393,7 +393,7 @@ mod test {
 
         let req = NetRequest::new(id_0.clone(), RequestKind::Hello, Flags::empty());
         let resp = NetResponse::new(id_1.clone(), req.id, ResponseKind::NoResult, Flags::empty())
-            .with_public_key(pub_key_1);
+            .with_public_key(pub_key_1.clone());
 
         let resp_encoded = w1.encode(DsfMessage::response(resp.clone())).unwrap();
         let resp_message = NetMessage::new(0, addr_1, resp_encoded.into());

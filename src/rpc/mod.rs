@@ -175,7 +175,7 @@ where
 
                 // Ehh?
                 let s = self.services().update_inst(&id, |s| {
-                    s.service.set_secret_key(options.secret_key);
+                    s.service.set_secret_key(options.secret_key.clone());
                 });
 
                 match s {
@@ -215,8 +215,8 @@ where
         identifier: &ServiceIdentifier,
     ) -> Result<Id, Error> {
         // Short circuit if ID specified or error if none
-        let index = match (identifier.id, identifier.index) {
-            (Some(id), _) => return Ok(id),
+        let index = match (&identifier.id, identifier.index) {
+            (Some(id), _) => return Ok(id.clone()),
             (None, None) => {
                 error!("service id or index must be specified");
                 return Err(Error::UnknownService);
@@ -238,8 +238,8 @@ where
         identifier: &ServiceIdentifier,
     ) -> Result<Id, Error> {
         // Short circuit if ID specified or error if none
-        let index = match (identifier.id, identifier.index) {
-            (Some(id), _) => return Ok(id),
+        let index = match (&identifier.id, identifier.index) {
+            (Some(id), _) => return Ok(id.clone()),
             (None, None) => {
                 error!("service id or index must be specified");
                 return Err(Error::Core(CoreError::NoPeerId));

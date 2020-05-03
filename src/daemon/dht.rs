@@ -136,7 +136,7 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
                 svc_id = Some(p.id().clone());
                 Some(p.id().clone())
             }
-            PageInfo::Secondary(sec) => Some(sec.peer_id),
+            PageInfo::Secondary(sec) => Some(sec.peer_id.clone()),
             PageInfo::Data(_) => None,
         };
 
@@ -183,9 +183,9 @@ impl Adapt<RequestKind> for DhtRequest<Id, Data> {
 
         match self {
             DhtRequest::Ping => RequestKind::Ping,
-            DhtRequest::FindNode(id) => RequestKind::FindNode(Id::from(*id)),
-            DhtRequest::FindValue(id) => RequestKind::FindValue(Id::from(*id)),
-            DhtRequest::Store(id, values) => RequestKind::Store(Id::from(*id), values.to_vec()),
+            DhtRequest::FindNode(id) => RequestKind::FindNode(Id::from(id.clone())),
+            DhtRequest::FindValue(id) => RequestKind::FindValue(Id::from(id.clone())),
+            DhtRequest::Store(id, values) => RequestKind::Store(Id::from(id.clone()), values.to_vec()),
         }
     }
 }
@@ -197,7 +197,7 @@ impl Adapt<ResponseKind> for DhtResponse<Id, Peer, Data> {
 
         match self {
             DhtResponse::NodesFound(id, nodes) => ResponseKind::NodesFound(
-                Id::from(*id),
+                Id::from(id.clone()),
                 nodes
                     .iter()
                     .filter_map(|n| {
@@ -207,7 +207,7 @@ impl Adapt<ResponseKind> for DhtResponse<Id, Peer, Data> {
                             None
                         } else {
                             Some((
-                                Id::from(*n.id()),
+                                Id::from(n.id().clone()),
                                 n.info().address(),
                                 n.info().pub_key().unwrap(),
                             ))
@@ -216,7 +216,7 @@ impl Adapt<ResponseKind> for DhtResponse<Id, Peer, Data> {
                     .collect(),
             ),
             DhtResponse::ValuesFound(id, values) => {
-                ResponseKind::ValuesFound(Id::from(*id), values.to_vec())
+                ResponseKind::ValuesFound(Id::from(id.clone()), values.to_vec())
             }
             DhtResponse::NoResult => ResponseKind::NoResult,
         }

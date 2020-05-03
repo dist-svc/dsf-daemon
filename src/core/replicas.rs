@@ -15,7 +15,7 @@ impl From<Page> for ReplicaInst {
     fn from(page: Page) -> Self {
         // Replica pages are _always_ secondary types
         let peer_id = match page.info() {
-            PageInfo::Secondary(s) => s.peer_id,
+            PageInfo::Secondary(s) => s.peer_id.clone(),
             _ => unimplemented!(),
         };
 

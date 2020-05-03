@@ -23,7 +23,7 @@ impl Store {
             Body::Encrypted(v) => (BODY_ENCRYPTED.to_string(), Some(body_value.eq(v.clone()))),
         };
 
-        let p = info.previous.map(|v| previous.eq(v.to_string()));
+        let p = info.previous.as_ref().map(|v| previous.eq(v.to_string()));
 
         let values = (
             service_id.eq(info.service.to_string()),
@@ -158,7 +158,7 @@ mod test {
         let sig = pk_sign(&private_key, &[0xaa, 0xaa, 0xaa, 0xaa]).unwrap();
 
         let d = DataInfo {
-            service: id,
+            service: id.clone(),
             index: 10,
             body: Body::Cleartext(vec![0xaa, 0xbb, 0xcc, 0xdd]),
 

@@ -21,7 +21,7 @@ impl Store {
             None => return Err(StoreError::MissingRawData),
         };
 
-        let prev = page.previous_sig.map(|v| previous.eq(v.to_string()));
+        let prev = page.previous_sig.as_ref().map(|v| previous.eq(v.to_string()));
         let values = (service_id.eq(page.id.to_string()), raw, prev, sig.clone());
 
         let r = object
@@ -91,7 +91,6 @@ mod test {
 
     use super::Store;
 
-    use dsf_core::page::Page;
     use dsf_core::service::{Publisher, Service};
 
     #[test]
@@ -109,7 +108,7 @@ mod test {
 
         let mut buff = vec![0u8; 1024];
         let (n, mut page) = s.publish_primary(&mut buff).expect("Error creating page");
-        let sig = page.signature.unwrap();
+        let sig = page.signature.clone().unwrap();
         page.raw = Some(buff[..n].to_vec());
 
         // Check no matching service exists
@@ -121,7 +120,7 @@ mod test {
         assert_eq!(vec![page.clone()], store.find_pages(&s.id()).unwrap());
 
         // Delete data
-        store.delete_page(&page.signature.unwrap()).unwrap();
+        store.delete_page(&sig).unwrap();
         assert_eq!(None, store.load_page(&sig).unwrap());
     }
 }

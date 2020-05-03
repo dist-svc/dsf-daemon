@@ -6,6 +6,8 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
+    continue-on-error: true
+    
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -17,13 +19,13 @@ jobs:
       - name: Configure cargo cache
         uses: actions/cache@v1
         with:
-          key: cargo
+          key: cargo-check
           path: ${{ env.HOME }}/.cargo"
 
       - name: Configure target cache
         uses: actions/cache@v1
         with:
-          key: target
+          key: target-check
           path: ./target
 
       - name: Run cargo fmt
@@ -51,13 +53,13 @@ jobs:
       - name: Configure cargo cache 
         uses: actions/cache@v1
         with:
-          key: cargo
+          key: cargo-test
           path: ${{ env.HOME }}/.cargo"
 
       - name: Configure target cache
         uses: actions/cache@v1
         with:
-          key: target
+          key: target-test
           path: ./target
         
       - name: Run cargo test

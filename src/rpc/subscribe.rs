@@ -87,7 +87,7 @@ where
         // Issue subscription requests
         let req = net::Request::new(
             self.id(),
-            net::RequestKind::Subscribe(service_id),
+            net::RequestKind::Subscribe(service_id.clone()),
             Flags::default(),
         );
         info!("Sending subscribe messages to {} peers", addrs.len());

@@ -90,7 +90,7 @@ where
             // TODO: send data to subscribers
             let req = net::Request::new(
                 self.id(),
-                net::RequestKind::PushData(service_id, vec![page]),
+                net::RequestKind::PushData(service_id.clone(), vec![page]),
                 Flags::default(),
             );
 

@@ -68,7 +68,7 @@ impl SubscriberManager {
         });
 
         // Create new subscriber if not found
-        if let None = subscriber {
+        if subscriber.is_none() {
             let s = SubscriberInst {
                 info: SubscriptionInfo {
                     service_id: service_id.clone(),
@@ -112,7 +112,7 @@ impl SubscriberManager {
         });
 
         // Create new subscriber if not found
-        if let None = subscriber {
+        if subscriber.is_none() {
             let s = SubscriberInst {
                 info: SubscriptionInfo {
                     service_id: service_id.clone(),

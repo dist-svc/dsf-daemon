@@ -195,10 +195,10 @@ impl Store {
 
         let pri_key = service.private_key().map(|v| private_key.eq(v.to_string()));
         let sec_key = service.secret_key().map(|v| secret_key.eq(v.to_string()));
-        let sig = page.signature.map(|v| last_page.eq(v.to_string()));
+        let sig = page.signature.as_ref().map(|v| last_page.eq(v.to_string()));
 
         // Ensure the page has been written
-        if let None = self.load_page(&page.signature.unwrap())? {
+        if self.load_page(&page.signature.as_ref().unwrap())?.is_none() {
             self.save_page(page)?;
         }
 
