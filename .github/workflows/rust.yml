@@ -48,27 +48,47 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+      
     - name: Configure toolchain
       uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
         target:  ${{ matrix.target }}
         override: true
+    - name: Configure cargo cache 
+      uses: actions/cache@v1
+      with:
+        key: cargo-${{ matrix.os }}-${{ matrix.target }}
+        path: ${{ env.HOME }}/.cargo"
+
+    - name: Install sccache
+      uses: actions-rs/install@1
+      with:
+        crate: sccache
+        version: latest
+        use-tool-cache: true
+    - name: Configure sccache cache 
+      uses: actions/cache@v1
+      with:
+        key: sccache-${{ matrix.os }}-${{ matrix.target }}
+        path: ${{ env.HOME }}/.cache"
+    - run: echo "::set-env RUSTC_WRAPPER=sccache"
+    
     - name: Build release
       uses: actions-rs/cargo@v1
       with:
         use-cross: ${{ matrix.use_cross }}
         command: build
         args: --release --target ${{ matrix.target }}
-    - name: Generate SLUG
-      uses: rlespinasse/github-slug-action@v2.x
+    
     - name: Create archive
       uses: juankaram/archive-action@v1.0.0
       with:
-        args: tar -cvf target/dsfd-${{ matrix.target }}-${{ env.GITHUB_REF_SLUG }}.tgz -C target/${{ matrix.target }}/release/ ${{ matrix.output }}
-    - uses: actions/upload-artifact@v1
+        args: tar -cvf target/dsfd-${{ matrix.target }}.tgz -C target/${{ matrix.target }}/release/ ${{ matrix.output }}
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v1
       with:
-        name: dsfd-${{ matrix.target }}-${{ env.GITHUB_REF_SLUG }}.tgz
-        path: target/dsfd-${{ matrix.target }}-${{ env.GITHUB_REF_SLUG }}.tgz
+        name: dsfd-${{ matrix.target }}.tgz
+        path: target/dsfd-${{ matrix.target }}.tgz
       
    
