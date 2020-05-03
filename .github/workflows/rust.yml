@@ -1,8 +1,7 @@
 name: Rust CI test / build / deploy
 
 on:
-  push:
-    branches: [ master ]
+  push: []
   pull_request:
     branches: [ master ]
 

@@ -8,22 +8,30 @@ cache:
 services:
 - docker
 
-addons:
-  apt:
-    packages: libsqlite3-dev
-
 env:
 - RUSTC_WRAPPER=sccache
 
+stages:
+- test
+- build
+
 jobs:
   include:
-  - env: TARGET=x86_64-unknown-linux-gnu OUTPUT=dsfd CARGO=cargo
+  - stage: test
+    env: TARGET=x86_64-unknown-linux-gnu OUTPUT=dsfd CARGO=cargo
     os: linux
-  - env: TARGET=armv7-unknown-linux-gnueabihf OUTPUT=dsfd CARGO=cross
+    script: $CARGO test
+  - stage: build
+    env: TARGET=x86_64-unknown-linux-gnu OUTPUT=dsfd CARGO=cargo
     os: linux
-  - env: TARGET=x86_64-apple-darwin OUTPUT=dsfd CARGO=cargo 
+  - stage: build
+    env: TARGET=armv7-unknown-linux-gnueabihf OUTPUT=dsfd CARGO=cross
+    os: linux
+  - stage: build 
+    env: TARGET=x86_64-apple-darwin OUTPUT=dsfd CARGO=cargo 
     os: osx
-  - env: TARGET=i686-pc-windows-msvc OUTPUT=dsfd.exe CARGO=cargo
+  - stage: build
+    env: TARGET=i686-pc-windows-msvc OUTPUT=dsfd.exe CARGO=cargo
     os: windows
 
   allow_failures:
@@ -38,7 +46,6 @@ install:
 - cargo install cross sccache || true
 
 script:
-- "$CARGO test"
 - "$CARGO build --target $TARGET --release"
 - if [[ $OS == 'linux' ]]; then cargo deb --no-build --target $TARGET; fi
 - tar -cvf target/dsfd-$TARGET-$TRAVIS_TAG.tgz -C target/$TARGET/release/ $OUTPUT
