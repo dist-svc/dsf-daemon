@@ -12,7 +12,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/cargo@v1
+        
+      - name: Setup toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+
+      - name: Configure cargo cache 
+        uses: actions/cache@v1
+        with:
+          key: cargo-${{ matrix.os }}-${{ matrix.target }}
+          path: ${{ env.HOME }}/.cargo"
+
+      - name: Configure target cache
+        uses: actions/cache@v1
+        with:
+          key: target-${{ matrix.os }}-${{ matrix.target }}
+          path: ./target
+        
+      - name: Run cargo test
+        uses: actions-rs/cargo@v1
         with:
           command: test
     
@@ -55,24 +75,18 @@ jobs:
         toolchain: nightly
         target:  ${{ matrix.target }}
         override: true
+    
     - name: Configure cargo cache 
       uses: actions/cache@v1
       with:
         key: cargo-${{ matrix.os }}-${{ matrix.target }}
         path: ${{ env.HOME }}/.cargo"
 
-    - name: Install sccache
-      uses: actions-rs/install@1
-      with:
-        crate: sccache
-        version: latest
-        use-tool-cache: true
-    - name: Configure sccache cache 
+    - name: Configure target cache
       uses: actions/cache@v1
       with:
-        key: sccache-${{ matrix.os }}-${{ matrix.target }}
-        path: ${{ env.HOME }}/.cache"
-    - run: echo "::set-env RUSTC_WRAPPER=sccache"
+        key: target-${{ matrix.os }}-${{ matrix.target }}
+        path: ./target
     
     - name: Build release
       uses: actions-rs/cargo@v1
