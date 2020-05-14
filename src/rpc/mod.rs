@@ -166,10 +166,16 @@ where
             ServiceCommands::Locate(options) => {
                 self.locate(options).await.map(ResponseKind::Located)?
             }
-            ServiceCommands::Subscribe(options) => self
-                .subscribe(options)
-                .await
-                .map(ResponseKind::Subscribed)?,
+            ServiceCommands::Info(options) => {
+                let id = self.resolve_identifier(&options.service)?;
+
+                self.services().find(&id).map(|i| {
+                    ResponseKind::Service(i.read().unwrap().info())
+                }).unwrap_or(ResponseKind::None)
+            }
+            ServiceCommands::Subscribe(options) => {
+                self.subscribe(options).await.map(ResponseKind::Subscribed)?
+            },
             ServiceCommands::SetKey(options) => {
                 let id = self.resolve_identifier(&options.service)?;
 
