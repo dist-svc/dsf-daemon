@@ -180,6 +180,8 @@ impl Store {
             primary_page: r_pp.as_ref().map(|v| Signature::from_str(&v).unwrap()),
             replica_page: r_rp.as_ref().map(|v| Signature::from_str(&v).unwrap()),
 
+            body: Body::None,
+
             public_key: PublicKey::from_str(r_pub_key)?,
             private_key: r_pri_key
                 .as_ref()
@@ -207,6 +209,7 @@ mod test {
 
     use super::Store;
 
+    use dsf_core::base::Body;
     use dsf_core::crypto::{hash, new_pk, new_sk, pk_sign};
     use dsf_rpc::{ServiceInfo, ServiceState};
 
@@ -237,6 +240,7 @@ mod test {
             primary_page: Some(sig.clone()),
             replica_page: Some(sig),
             last_updated: Some(SystemTime::now()),
+            body: Body::None,
             subscribers: 14,
             replicas: 12,
             origin: true,

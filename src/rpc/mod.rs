@@ -136,9 +136,9 @@ where
         use rpc::*;
 
         let res = match req {
-            DataCommands::List(data::ListOptions { service, n }) => {
+            DataCommands::List(data::ListOptions { service, bounds }) => {
                 let id = self.resolve_identifier(&service)?;
-                self.get_data(&id, n).map(ResponseKind::Data)?
+                self.get_data(&id, bounds.count.unwrap_or(100)).map(ResponseKind::Data)?
             }
             DataCommands::Publish(options) => {
                 self.publish(options).await.map(ResponseKind::Published)?
@@ -173,7 +173,7 @@ where
             ServiceCommands::SetKey(options) => {
                 let id = self.resolve_identifier(&options.service)?;
 
-                // Ehh?
+                // TODO: Ehh?
                 let s = self.services().update_inst(&id, |s| {
                     s.service.set_secret_key(options.secret_key.clone());
                 });
