@@ -54,7 +54,7 @@ pub struct Options {
 
     #[structopt(
         long = "database-file",
-        default_value = "/var/dsf/dsf.db",
+        default_value = "/var/dsfd/dsf.db",
         env = "DSF_DB_FILE"
     )]
     /// Database file for storage by the daemon
@@ -63,7 +63,7 @@ pub struct Options {
     #[structopt(
         short = "s",
         long = "daemon-socket",
-        default_value = "/tmp/dsf.sock",
+        default_value = "/var/run/dsfd/dsf.sock",
         env = "DSF_SOCK"
     )]
     /// Unix socket for communication with the daemon
@@ -145,7 +145,7 @@ impl Engine {
         info!("Creating new engine");
 
         // Create new network connector
-        debug!(
+        info!(
             "Creating network connector on addresses: {:?}",
             options.bind_addresses
         );
@@ -155,6 +155,7 @@ impl Engine {
         }
 
         // Create new unix socket connector
+        info!("Creating unix socket: {}", options.daemon_socket);
         let unix = Unix::new(&options.daemon_socket).await?;
 
         // Create new wire adaptor

@@ -6,6 +6,7 @@ authors = ["ryan <ryan@kurte.nz>"]
 edition = "2018"
 license = "GPL-3.0"
 publish = false
+readme = "README.md"
 
 [features]
 profile = []
@@ -17,12 +18,13 @@ priority = "optional"
 depends = "$auto, systemd, openssl"
 assets = [
     ["target/release/dsfd", "/usr/bin/dsfd",                    "0755"],
-    ["dsfd.env",            "/etc/dsfd/dsfd.env",               "0644"],
+    ["dsfd.env",            "/etc/dsf/dsfd.env",                "0644"],
     ["dsfd.service",        "/lib/systemd/system/dsfd.service", "0644"],
 ]
 conf-files = [
   "/etc/dsfd/dsfd.env",
 ]
+maintainer-scripts = "scripts/"
 
 [dependencies]
 futures = "0.3.4"

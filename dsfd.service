@@ -4,13 +4,8 @@ Description=Distributed Service Framework (DSF) Daemon
 [Service]
 EnvironmentFile=/etc/dsf/dsfd.env
 
-ExecStartPre=-/bin/mkdir -p /var/run/dsf
-ExecStartPre=-/bin/chown dsf:dsf /var/run/dsf
-
-User=dsf
+User=dsfd
 ExecStart=/usr/bin/dsfd
-
-ExecStartPost=/usr/bin/chmod 777 /tmp/dsf.sock
 
 Restart=on-failure
 
