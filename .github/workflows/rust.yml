@@ -33,11 +33,6 @@ jobs:
         with:
           command: fmt
           args: -- --check
-      - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
   test:
     name: Test
     runs-on: ubuntu-latest
