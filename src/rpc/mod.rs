@@ -138,7 +138,8 @@ where
         let res = match req {
             DataCommands::List(data::ListOptions { service, bounds }) => {
                 let id = self.resolve_identifier(&service)?;
-                self.get_data(&id, bounds.count.unwrap_or(100)).map(ResponseKind::Data)?
+                self.get_data(&id, bounds.count.unwrap_or(100))
+                    .map(ResponseKind::Data)?
             }
             DataCommands::Publish(options) => {
                 self.publish(options).await.map(ResponseKind::Published)?
@@ -169,13 +170,15 @@ where
             ServiceCommands::Info(options) => {
                 let id = self.resolve_identifier(&options.service)?;
 
-                self.services().find(&id).map(|i| {
-                    ResponseKind::Service(i.read().unwrap().info())
-                }).unwrap_or(ResponseKind::None)
+                self.services()
+                    .find(&id)
+                    .map(|i| ResponseKind::Service(i.read().unwrap().info()))
+                    .unwrap_or(ResponseKind::None)
             }
-            ServiceCommands::Subscribe(options) => {
-                self.subscribe(options).await.map(ResponseKind::Subscribed)?
-            },
+            ServiceCommands::Subscribe(options) => self
+                .subscribe(options)
+                .await
+                .map(ResponseKind::Subscribed)?,
             ServiceCommands::SetKey(options) => {
                 let id = self.resolve_identifier(&options.service)?;
 
