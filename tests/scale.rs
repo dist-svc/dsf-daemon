@@ -59,6 +59,8 @@ fn scale(n: usize, level: LevelFilter) {
         config.database_file = format!("{}/dsf-scale.db", d);
         config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)];
 
+        
+
         let running = Arc::new(AtomicBool::new(true));
 
         // Create instances
@@ -67,6 +69,9 @@ fn scale(n: usize, level: LevelFilter) {
         for i in 0..n {
             let c = config.with_suffix(i);
             let c1 = c.clone();
+
+            // Ensure database does not exist
+            let _ = std::fs::remove_file(c.database_file);
 
             let addr = c.daemon_socket.clone();
             let mut e = Engine::new(c1).await.expect("Error creating engine");
