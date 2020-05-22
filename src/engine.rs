@@ -317,7 +317,9 @@ impl Engine {
         let unix_resp = unix_req.response(Bytes::from(enc));
 
         // Send response
-        unix_resp.send().await?;
+        if let Err(e) = unix_resp.send().await {
+            error!("Error sending RPC response: {:?}", e);
+        }
 
         Ok(())
     }

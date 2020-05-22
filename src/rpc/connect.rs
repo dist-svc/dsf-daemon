@@ -83,7 +83,13 @@ where
         trace!("Starting DHT connect");
 
         // Pass response to DHT to finish connecting
-        let data = resp.data.try_to((our_id, self.peers())).unwrap();
+        let mut data = resp.data.try_to((our_id.clone(), self.peers())).unwrap();
+
+        // Drop any entries referring to us
+        if let kad::common::Response::NodesFound(_id, nodes) = &mut data {
+            nodes.retain(|n| n.id() != &our_id);
+        }
+
         let ctx = Ctx::INCLUDE_PUBLIC_KEY | Ctx::PUB_KEY_REQUEST | Ctx::ADDRESS_REQUEST;
         match self
             .dht()

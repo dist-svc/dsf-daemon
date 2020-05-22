@@ -100,6 +100,7 @@ table! {
     identity (service_id) {
         service_id -> Text,
 
+        public_key -> Text,
         private_key -> Text,
         secret_key -> Nullable<Text>,
 

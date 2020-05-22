@@ -35,13 +35,23 @@ impl DataManager {
     pub fn fetch_data(&self, service_id: &Id, _limit: usize) -> Result<Vec<DataInst>, Error> {
         let store = self.store.lock().unwrap();
 
+        // Load service info
+        let service = match store.find_service(service_id)? {
+            Some(s) => s,
+            None => return Err(Error::NotFound)
+        };
+
         // Load data info
         let info: Vec<DataInfo> = store.find_data(service_id)?;
+
+        info!("Loaded data info: {:?}", info);
 
         // Load associated raw pages
         let mut data = Vec::with_capacity(info.len());
         for i in info {
-            let p = store.load_page(&i.signature)?;
+            info!("Fetching raw page for: {}", i.signature);
+
+            let p = store.load_page(&i.signature, Some(service.public_key.clone()))?;
             data.push(DataInst {
                 info: i,
                 page: p.unwrap(),

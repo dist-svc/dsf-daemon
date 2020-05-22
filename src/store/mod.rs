@@ -136,8 +136,11 @@ impl Store {
         sql_query(
             "CREATE TABLE identity (
             service_id TEXT NOT NULL PRIMARY KEY,
+
+            public_key TEXT NOT NULL,
             private_key TEXT NOT NULL,
             secret_key TEXT,
+            
             last_page TEXT NOT NULL
         );",
         )
@@ -165,17 +168,20 @@ impl Store {
 
         // Find service id and last page
         let results = identity
-            .select((service_id, private_key, secret_key, last_page))
-            .load::<(String, String, Option<String>, String)>(&self.conn)?;
+            .select((service_id, public_key, private_key, secret_key, last_page))
+            .load::<(String, String, String, Option<String>, String)>(&self.conn)?;
 
         if results.len() != 1 {
             return Ok(None);
         }
 
-        let (_s_id, s_pri_key, s_sec_key, page_sig) = &results[0];
+        let (_s_id, s_pub_key, s_pri_key, s_sec_key, page_sig) = &results[0];
+
+        let sig = Signature::from_str(&page_sig).unwrap();
+        let pub_key = PublicKey::from_str(&s_pub_key).unwrap();
 
         // Load page
-        let page = match self.load_page(&Signature::from_str(&page_sig).unwrap())? {
+        let page = match self.load_page(&sig, Some(pub_key))? {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -193,18 +199,22 @@ impl Store {
     pub fn set_peer_service(&self, service: &Service, page: &Page) -> Result<(), StoreError> {
         use crate::store::schema::identity::dsl::*;
 
+        let pub_key = public_key.eq(service.public_key().to_string());
         let pri_key = service.private_key().map(|v| private_key.eq(v.to_string()));
         let sec_key = service.secret_key().map(|v| secret_key.eq(v.to_string()));
         let sig = page.signature.as_ref().map(|v| last_page.eq(v.to_string()));
 
+        let p_sig = page.signature.as_ref().unwrap();
+
         // Ensure the page has been written
-        if self.load_page(&page.signature.as_ref().unwrap())?.is_none() {
+        if self.load_page(&p_sig, Some(service.public_key()))?.is_none() {
             self.save_page(page)?;
         }
 
         // Setup identity values
         let values = (
             service_id.eq(service.id().to_string()),
+            pub_key,
             pri_key,
             sec_key,
             sig,

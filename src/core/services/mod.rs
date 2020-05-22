@@ -255,8 +255,10 @@ impl ServiceManager {
         debug!("Loading {} services from database", service_info.len());
 
         for i in service_info {
+            let public_key = i.public_key.clone();
+
             let primary_page = match i.primary_page {
-                Some(p) => store.load_page(&p).unwrap().unwrap(),
+                Some(p) => store.load_page(&p, Some(public_key.clone())).unwrap().unwrap(),
                 None => {
                     warn!("No primary page for service: {:?}", i);
                     continue;
@@ -265,7 +267,7 @@ impl ServiceManager {
 
             let replica_page = i
                 .replica_page
-                .map(|s| store.load_page(&s).unwrap())
+                .map(|s| store.load_page(&s, Some(public_key.clone())).unwrap())
                 .flatten();
 
             let mut service = Service::load(&primary_page).unwrap();
