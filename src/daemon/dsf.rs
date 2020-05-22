@@ -11,7 +11,7 @@ use async_std::future::timeout;
 use tracing::{span, Level};
 
 use crate::core::data::DataManager;
-use crate::core::peers::{Peer, PeerManager};
+use crate::core::peers::{Peer, PeerManager, PeerState};
 use crate::core::replicas::ReplicaManager;
 use crate::core::services::ServiceManager;
 use crate::core::subscribers::SubscriberManager;
@@ -346,5 +346,24 @@ where
         info!("DSF bootstrap update done");
 
         Ok(())
+    }
+
+
+    pub fn find_public_key(&self, id: &Id) -> Option<PublicKey> {
+        match (self.peers().find(id), self.services.info(id)) {
+            (_, Some(s)) => {
+                Some(s.public_key)
+            },
+            (Some(p), _)  => {
+                if let PeerState::Known(pk) = p.state() {
+                    Some(pk)
+                } else {
+                    None
+                }
+            },
+            _ => {
+                None
+            }
+        }
     }
 }

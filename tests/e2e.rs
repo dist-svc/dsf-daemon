@@ -22,11 +22,11 @@ use tempdir::TempDir;
 extern crate dsf_core;
 
 extern crate dsf_daemon;
-use dsf_daemon::engine::{Engine, Options};
+use dsf_daemon::engine::{Engine, Options as EngineOptions};
 use dsf_daemon::error::Error;
 
 extern crate dsf_client;
-use dsf_client::Client;
+use dsf_client::{Client, Options as ClientOptions};
 
 extern crate dsf_rpc;
 use dsf_rpc::{self as rpc};
@@ -48,7 +48,7 @@ fn end_to_end() {
     let mut daemons = vec![];
 
     let res: Result<(), Error> = task::block_on(async move {
-        let mut config = Options::default();
+        let mut config = EngineOptions::default();
         config.database_file = format!("{}/dsf-e2e.db", d);
         config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)];
         config.daemon_socket = format!("{}/dsf.sock", d);
@@ -76,7 +76,7 @@ fn end_to_end() {
 
             // Create client
             let mut client =
-                Client::new(&addr, Duration::from_secs(1)).expect("Error connecting to client");
+                Client::new(&ClientOptions::new(&addr, Duration::from_secs(1))).expect("Error connecting to client");
 
             // Fetch client status and ID
             let status = client.status().await.expect("Error fetching client info");

@@ -115,17 +115,16 @@ impl Wire {
         Ok(message)
     }
 
-    fn find_pub_key(&self, id: &Id) -> Option<PublicKey> {
-        self.connections.get(id).and_then(|i| i.public_key.clone())
-    }
-
     /// Handle incoming messages
-    pub async fn handle(&mut self, msg: NetMessage) -> Result<Option<DsfRequest>, Error> {
+    pub async fn handle<PK>(&mut self, msg: NetMessage, find_pub_key: PK) -> Result<Option<DsfRequest>, Error> 
+    where
+        PK: Fn(&Id) -> Option<PublicKey>,
+    {
         trace!("handling message from: {:?}", msg.address);
 
         // Decode network message to DSF message
         // TODO: provide ID to Key query..?
-        let decoded = match self.decode(&msg.data, |id| self.find_pub_key(id)) {
+        let decoded = match self.decode(&msg.data, |id| find_pub_key(id)) {
             Ok(v) => v,
             Err(e) => {
                 debug!("Error {:?} decoding message from: {:?}", e, msg.address);
@@ -402,7 +401,7 @@ mod test {
             // Create message passing task
             task::spawn(async move {
                 let _req = w0.next().await;
-                w0.handle(resp_message).await.unwrap();
+                w0.handle(resp_message, |_id| None ).await.unwrap();
             });
 
             let r1 = c0

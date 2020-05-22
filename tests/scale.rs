@@ -27,10 +27,10 @@ extern crate dsf_rpc;
 use dsf_rpc::{self as rpc};
 
 extern crate dsf_daemon;
-use dsf_daemon::engine::{Engine, Options};
+use dsf_daemon::engine::{Engine, Options as EngineOptions};
 
 extern crate dsf_client;
-use dsf_client::Client;
+use dsf_client::{Client, Options as ClientOptions};
 
 #[test]
 fn smol_scale() {
@@ -55,7 +55,7 @@ fn scale(n: usize, level: LevelFilter) {
     // Create the runtime
     task::block_on(async move {
         // Set common configuration
-        let mut config = Options::default();
+        let mut config = EngineOptions::default();
         config.database_file = format!("{}/dsf-scale.db", d);
         config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)];
 
@@ -84,7 +84,7 @@ fn scale(n: usize, level: LevelFilter) {
 
             // Create client
             let mut client =
-                Client::new(&addr, Duration::from_secs(1)).expect("Error connecting to client");
+                Client::new(&ClientOptions::new(&addr, Duration::from_secs(3))).expect("Error connecting to client");
 
             // Fetch client status and ID
             let status = client.status().await.expect("Error fetching client info");

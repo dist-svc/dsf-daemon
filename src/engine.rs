@@ -279,7 +279,7 @@ impl Engine {
         // This will route responses internally and return requests
         let address = m.address.clone();
 
-        if let Some(req) = wire.handle(m).await.unwrap() {
+        if let Some(req) = wire.handle(m, |id| dsf.find_public_key(id) ).await.unwrap() {
             trace!("Engine request: {:?}", req);
             // Handle the request
             let resp = dsf.handle(address, req).unwrap();

@@ -35,7 +35,7 @@ where
 
         let req_id = req.id;
         let flags = req.flags.clone();
-        let pub_key = self.service().public_key();
+        let our_pub_key = self.service().public_key();
         let from = req.from.clone();
         let from2 = from.clone();
 
@@ -63,7 +63,7 @@ where
         }
         .map(move |mut resp| {
             if flags.contains(Flags::PUB_KEY_REQUEST) {
-                resp.common.public_key = Some(pub_key);
+                resp.common.public_key = Some(our_pub_key);
             }
 
             // Update peer info
@@ -175,7 +175,7 @@ where
         _seen: Option<SystemTime>,
     ) -> Peer {
         trace!(
-            "[DSF ({:?})] Handling base message from {:?} {:?} {:?}",
+            "[DSF ({:?})] Handling base message from: {:?} address: {:?} public_key: {:?}",
             self.id(),
             id,
             address,
