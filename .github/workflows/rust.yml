@@ -33,11 +33,6 @@ jobs:
         with:
           command: fmt
           args: -- --check
-      - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -123,6 +118,7 @@ jobs:
     
     - name: Create archive
       run: tar -cvf target/dsfd-${{ matrix.target }}.tgz -C target/${{ matrix.target }}/release/ ${{ matrix.output }}
+      
     - name: Upload artifacts
       uses: actions/upload-artifact@v1
       with:
