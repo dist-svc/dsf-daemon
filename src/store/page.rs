@@ -108,6 +108,7 @@ mod test {
         store.create_tables().unwrap();
 
         let mut s = Service::default();
+        let public_key = s.public_key();
 
         let mut buff = vec![0u8; 1024];
         let (n, mut page) = s.publish_primary(&mut buff).expect("Error creating page");
@@ -115,15 +116,15 @@ mod test {
         page.raw = Some(buff[..n].to_vec());
 
         // Check no matching service exists
-        assert_eq!(None, store.load_page(&sig).unwrap());
+        assert_eq!(None, store.load_page(&sig, Some(public_key.clone())).unwrap());
 
         // Store data
         store.save_page(&page).unwrap();
-        assert_eq!(Some(&page), store.load_page(&sig).unwrap().as_ref());
+        assert_eq!(Some(&page), store.load_page(&sig, Some(public_key.clone())).unwrap().as_ref());
         assert_eq!(vec![page.clone()], store.find_pages(&s.id()).unwrap());
 
         // Delete data
         store.delete_page(&sig).unwrap();
-        assert_eq!(None, store.load_page(&sig).unwrap());
+        assert_eq!(None, store.load_page(&sig, Some(public_key.clone())).unwrap());
     }
 }

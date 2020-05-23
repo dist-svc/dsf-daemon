@@ -57,7 +57,7 @@ fn scale(n: usize, level: LevelFilter) {
         // Set common configuration
         let mut config = EngineOptions::default();
         config.database_file = format!("{}/dsf-scale.db", d);
-        config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)];
+        config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 11200)];
 
         let running = Arc::new(AtomicBool::new(true));
 

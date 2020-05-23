@@ -119,13 +119,23 @@ where
             PeerCommands::List(_options) => ResponseKind::Peers(self.peer_info()),
             PeerCommands::Connect(options) => {
                 s.connect(options).await.map(ResponseKind::Connected)?
-            }
+            },
             PeerCommands::Search(options) => {
                 // TODO: pass timeout here
                 s.lookup(&options.id)
                     .await
                     .map(|p| ResponseKind::Peers(vec![(p.id(), p.info())]))?
-            }
+            },
+            PeerCommands::Remove(options) => {
+                let id = self.resolve_peer_identifier(&options)?;
+
+                let p = self.peers().remove(&id);
+
+                match p {
+                    Some(p) => ResponseKind::Peer(p),
+                    None => ResponseKind::None,
+                }
+            },
             _ => ResponseKind::Unrecognised,
         };
 
@@ -189,6 +199,16 @@ where
 
                 match s {
                     Some(s) => ResponseKind::Services(vec![s]),
+                    None => ResponseKind::None,
+                }
+            },
+            ServiceCommands::Remove(options) => {
+                let id = self.resolve_identifier(&options.service)?;
+
+                let s = self.services().remove(&id)?;
+
+                match s {
+                    Some(s) => ResponseKind::Service(s),
                     None => ResponseKind::None,
                 }
             }

@@ -121,6 +121,25 @@ impl ServiceManager {
         }
     }
 
+    pub fn remove(&self, id: &Id) ->Result<Option<ServiceInfo>, DsfError>{
+
+        // Remove from memory
+        let service = {
+            self.services.lock().unwrap().remove(id)
+        };
+
+        // Remove from database
+        if let Some(s) = service {
+
+            let info = s.read().unwrap().info();
+            let _ = self.store.lock().unwrap().delete_service(&info);
+
+            return Ok(Some(info))
+        };
+
+        return Ok(None);
+    }
+
     /// Fetch data for a given service
     #[cfg(nope)]
     pub fn data(&self, id: &Id, n: usize) -> Result<Vec<DataInfo>, DsfError> {

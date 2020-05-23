@@ -97,11 +97,14 @@ impl Default for Options {
 impl Options {
     /// Helper constructor to run multiple instances alongside each other
     pub fn with_suffix(&self, suffix: usize) -> Self {
+        let bind_addresses = self.bind_addresses.iter().map(|a| {
+            let mut a = a.clone();
+            a.set_port(a.port() + suffix as u16);
+            a
+        }).collect();
+
         Self {
-            bind_addresses: vec![SocketAddr::new(
-                IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-                10100 + suffix as u16,
-            )],
+            bind_addresses,
             daemon_socket: format!("{}.{}", self.daemon_socket, suffix),
             database_file: format!("{}.{}", self.database_file, suffix),
             no_bootstrap: self.no_bootstrap,
@@ -151,12 +154,21 @@ impl Engine {
         );
         let mut net = Net::new();
         for addr in &options.bind_addresses {
-            net.bind(NetKind::Udp, *addr).await?;
+            if let Err(e) = net.bind(NetKind::Udp, *addr).await {
+                error!("Error binding interface: {:?}", addr);
+                return Err(e.into())
+            }
         }
 
         // Create new unix socket connector
         info!("Creating unix socket: {}", options.daemon_socket);
-        let unix = Unix::new(&options.daemon_socket).await?;
+        let unix = match Unix::new(&options.daemon_socket).await {
+            Ok(u) => u,
+            Err(e) => {
+                error!("Error binding unix socket: {}", options.daemon_socket);
+                return Err(e.into())
+            }
+        };
 
         // Create new wire adaptor
         let wire = Wire::new(service.private_key().unwrap());

@@ -76,6 +76,25 @@ impl PeerManager {
             .clone()
     }
 
+    pub fn remove(&self, id: &Id) -> Option<PeerInfo> {
+        let peer = {
+            self.peers.lock().unwrap().remove(id)
+        };
+
+        match peer {
+            Some(p) => {
+                let info = p.info();
+
+                if let Err(e) = self.store.lock().unwrap().delete_peer(&info) {
+                    error!("Error removing peer from db: {:?}", e);
+                }
+
+                Some(info)
+            },
+            None => None,
+        }
+    }
+
     pub fn count(&self) -> usize {
         let peers = self.peers.lock().unwrap();
         peers.len()
