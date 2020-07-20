@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use kad::prelude::*;
 
-use dsf_core::net::{Request, RequestKind, ResponseKind};
 use dsf_core::prelude::*;
+use dsf_core::net::{Request, RequestKind, ResponseKind};
 use dsf_core::types::{Data, Flags, Id, RequestId};
 
 use crate::core::peers::{Peer, PeerAddress, PeerManager};

@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime};
 
 use dsf_core::options::Options;
 use dsf_core::prelude::*;
-use dsf_core::service::publisher::SecondaryOptionsBuilder;
+use dsf_core::service::publisher::SecondaryOptions;
 use dsf_core::service::{Publisher, Subscriber};
 
 use dsf_rpc::service::{ServiceInfo, ServiceState};
@@ -108,9 +108,10 @@ impl ServiceInst {
         // Check if there's an existing page
         if let Some(page) = &self.replica_page {
             // Fetch expiry time
-            let expired = match page.expiry() {
-                Some(expiry) => SystemTime::now() < expiry,
-                None => SystemTime::now() < page.issued().add(Duration::from_secs(3600)),
+            let expired = match (page.issued(), page.expiry()) {
+                (_, Some(expiry)) => SystemTime::now() < expiry,
+                (Some(issued), None) => SystemTime::now() < issued.add(Duration::from_secs(3600)),
+                _ => false,
             };
             // If it hasn't expired, use this one
             if !expired && !force_update {
@@ -120,12 +121,13 @@ impl ServiceInst {
             version = page.version();
         }
 
-        let mut opts = SecondaryOptionsBuilder::default();
-        opts.id(self.service.id());
-        opts.page_kind(PageKind::Replica.into());
-        opts.version(version);
-        opts.public_options(vec![Options::public_key(peer_service.public_key())]);
-        let opts = opts.build().unwrap();
+        let mut opts = SecondaryOptions{
+            id: self.service.id(),
+            page_kind: PageKind::Replica.into(),
+            version: version,
+            public_options: vec![Options::public_key(peer_service.public_key())],
+            ..Default::default()
+        };
 
         let mut buff = vec![0u8; 1024];
         let (n, mut replica_page) = peer_service.publish_secondary(opts, &mut buff).unwrap();

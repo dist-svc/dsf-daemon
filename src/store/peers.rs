@@ -160,8 +160,8 @@ impl Store {
         };
 
         let s_addr = match r_address_mode.as_ref() {
-            IMPLICIT => PeerAddress::Implicit(r_address.parse()?),
-            EXPLICIT => PeerAddress::Explicit(r_address.parse()?),
+            IMPLICIT => PeerAddress::Implicit(SocketAddress::parse(r_address)?.into()),
+            EXPLICIT => PeerAddress::Explicit(SocketAddress::parse(r_address)?.into()),
             _ => unreachable!(),
         };
 

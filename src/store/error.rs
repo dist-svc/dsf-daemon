@@ -1,4 +1,4 @@
-use base64::DecodeError as B64Error;
+use base64::decode::DecodeError as B64Error;
 use diesel::result::Error as DieselError;
 use diesel::ConnectionError;
 use std::net::AddrParseError;

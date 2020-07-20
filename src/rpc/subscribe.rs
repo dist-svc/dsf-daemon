@@ -6,7 +6,7 @@ use tracing::{span, Level};
 
 use dsf_core::net;
 use dsf_core::prelude::*;
-use dsf_core::types::Error as CoreError;
+use dsf_core::error::Error as CoreError;
 use dsf_rpc::{SubscribeOptions, SubscriptionInfo, SubscriptionKind};
 
 use crate::core::services::ServiceState;
