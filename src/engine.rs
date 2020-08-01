@@ -303,7 +303,7 @@ impl Engine {
             trace!("Engine response: {:?}", resp);
 
             let net_tx = wire
-                .handle_outgoing(address, DsfMessage::Response(resp))
+                .handle_outgoing(address.into(), DsfMessage::Response(resp))
                 .unwrap();
 
             // Send the response

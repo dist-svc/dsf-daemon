@@ -36,7 +36,12 @@ where
 
         // Generate connection request message
         let flag = Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST;
-        let mut req = net::Request::new(self.id(), req_id, net::RequestKind::FindNode(self.id()), flag);
+        let mut req = net::Request::new(
+            self.id(),
+            req_id,
+            net::RequestKind::FindNode(self.id()),
+            flag,
+        );
 
         let service = self.service();
 
@@ -60,7 +65,7 @@ where
         trace!("Sending request");
 
         let d = options.timeout.or(Some(Duration::from_secs(2))).unwrap();
-        let res = self.request(address, req, d).await;
+        let res = self.request(address.into(), req, d).await;
 
         // Handle errors
         let resp = match res {
@@ -74,9 +79,11 @@ where
         trace!("response from peer: {:?}", &resp.from);
 
         // Update peer information and prepare response
-        let peer =
-            self.peers()
-                .find_or_create(resp.from.clone(), PeerAddress::Implicit(address), None);
+        let peer = self.peers().find_or_create(
+            resp.from.clone(),
+            PeerAddress::Implicit(address.into()),
+            None,
+        );
         let mut info = ConnectInfo {
             id: resp.from.clone(),
             peers: 0,

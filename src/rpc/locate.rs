@@ -41,7 +41,8 @@ where
         debug!("locate, found {} pages", pages.len());
         // Fetch primary page
         let primary_page = match pages.iter().find(|p| {
-            p.header().kind().is_page() && !p.header().flags().contains(Flags::SECONDARY) && p.id() == &options.id
+            let h = p.header();
+            h.kind().is_page() && !h.flags().contains(Flags::SECONDARY) && p.id() == &options.id
         }) {
             Some(p) => p.clone(),
             None => return Err(Error::NotFound),
@@ -51,10 +52,11 @@ where
         let replicas: Vec<(Id, Page)> = pages
             .drain(..)
             .filter(|p| {
-                p.kind().is_page()
-                    && p.flags().contains(Flags::SECONDARY)
-                    && p.application_id() == 0
-                    && p.kind() == PageKind::Replica.into()
+                let h = p.header();
+                h.kind().is_page()
+                    && h.flags().contains(Flags::SECONDARY)
+                    && h.application_id() == 0
+                    && h.kind() == PageKind::Replica.into()
             })
             .filter_map(|p| {
                 let peer_id = match p.info().peer_id() {

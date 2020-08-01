@@ -22,12 +22,12 @@ impl From<Page> for ReplicaInst {
         let info = ReplicaInfo {
             peer_id,
 
-            version: page.header.version(),
+            version: page.header.index(),
             page_id: page.id.clone(),
 
             //peer: None,
-            issued: page.issued(),
-            expiry: page.expiry(),
+            issued: page.issued().unwrap().into(),
+            expiry: page.expiry().map(|v| v.into()),
             updated: SystemTime::now(),
 
             active: false,

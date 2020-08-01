@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use std::net::SocketAddr;
+use std::str::FromStr;
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;

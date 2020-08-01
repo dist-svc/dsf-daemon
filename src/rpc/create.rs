@@ -31,15 +31,19 @@ where
 
         // Attach a body if provided
         if let Some(body) = options.body {
-            sb.body(body);
+            sb = sb.body(body);
         } else {
-            sb.body(Body::None);
+            sb = sb.body(Body::None);
         }
 
         // Append addresses as private options
-        for a in options.addresses {
-            sb.append_private_option(Options::address(a));
-        }
+        sb = sb.private_options(
+            options
+                .addresses
+                .iter()
+                .map(|v| Options::address(v.clone()))
+                .collect(),
+        );
 
         // TODO: append metadata
         for _m in options.metadata {
@@ -48,7 +52,7 @@ where
 
         // If the service is not public, encrypt the object
         if !options.public {
-            sb.encrypt();
+            sb = sb.encrypt();
         }
 
         debug!("Generating service");

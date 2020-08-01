@@ -57,7 +57,7 @@ where
             drop(s);
 
             let mut info = RegisterInfo {
-                page_version: primary_page.header().version(),
+                page_version: primary_page.header().index(),
                 replica_version: None,
                 peers: 0,
             };
@@ -76,7 +76,7 @@ where
                     Err(e) => return Err(e.into()),
                 };
 
-                info.replica_version = Some(replica_page.header().version());
+                info.replica_version = Some(replica_page.header().index());
 
                 pages.push(replica_page);
 

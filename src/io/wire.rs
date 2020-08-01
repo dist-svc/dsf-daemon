@@ -2,6 +2,7 @@
 //!
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -149,10 +150,9 @@ impl Wire {
         if !info
             .addresses
             .iter()
-            .any(|(addr, _seen)| addr.into() == &msg.address)
+            .any(|(addr, _seen)| &Into::<SocketAddr>::into(addr.clone()) == &msg.address)
         {
-            info.addresses
-                .push((msg.address.into(), SystemTime::now()));
+            info.addresses.push((msg.address.into(), SystemTime::now()));
         }
 
         match (&info.public_key, &decoded.pub_key()) {

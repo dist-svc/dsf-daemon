@@ -14,7 +14,7 @@ use dsf_core::service::Subscriber;
 use kad::prelude::*;
 
 use crate::daemon::Dsf;
-use crate::error::{Error as DaemonError};
+use crate::error::Error as DaemonError;
 use crate::io::Connector;
 
 use crate::daemon::dht::{Adapt, TryAdapt};
@@ -27,7 +27,11 @@ where
     C: Connector + Clone + Sync + Send + 'static,
 {
     /// Handle a received request message and generate a response
-    pub fn handle(&mut self, addr: SocketAddr, req: net::Request) -> Result<net::Response, DaemonError> {
+    pub fn handle(
+        &mut self,
+        addr: SocketAddr,
+        req: net::Request,
+    ) -> Result<net::Response, DaemonError> {
         let own_id = self.id();
 
         let span = span!(Level::DEBUG, "id", "{}", own_id);

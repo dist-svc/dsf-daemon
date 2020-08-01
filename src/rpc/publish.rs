@@ -5,7 +5,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 
 use dsf_core::net;
-use dsf_core::service::publisher::{Publisher, DataOptions};
+use dsf_core::service::publisher::{DataOptions, Publisher};
 use dsf_rpc::{DataInfo, PublishInfo, PublishOptions};
 
 use crate::daemon::Dsf;
@@ -52,10 +52,15 @@ where
                 }
             };
 
-            let mut data_options = DataOptions{
-                data_kind: options.kind.map(|k| k.into()),
-                body: options.data.map(Body::Cleartext),
-                ..Default::Default()
+            let body = match options.data {
+                Some(d) => Body::Cleartext(d),
+                None => Body::None,
+            };
+
+            let mut data_options = DataOptions {
+                data_kind: options.kind.into(),
+                body,
+                ..Default::default()
             };
 
             info!("Generating data page");
@@ -64,7 +69,7 @@ where
             page.raw = Some(buff[..n].to_vec());
 
             let info = PublishInfo {
-                index: page.version(),
+                index: page.header().index(),
             };
 
             let service_id = service.id();
@@ -82,6 +87,7 @@ where
             // TODO: send data to subscribers
             let req = net::Request::new(
                 self.id(),
+                rand::random(),
                 net::RequestKind::PushData(service_id.clone(), vec![page]),
                 Flags::default(),
             );

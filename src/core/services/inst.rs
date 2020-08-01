@@ -71,9 +71,10 @@ impl ServiceInst {
 
         // Check if there's an existing page
         if let Some(page) = &self.primary_page {
-
-            let (issued, expiry): (Option<SystemTime>, Option<SystemTime>) =
-                (page.issued().map(|v| v.into()), page.expiry().map(|v| v.into()));
+            let (issued, expiry): (Option<SystemTime>, Option<SystemTime>) = (
+                page.issued().map(|v| v.into()),
+                page.expiry().map(|v| v.into()),
+            );
 
             // Fetch expiry time
             let expired = match (expiry, issued) {
@@ -116,9 +117,10 @@ impl ServiceInst {
 
         // Check if there's an existing page
         if let Some(page) = &self.replica_page {
-
-            let (issued, expiry): (Option<SystemTime>, Option<SystemTime>) =
-                (page.issued().map(|v| v.into()), page.expiry().map(|v| v.into()));
+            let (issued, expiry): (Option<SystemTime>, Option<SystemTime>) = (
+                page.issued().map(|v| v.into()),
+                page.expiry().map(|v| v.into()),
+            );
 
             // Fetch expiry time
             let expired = match (issued, expiry) {
@@ -142,7 +144,9 @@ impl ServiceInst {
         };
 
         let mut buff = vec![0u8; 1024];
-        let (n, mut replica_page) = peer_service.publish_secondary(&self.service.id(), opts, &mut buff).unwrap();
+        let (n, mut replica_page) = peer_service
+            .publish_secondary(&self.service.id(), opts, &mut buff)
+            .unwrap();
         replica_page.raw = Some(buff[..n].to_vec());
 
         // Update local replica page
