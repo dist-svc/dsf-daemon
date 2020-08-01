@@ -318,14 +318,15 @@ where
         // Build peer connect requests
         // TODO: switched to serial due to locking issue somewhere,
         // however, it should be possible to execute this in parallel
-        let mut success = 0;
+        let mut success: usize = 0;
+
         for (id, p) in peers {
             let timeout = Duration::from_millis(200).into();
             let mut _s = self.clone();
 
             if let Ok(_) = self
                 .connect(dsf_rpc::ConnectOptions {
-                    address: p.address(),
+                    address: p.address().into(),
                     id: Some(id.clone()),
                     timeout,
                 })
@@ -348,22 +349,17 @@ where
         Ok(())
     }
 
-
     pub fn find_public_key(&self, id: &Id) -> Option<PublicKey> {
         match (self.peers().find(id), self.services.info(id)) {
-            (_, Some(s)) => {
-                Some(s.public_key)
-            },
-            (Some(p), _)  => {
+            (_, Some(s)) => Some(s.public_key),
+            (Some(p), _) => {
                 if let PeerState::Known(pk) = p.state() {
                     Some(pk)
                 } else {
                     None
                 }
-            },
-            _ => {
-                None
             }
+            _ => None,
         }
     }
 }

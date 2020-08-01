@@ -121,20 +121,16 @@ impl ServiceManager {
         }
     }
 
-    pub fn remove(&self, id: &Id) ->Result<Option<ServiceInfo>, DsfError>{
-
+    pub fn remove(&self, id: &Id) -> Result<Option<ServiceInfo>, DsfError> {
         // Remove from memory
-        let service = {
-            self.services.lock().unwrap().remove(id)
-        };
+        let service = { self.services.lock().unwrap().remove(id) };
 
         // Remove from database
         if let Some(s) = service {
-
             let info = s.read().unwrap().info();
             let _ = self.store.lock().unwrap().delete_service(&info);
 
-            return Ok(Some(info))
+            return Ok(Some(info));
         };
 
         return Ok(None);
@@ -277,7 +273,10 @@ impl ServiceManager {
             let public_key = i.public_key.clone();
 
             let primary_page = match i.primary_page {
-                Some(p) => store.load_page(&p, Some(public_key.clone())).unwrap().unwrap(),
+                Some(p) => store
+                    .load_page(&p, Some(public_key.clone()))
+                    .unwrap()
+                    .unwrap(),
                 None => {
                     warn!("No primary page for service: {:?}", i);
                     continue;

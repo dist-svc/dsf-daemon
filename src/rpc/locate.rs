@@ -41,7 +41,7 @@ where
         debug!("locate, found {} pages", pages.len());
         // Fetch primary page
         let primary_page = match pages.iter().find(|p| {
-            p.kind().is_page() && !p.flags().contains(Flags::SECONDARY) && p.id() == &options.id
+            p.header().kind().is_page() && !p.header().flags().contains(Flags::SECONDARY) && p.id() == &options.id
         }) {
             Some(p) => p.clone(),
             None => return Err(Error::NotFound),

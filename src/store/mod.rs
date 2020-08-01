@@ -207,7 +207,10 @@ impl Store {
         let p_sig = page.signature.as_ref().unwrap();
 
         // Ensure the page has been written
-        if self.load_page(&p_sig, Some(service.public_key()))?.is_none() {
+        if self
+            .load_page(&p_sig, Some(service.public_key()))?
+            .is_none()
+        {
             self.save_page(page)?;
         }
 

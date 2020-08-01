@@ -5,7 +5,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 
 use dsf_core::net;
-use dsf_core::service::publisher::{DataOptionsBuilder, Publisher};
+use dsf_core::service::publisher::{Publisher, DataOptions};
 use dsf_rpc::{DataInfo, PublishInfo, PublishOptions};
 
 use crate::daemon::Dsf;
@@ -52,16 +52,11 @@ where
                 }
             };
 
-            let mut data_options = DataOptionsBuilder::default();
-            if let Some(kind) = options.kind {
-                data_options.data_kind(kind.into());
-            }
-
-            if let Some(body) = options.data {
-                data_options.body(Body::Cleartext(body));
-            }
-
-            let data_options = data_options.build().unwrap();
+            let mut data_options = DataOptions{
+                data_kind: options.kind.map(|k| k.into()),
+                body: options.data.map(Body::Cleartext),
+                ..Default::Default()
+            };
 
             info!("Generating data page");
             let mut buff = vec![0u8; 1024];

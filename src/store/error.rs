@@ -1,4 +1,3 @@
-use base64::decode::DecodeError as B64Error;
 use diesel::result::Error as DieselError;
 use diesel::ConnectionError;
 use std::net::AddrParseError;
@@ -9,7 +8,7 @@ pub enum StoreError {
     Connection(ConnectionError),
     Diesel(DieselError),
     Strum(StrumError),
-    B64(B64Error),
+    B64(base64::DecodeError),
     Addr(AddrParseError),
     MissingSignature,
     MissingRawData,
@@ -34,8 +33,8 @@ impl From<StrumError> for StoreError {
     }
 }
 
-impl From<B64Error> for StoreError {
-    fn from(e: B64Error) -> Self {
+impl From<base64::DecodeError> for StoreError {
+    fn from(e: base64::DecodeError) -> Self {
         Self::B64(e)
     }
 }

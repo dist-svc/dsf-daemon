@@ -22,7 +22,7 @@ impl From<Page> for ReplicaInst {
         let info = ReplicaInfo {
             peer_id,
 
-            version: page.version(),
+            version: page.header.version(),
             page_id: page.id.clone(),
 
             //peer: None,

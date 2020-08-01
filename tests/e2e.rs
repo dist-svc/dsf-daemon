@@ -50,7 +50,10 @@ fn end_to_end() {
     let res: Result<(), Error> = task::block_on(async move {
         let mut config = EngineOptions::default();
         config.database_file = format!("{}/dsf-e2e.db", d);
-        config.bind_addresses = vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 11100)];
+        config.bind_addresses = vec![SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            11100,
+        )];
         config.daemon_socket = format!("{}/dsf.sock", d);
 
         let running = Arc::new(AtomicBool::new(true));
@@ -75,8 +78,8 @@ fn end_to_end() {
             );
 
             // Create client
-            let mut client =
-                Client::new(&ClientOptions::new(&addr, Duration::from_secs(1))).expect("Error connecting to client");
+            let mut client = Client::new(&ClientOptions::new(&addr, Duration::from_secs(1)))
+                .expect("Error connecting to client");
 
             // Fetch client status and ID
             let status = client.status().await.expect("Error fetching client info");

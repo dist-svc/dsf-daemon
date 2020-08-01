@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use rand::prelude::*;
+
 use kad::prelude::*;
 
-use dsf_core::prelude::*;
 use dsf_core::net::{Request, RequestKind, ResponseKind};
+use dsf_core::prelude::*;
 use dsf_core::types::{Data, Flags, Id, RequestId};
 
 use crate::core::peers::{Peer, PeerAddress, PeerManager};
@@ -62,27 +64,29 @@ where
         let id = self.id.clone();
         let c = self.connector.clone();
 
+        let req_id = rand::random::<u16>();
+
         // Build DSF Request from DHT request
-        let mut req = Request::new(self.id.clone(), req.to(), Flags::default());
+        let mut net_req = Request::new(self.id.clone(), req_id, req.to(), Flags::default());
         trace!("DHT request: {:?}", req);
 
         if ctx.contains(Ctx::INCLUDE_PUBLIC_KEY) {
-            req.set_public_key(self.pub_key.clone());
+            net_req.set_public_key(self.pub_key.clone());
         }
         if ctx.contains(Ctx::ADDRESS_REQUEST) {
-            req.flags().insert(Flags::ADDRESS_REQUEST);
+            net_req.flags().insert(Flags::ADDRESS_REQUEST);
         }
         if ctx.contains(Ctx::PUB_KEY_REQUEST) {
-            req.flags().insert(Flags::PUB_KEY_REQUEST);
+            net_req.flags().insert(Flags::PUB_KEY_REQUEST);
         }
 
         // Issue request and await response
         // TODO: remove timeout duration from here
         let resp = match c
             .request(
-                req.id,
+                req_id,
                 target.info().address().clone(),
-                req,
+                net_req,
                 Duration::from_secs(2),
             )
             .await
@@ -124,7 +128,7 @@ where
 pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
     // Build sorted array for filtering
     let mut ordered: Vec<_> = pages.iter().collect();
-    ordered.sort_by_key(|p| p.version());
+    ordered.sort_by_key(|p| p.header().index());
     ordered.reverse();
 
     // Place pages into a map to dedup on ID

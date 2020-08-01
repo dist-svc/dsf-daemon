@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::net::SocketAddr;
 
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -50,7 +51,7 @@ impl Store {
             peer_id.eq(info.id.to_string()),
             s,
             k,
-            address.eq(info.address().to_string()),
+            address.eq(SocketAddr::from(info.address().clone()).to_string()),
             address_mode.eq(am),
             seen,
             sent.eq(info.sent as i32),
@@ -160,8 +161,8 @@ impl Store {
         };
 
         let s_addr = match r_address_mode.as_ref() {
-            IMPLICIT => PeerAddress::Implicit(SocketAddress::parse(r_address)?.into()),
-            EXPLICIT => PeerAddress::Explicit(SocketAddress::parse(r_address)?.into()),
+            IMPLICIT => PeerAddress::Implicit(SocketAddr::from_str(r_address)?.into()),
+            EXPLICIT => PeerAddress::Explicit(SocketAddr::from_str(r_address)?.into()),
             _ => unreachable!(),
         };
 

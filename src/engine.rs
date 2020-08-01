@@ -97,11 +97,15 @@ impl Default for Options {
 impl Options {
     /// Helper constructor to run multiple instances alongside each other
     pub fn with_suffix(&self, suffix: usize) -> Self {
-        let bind_addresses = self.bind_addresses.iter().map(|a| {
-            let mut a = a.clone();
-            a.set_port(a.port() + suffix as u16);
-            a
-        }).collect();
+        let bind_addresses = self
+            .bind_addresses
+            .iter()
+            .map(|a| {
+                let mut a = a.clone();
+                a.set_port(a.port() + suffix as u16);
+                a
+            })
+            .collect();
 
         Self {
             bind_addresses,
@@ -128,7 +132,7 @@ impl Engine {
                 s
             }
             None => {
-                let s = ServiceBuilder::default().peer().build().unwrap();
+                let s = ServiceBuilder::peer().build().unwrap();
                 info!("Created new peer service: {}", s.id());
                 s
             }
@@ -156,7 +160,7 @@ impl Engine {
         for addr in &options.bind_addresses {
             if let Err(e) = net.bind(NetKind::Udp, *addr).await {
                 error!("Error binding interface: {:?}", addr);
-                return Err(e.into())
+                return Err(e.into());
             }
         }
 
@@ -166,7 +170,7 @@ impl Engine {
             Ok(u) => u,
             Err(e) => {
                 error!("Error binding unix socket: {}", options.daemon_socket);
-                return Err(e.into())
+                return Err(e.into());
             }
         };
 
@@ -291,7 +295,7 @@ impl Engine {
         // This will route responses internally and return requests
         let address = m.address.clone();
 
-        if let Some(req) = wire.handle(m, |id| dsf.find_public_key(id) ).await.unwrap() {
+        if let Some(req) = wire.handle(m, |id| dsf.find_public_key(id)).await.unwrap() {
             trace!("Engine request: {:?}", req);
             // Handle the request
             let resp = dsf.handle(address, req).unwrap();

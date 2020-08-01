@@ -27,9 +27,7 @@ where
         let _services = self.services();
 
         info!("Creating service: {:?}", options);
-        let mut sb = ServiceBuilder::default();
-
-        sb.generic();
+        let mut sb = ServiceBuilder::generic();
 
         // Attach a body if provided
         if let Some(body) = options.body {

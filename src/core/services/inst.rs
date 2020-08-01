@@ -71,10 +71,19 @@ impl ServiceInst {
 
         // Check if there's an existing page
         if let Some(page) = &self.primary_page {
+
+            let (issued, expiry): (Option<SystemTime>, Option<SystemTime>) =
+                (page.issued().map(|v| v.into()), page.expiry().map(|v| v.into()));
+
             // Fetch expiry time
-            let expired = match page.expiry() {
-                Some(expiry) => SystemTime::now() > expiry,
-                None => SystemTime::now() > page.issued().add(Duration::from_secs(3600)),
+            let expired = match (expiry, issued) {
+                (Some(expiry), _) => SystemTime::now() > expiry,
+                (_, Some(issued)) => SystemTime::now() > issued.add(Duration::from_secs(3600)),
+                _ => {
+                    warn!("Page does not contain expiry or issued fields");
+                    // TODO: fault out here
+                    false
+                }
             };
 
             // If it hasn't expired, use this one
@@ -107,8 +116,12 @@ impl ServiceInst {
 
         // Check if there's an existing page
         if let Some(page) = &self.replica_page {
+
+            let (issued, expiry): (Option<SystemTime>, Option<SystemTime>) =
+                (page.issued().map(|v| v.into()), page.expiry().map(|v| v.into()));
+
             // Fetch expiry time
-            let expired = match (page.issued(), page.expiry()) {
+            let expired = match (issued, expiry) {
                 (_, Some(expiry)) => SystemTime::now() < expiry,
                 (Some(issued), None) => SystemTime::now() < issued.add(Duration::from_secs(3600)),
                 _ => false,
@@ -118,11 +131,10 @@ impl ServiceInst {
                 return Ok(page.clone());
             }
 
-            version = page.version();
+            version = page.header().index();
         }
 
-        let mut opts = SecondaryOptions{
-            id: self.service.id(),
+        let mut opts = SecondaryOptions {
             page_kind: PageKind::Replica.into(),
             version: version,
             public_options: vec![Options::public_key(peer_service.public_key())],
@@ -130,7 +142,7 @@ impl ServiceInst {
         };
 
         let mut buff = vec![0u8; 1024];
-        let (n, mut replica_page) = peer_service.publish_secondary(opts, &mut buff).unwrap();
+        let (n, mut replica_page) = peer_service.publish_secondary(&self.service.id(), opts, &mut buff).unwrap();
         replica_page.raw = Some(buff[..n].to_vec());
 
         // Update local replica page

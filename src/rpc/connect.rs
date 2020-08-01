@@ -32,9 +32,11 @@ where
         //            warn!("[DSF ({:?})] Cannot connect to self", self.id);
         //        }
 
+        let req_id = rand::random::<u16>();
+
         // Generate connection request message
         let flag = Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST;
-        let mut req = net::Request::new(self.id(), net::RequestKind::FindNode(self.id()), flag);
+        let mut req = net::Request::new(self.id(), req_id, net::RequestKind::FindNode(self.id()), flag);
 
         let service = self.service();
 

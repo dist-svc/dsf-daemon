@@ -69,7 +69,11 @@ impl Store {
         Ok(())
     }
 
-    pub fn load_page(&self, sig: &Signature, public_key: Option<PublicKey>) -> Result<Option<Page>, StoreError> {
+    pub fn load_page(
+        &self,
+        sig: &Signature,
+        public_key: Option<PublicKey>,
+    ) -> Result<Option<Page>, StoreError> {
         let results = object
             .filter(signature.eq(sig.to_string()))
             .select((service_id, raw_data, previous, signature))
@@ -81,7 +85,7 @@ impl Store {
 
         let (_r_id, r_raw, _r_previous, _r_signature) = &results[0];
 
-        let mut v = Page::decode_pages(&r_raw, |_id| public_key.clone() ).unwrap();
+        let mut v = Page::decode_pages(&r_raw, |_id| public_key.clone()).unwrap();
 
         Ok(Some(v.remove(0)))
     }
@@ -116,15 +120,27 @@ mod test {
         page.raw = Some(buff[..n].to_vec());
 
         // Check no matching service exists
-        assert_eq!(None, store.load_page(&sig, Some(public_key.clone())).unwrap());
+        assert_eq!(
+            None,
+            store.load_page(&sig, Some(public_key.clone())).unwrap()
+        );
 
         // Store data
         store.save_page(&page).unwrap();
-        assert_eq!(Some(&page), store.load_page(&sig, Some(public_key.clone())).unwrap().as_ref());
+        assert_eq!(
+            Some(&page),
+            store
+                .load_page(&sig, Some(public_key.clone()))
+                .unwrap()
+                .as_ref()
+        );
         assert_eq!(vec![page.clone()], store.find_pages(&s.id()).unwrap());
 
         // Delete data
         store.delete_page(&sig).unwrap();
-        assert_eq!(None, store.load_page(&sig, Some(public_key.clone())).unwrap());
+        assert_eq!(
+            None,
+            store.load_page(&sig, Some(public_key.clone())).unwrap()
+        );
     }
 }

@@ -14,7 +14,7 @@ use dsf_core::service::Subscriber;
 use kad::prelude::*;
 
 use crate::daemon::Dsf;
-use crate::error::Error;
+use crate::error::{Error as DaemonError};
 use crate::io::Connector;
 
 use crate::daemon::dht::{Adapt, TryAdapt};
@@ -27,7 +27,7 @@ where
     C: Connector + Clone + Sync + Send + 'static,
 {
     /// Handle a received request message and generate a response
-    pub fn handle(&mut self, addr: SocketAddr, req: net::Request) -> Result<net::Response, Error> {
+    pub fn handle(&mut self, addr: SocketAddr, req: net::Request) -> Result<net::Response, DaemonError> {
         let own_id = self.id();
 
         let span = span!(Level::DEBUG, "id", "{}", own_id);
@@ -47,7 +47,7 @@ where
         );
 
         // Generic request processing here
-        let peer = self.handle_base(&from, &addr, &req.common, Some(SystemTime::now()));
+        let peer = self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now()));
 
         // Handle specific DSF and DHT messages
         if let Some(kad_req) = req.data.try_to(()) {
@@ -86,7 +86,7 @@ where
         address: Address,
         req: net::Request,
         timeout: Duration,
-    ) -> Result<net::Response, Error> {
+    ) -> Result<net::Response, DaemonError> {
         let req = req.clone();
 
         debug!("Sending request to: {:?} request: {:?}", address, &req);
@@ -113,7 +113,7 @@ where
         &mut self,
         addresses: &[Address],
         req: net::Request,
-    ) -> Vec<Result<net::Response, Error>> {
+    ) -> Vec<Result<net::Response, DaemonError>> {
         let mut f = Vec::with_capacity(addresses.len());
 
         let c = self.connector();
@@ -147,7 +147,7 @@ where
         &mut self,
         address: Address,
         resp: net::Response,
-    ) -> Result<(), Error> {
+    ) -> Result<(), DaemonError> {
         let resp = resp.clone();
 
         trace!(
@@ -231,7 +231,7 @@ where
         from: Id,
         peer: Peer,
         req: net::RequestKind,
-    ) -> Result<net::ResponseKind, Error> {
+    ) -> Result<net::ResponseKind, DaemonError> {
         match req {
             net::RequestKind::Hello => Ok(net::ResponseKind::Status(net::Status::Ok)),
             net::RequestKind::Subscribe(service_id) => {
@@ -281,7 +281,7 @@ where
 
                 info!("Query request complete");
 
-                Err(Error::Unimplemented)
+                Err(DaemonError::Unimplemented)
             }
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
@@ -307,14 +307,14 @@ where
                         continue;
                     }
 
-                    if p.kind().is_page() {
+                    if p.header().kind().is_page() {
                         // Apply page to service
                         if let Err(e) = service.apply_update(p) {
                             error!("Error applying service update: {:?}", e);
                         }
                     }
 
-                    if p.kind().is_data() {
+                    if p.header().kind().is_data() {
                         // Store data
                         if let Ok(info) = DataInfo::try_from(p) {
                             self.data().store_data(&info, p).unwrap();
@@ -329,7 +329,7 @@ where
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             }
-            _ => Err(Error::Unimplemented),
+            _ => Err(DaemonError::Unimplemented),
         }
     }
 
@@ -339,7 +339,7 @@ where
         from: Id,
         peer: Peer,
         req: DhtRequest<Id, Data>,
-    ) -> Result<DhtResponse<Id, Peer, Data>, Error> {
+    ) -> Result<DhtResponse<Id, Peer, Data>, DaemonError> {
         // TODO: resolve this into existing entry
         let from = DhtEntry::new(from.into(), peer);
 

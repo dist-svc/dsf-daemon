@@ -4,9 +4,9 @@ use futures::future::join_all;
 
 use tracing::{span, Level};
 
+use dsf_core::error::Error as CoreError;
 use dsf_core::net;
 use dsf_core::prelude::*;
-use dsf_core::error::Error as CoreError;
 use dsf_rpc::{SubscribeOptions, SubscriptionInfo, SubscriptionKind};
 
 use crate::core::services::ServiceState;
@@ -87,6 +87,7 @@ where
         // Issue subscription requests
         let req = net::Request::new(
             self.id(),
+            rand::random(),
             net::RequestKind::Subscribe(service_id.clone()),
             Flags::default(),
         );

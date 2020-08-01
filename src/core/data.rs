@@ -38,7 +38,7 @@ impl DataManager {
         // Load service info
         let service = match store.find_service(service_id)? {
             Some(s) => s,
-            None => return Err(Error::NotFound)
+            None => return Err(Error::NotFound),
         };
 
         // Load data info

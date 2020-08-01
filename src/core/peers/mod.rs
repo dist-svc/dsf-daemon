@@ -77,9 +77,7 @@ impl PeerManager {
     }
 
     pub fn remove(&self, id: &Id) -> Option<PeerInfo> {
-        let peer = {
-            self.peers.lock().unwrap().remove(id)
-        };
+        let peer = { self.peers.lock().unwrap().remove(id) };
 
         match peer {
             Some(p) => {
@@ -90,7 +88,7 @@ impl PeerManager {
                 }
 
                 Some(info)
-            },
+            }
             None => None,
         }
     }

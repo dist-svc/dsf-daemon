@@ -116,7 +116,11 @@ impl Wire {
     }
 
     /// Handle incoming messages
-    pub async fn handle<PK>(&mut self, msg: NetMessage, find_pub_key: PK) -> Result<Option<DsfRequest>, Error> 
+    pub async fn handle<PK>(
+        &mut self,
+        msg: NetMessage,
+        find_pub_key: PK,
+    ) -> Result<Option<DsfRequest>, Error>
     where
         PK: Fn(&Id) -> Option<PublicKey>,
     {
@@ -145,10 +149,10 @@ impl Wire {
         if !info
             .addresses
             .iter()
-            .any(|(addr, _seen)| addr == &msg.address)
+            .any(|(addr, _seen)| addr.into() == &msg.address)
         {
             info.addresses
-                .push((msg.address.clone(), SystemTime::now()));
+                .push((msg.address.into(), SystemTime::now()));
         }
 
         match (&info.public_key, &decoded.pub_key()) {
@@ -213,7 +217,7 @@ impl Wire {
         // TODO: need outgoing IDs here..?
         //let info = self.connections.get_mut(msg.)
 
-        Ok(NetMessage::new(0, target, data.into()))
+        Ok(NetMessage::new(0, target.into(), data.into()))
     }
 }
 
@@ -401,7 +405,7 @@ mod test {
             // Create message passing task
             task::spawn(async move {
                 let _req = w0.next().await;
-                w0.handle(resp_message, |_id| None ).await.unwrap();
+                w0.handle(resp_message, |_id| None).await.unwrap();
             });
 
             let r1 = c0

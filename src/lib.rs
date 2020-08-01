@@ -33,6 +33,8 @@ extern crate tracing_subscriber;
 #[cfg(feature = "profile")]
 extern crate flame;
 
+extern crate rand;
+
 extern crate dsf_core;
 extern crate dsf_rpc;
 extern crate kad;
