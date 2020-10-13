@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
@@ -13,7 +13,7 @@ use tracing::{span, Level};
 use crate::core::data::DataManager;
 use crate::core::peers::{Peer, PeerManager, PeerState};
 use crate::core::replicas::ReplicaManager;
-use crate::core::services::ServiceManager;
+use crate::core::services::{ServiceManager, ServiceState};
 use crate::core::subscribers::SubscriberManager;
 
 use crate::error::Error;
@@ -362,4 +362,92 @@ where
             _ => None,
         }
     }
+
+
+    pub async fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
+        let mut services = self.services();
+        let replica_manager = self.replicas();
+
+        debug!("found {} pages", pages.len());
+        // Fetch primary page
+        let primary_page = match pages.iter().find(|p| {
+            let h = p.header();
+            h.kind().is_page() && !h.flags().contains(Flags::SECONDARY) && p.id() == id
+        }) {
+            Some(p) => p.clone(),
+            None => return Err(Error::NotFound),
+        };
+
+        // Fetch replica pages
+        let replicas: Vec<(Id, &Page)> = pages
+            .iter()
+            .filter(|p| {
+                let h = p.header();
+                h.kind().is_page()
+                    && h.flags().contains(Flags::SECONDARY)
+                    && h.application_id() == 0
+                    && h.kind() == PageKind::Replica.into()
+            })
+            .filter_map(|p| {
+                let peer_id = match p.info().peer_id() {
+                    Some(v) => v,
+                    _ => return None,
+                };
+
+                Some((peer_id.clone(), p))
+            })
+            .collect();
+
+        debug!("found {} replicas", replicas.len());
+
+        // Fetch service instance
+        let service_inst = match services.find(id) {
+            Some(s) => {
+                info!("updating existing service");
+                s
+            }
+            None => {
+                info!("creating new service entry");
+                let service = match Service::load(&primary_page) {
+                    Ok(s) => s,
+                    Err(e) => return Err(e.into()),
+                };
+
+                services
+                    .register(
+                        service,
+                        &primary_page,
+                        ServiceState::Located,
+                        Some(SystemTime::now()),
+                    )
+                    .unwrap()
+            }
+        };
+
+        // Update service
+        let mut inst = service_inst.write().unwrap();
+
+        // Apply page update
+        let updated = match inst.service().apply_primary(&primary_page) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("error updating service: {:?}", e);
+                return Err(e.into());
+            }
+        };
+
+        // Add updated instance information
+        if updated {
+            inst.primary_page = Some(primary_page.clone());
+            inst.last_updated = Some(SystemTime::now());
+        }
+
+        // Update replicas
+        for (peer_id, page) in &replicas {
+            replica_manager.create_or_update(id, peer_id, page);
+        }
+
+        Ok(())
+    }
+
 }

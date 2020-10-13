@@ -297,6 +297,22 @@ where
 
                 Err(DaemonError::Unimplemented)
             }
+            net::RequestKind::Register(id, pages) => {
+                info!("Register request from: {} for service: {}", from, id);
+                // TODO: determine whether we should allow this service to be registered
+
+                
+                unimplemented!()
+
+            }
+            net::RequestKind::Unregister(id) => {
+                info!("Unegister request from: {} for service: {}", from, id);
+                // TODO: determine whether we should allow this service to be unregistered
+
+                
+                unimplemented!()
+
+            }
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
                 let service = match self.services().find(&id) {
