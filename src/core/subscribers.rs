@@ -13,7 +13,7 @@ use crate::error::Error;
 // TODO: isolate unixmessage from core subscriber somehow
 use crate::io::unix::UnixMessage;
 
-/// Subscribers are those connected to a service hosted by this daemon
+/// Subscribers are those connected to a service hosted or replicated by this daemon
 #[derive(Clone)]
 pub struct SubscriberInst {
     pub info: SubscriptionInfo,
@@ -48,7 +48,7 @@ impl SubscriberManager {
         }
     }
 
-    /// Update a specified peer subscription
+    /// Update a specified peer subscription (for remote clients)
     pub fn update_peer<F: Fn(&mut SubscriberInst)>(
         &mut self,
         service_id: &Id,
@@ -93,7 +93,7 @@ impl SubscriberManager {
         Ok(())
     }
 
-    /// Update a specified socket subscription
+    /// Update a specified socket subscription (for local clients)
     pub fn update_socket<F: Fn(&mut SubscriberInst)>(
         &mut self,
         service_id: &Id,
@@ -131,6 +131,28 @@ impl SubscriberManager {
 
         if let Some(mut s) = subscriber {
             f(&mut s);
+        }
+
+        Ok(())
+    }
+
+    /// Remove a subscription
+    pub fn remove(
+        &mut self,
+        service_id: &Id,
+        peer_id: &Id,
+    ) -> Result<(), Error> {
+        let mut store = self.store.lock().unwrap();
+
+        let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
+
+        for i in 0..subscribers.len() {
+            match &subscribers[i].info.kind {
+                SubscriptionKind::Peer(id) if id == peer_id => {
+                    subscribers.remove(i);
+                },
+                _ => (),
+            }
         }
 
         Ok(())

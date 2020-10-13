@@ -13,8 +13,8 @@ extern crate bitflags;
 
 extern crate strum;
 
-#[macro_use]
-extern crate derive_builder;
+//#[macro_use]
+//extern crate derive_builder;
 
 #[macro_use]
 extern crate diesel;

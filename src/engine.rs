@@ -44,8 +44,7 @@ pub const DEFAULT_UNIX_SOCKET: &str = "/tmp/dsf.sock";
 pub const DEFAULT_DATABASE_FILE: &str = "/tmp/dsf.db";
 pub const DEFAULT_SERVICE: &str = "/tmp/dsf.svc";
 
-#[derive(StructOpt, Builder, Debug, Clone, PartialEq)]
-#[builder(default)]
+#[derive(StructOpt, Debug, Clone, PartialEq)]
 pub struct Options {
     #[structopt(short = "a", long = "bind-address", default_value = "0.0.0.0:10100")]
     /// Interface(s) to bind DSF daemon

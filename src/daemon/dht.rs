@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use rand::prelude::*;
-
 use kad::prelude::*;
 
 use dsf_core::net::{Request, RequestKind, ResponseKind};

@@ -136,7 +136,7 @@ impl ServiceInst {
             version = page.header().index();
         }
 
-        let mut opts = SecondaryOptions {
+        let opts = SecondaryOptions {
             page_kind: PageKind::Replica.into(),
             version: version,
             public_options: vec![Options::public_key(peer_service.public_key())],

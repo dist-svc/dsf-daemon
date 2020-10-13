@@ -268,6 +268,16 @@ where
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             }
+            net::RequestKind::Unsubscribe(service_id) => {
+                info!(
+                    "Unsubscribe request from: {} for service: {}",
+                    from, service_id
+                );
+
+                self.subscribers().remove(&service_id, &peer.id()).unwrap();
+
+                Ok(net::ResponseKind::Status(net::Status::Ok))
+            }
             net::RequestKind::Query(id) => {
                 info!("Query request from: {} for service: {}", from, id);
                 let service = match self.services().find(&id) {

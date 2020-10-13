@@ -57,7 +57,7 @@ where
                 None => Body::None,
             };
 
-            let mut data_options = DataOptions {
+            let data_options = DataOptions {
                 data_kind: options.kind.into(),
                 body,
                 ..Default::default()
