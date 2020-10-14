@@ -111,7 +111,7 @@ where
             };
 
             match response.data {
-                net::ResponseKind::Status(net::Status::Ok) => {
+                net::ResponseKind::Status(net::Status::Ok) | net::ResponseKind::ValuesFound(_, _) => {
                     debug!(
                         "[DSF ({:?})] Subscription ack from: {:?}",
                         own_id, response.from

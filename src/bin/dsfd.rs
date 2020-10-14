@@ -68,8 +68,6 @@ fn main() {
             }
         };
 
-        flame::start("read file");
-
         // Run daemon
         if let Err(e) = d.run(running).await {
             error!("Daemon runtime error: {:?}", e);

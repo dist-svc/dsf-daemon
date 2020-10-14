@@ -41,7 +41,7 @@ where
         debug!("locate, found {} pages", pages.len());
         
         // Register new service
-        self.service_register(&options.id, pages).await?;
+        self.service_register(&options.id, pages)?;
 
         Ok(LocateInfo {
             origin: false,

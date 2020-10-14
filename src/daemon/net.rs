@@ -21,13 +21,14 @@ use crate::daemon::dht::{Adapt, TryAdapt};
 
 use crate::core::data::DataInfo;
 use crate::core::peers::{Peer, PeerAddress, PeerState};
+use crate::core::subscribers::{SubscriptionKind};
 
 impl<C> Dsf<C>
 where
     C: Connector + Clone + Sync + Send + 'static,
 {
     /// Handle a received request message and generate a response
-    pub fn handle(
+    pub async fn handle(
         &mut self,
         addr: SocketAddr,
         req: net::Request,
@@ -60,7 +61,7 @@ where
                 net::Response::new(own_id, req_id, kind, Flags::default())
             })
         } else {
-            self.handle_dsf(from, peer, req.data)
+            self.handle_dsf(from, peer, req.data).await
                 .map(move |kind| net::Response::new(own_id, req_id, kind, Flags::default()))
 
             // Generic response processing here
@@ -230,7 +231,7 @@ where
     }
 
     /// Handle a DSF type message
-    fn handle_dsf(
+    async fn handle_dsf(
         &mut self,
         from: Id,
         peer: Peer,
@@ -252,7 +253,11 @@ where
                     }
                 };
 
-                let _service = service.write().unwrap();
+                let service = service.write().unwrap();
+                let pages = match &service.primary_page {
+                    Some(p) => vec![p.clone()],
+                    None => vec![],
+                };
 
                 // TODO: verify this is coming from an active upstream subscriber
 
@@ -266,7 +271,7 @@ where
                     })
                     .unwrap();
 
-                Ok(net::ResponseKind::Status(net::Status::Ok))
+                Ok(net::ResponseKind::ValuesFound(service_id, pages))
             }
             net::RequestKind::Unsubscribe(service_id) => {
                 info!(
@@ -301,9 +306,9 @@ where
                 info!("Register request from: {} for service: {}", from, id);
                 // TODO: determine whether we should allow this service to be registered
 
-                
-                unimplemented!()
+                self.service_register(&id, pages)?;
 
+                Ok(net::ResponseKind::Status(net::Status::Ok))
             }
             net::RequestKind::Unregister(id) => {
                 info!("Unegister request from: {} for service: {}", from, id);
@@ -354,6 +359,37 @@ where
 
                 // TODO: update service with newly received data
                 self.services().sync_inst(&service);
+                let service_id = service.id();
+                drop(service);
+                
+                // TODO: send data to subscribers
+                let req = net::Request::new(
+                    self.id(),
+                    rand::random(),
+                    net::RequestKind::PushData(service_id.clone(), data),
+                    Flags::default(),
+                );
+    
+                let subscriptions = self.subscribers().find(&service_id)?;
+    
+                let addresses: Vec<_> = subscriptions
+                    .iter()
+                    .filter_map(|s| {
+                        if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
+                            self.peers().find(peer_id).map(|p| p.address())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                info!("Sending data push messages to: {:?}", addresses);
+
+                // TODO: this is, not ideal...
+                let mut dsf = self.clone();
+                async_std::task::spawn(async move {
+                    dsf.request_all(&addresses, req).await;
+                });
 
                 info!("Data push complete");
 

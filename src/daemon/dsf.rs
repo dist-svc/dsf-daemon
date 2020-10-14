@@ -364,7 +364,7 @@ where
     }
 
 
-    pub async fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
+    pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
         let mut services = self.services();
         let replica_manager = self.replicas();
 

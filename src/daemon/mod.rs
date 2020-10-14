@@ -12,6 +12,7 @@ pub use dsf::*;
 #[cfg(test)]
 mod tests;
 
+/// DSF Instance Configuration Options
 #[derive(Clone, Debug, PartialEq, StructOpt)]
 pub struct Options {
     #[structopt(flatten)]
@@ -25,3 +26,13 @@ impl Default for Options {
         }
     }
 }
+
+/// DSF System Event
+/// Used to prompt asynchronous system updates
+#[derive(Clone, Debug, PartialEq)]
+pub enum Event {
+
+}
+
+
+
