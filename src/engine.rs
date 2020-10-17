@@ -239,11 +239,11 @@ impl Engine {
 
                             // Decode message via wire module
                             let message = match wire.handle(m, |id| net_dsf.find_public_key(id)).await {
+                                // Incoming request
                                 Ok(Some(v)) => v,
-                                Ok(None) => {
-                                    warn!("invalid incoming network message from: {:?}", address);
-                                    continue;
-                                },
+                                // Incoming response, routed internally
+                                Ok(None) => continue,
+                                // Decoding error
                                 Err(e) => {
                                     error!("error decoding network message from: {:?}", address);
                                     continue;

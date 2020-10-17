@@ -166,7 +166,7 @@ impl Wire {
                 // TODO: emit this information / handle this
                 return Ok(None);
             }
-            _ => (),
+            _ => trace!("Found matching public key for ID: {:?}", from_id),
         }
 
         // Pass through requests
@@ -181,7 +181,10 @@ impl Wire {
         // Find pending request
         trace!("pending request lock");
         let mut a = match self.requests.lock().unwrap().remove(&req_id) {
-            Some(a) => a,
+            Some(a) => {
+                trace!("Found pending request for id {}", req_id);
+                a
+            },
             None => {
                 error!("Received response id {} with no pending request", req_id);
                 return Ok(None);
