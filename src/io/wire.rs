@@ -346,6 +346,7 @@ mod test {
 
         let req = DsfMessage::Request(NetRequest::new(
             id_0.clone(),
+            100,
             RequestKind::Hello,
             Flags::empty(),
         ));
@@ -365,7 +366,7 @@ mod test {
 
         let w = Wire::new(pri_key_0.clone());
 
-        let req = NetRequest::new(id_0.clone(), RequestKind::Hello, Flags::empty());
+        let req = NetRequest::new(id_0.clone(), 101, RequestKind::Hello, Flags::empty());
 
         let mut enc = w.encode(DsfMessage::request(req.clone())).unwrap();
         enc[100] = 0xff;
@@ -382,8 +383,8 @@ mod test {
             .with_max_level(LevelFilter::DEBUG)
             .try_init();
 
-        let _addr_0: Address = "127.0.0.1:19993".parse().unwrap();
-        let addr_1: Address = "127.0.0.1:19994".parse().unwrap();
+        let _addr_0: Address = "127.0.0.1:19993".parse::<SocketAddr>().unwrap().into();
+        let addr_1: Address = "127.0.0.1:19994".parse::<SocketAddr>().unwrap().into();
 
         let (pub_key_0, pri_key_0) = new_pk().unwrap();
         let id_0 = hash(&pub_key_0).unwrap();
@@ -397,12 +398,12 @@ mod test {
         let w1 = Wire::new(pri_key_1.clone());
         let _c1 = w1.connector();
 
-        let req = NetRequest::new(id_0.clone(), RequestKind::Hello, Flags::empty());
+        let req = NetRequest::new(id_0.clone(), 102, RequestKind::Hello, Flags::empty());
         let resp = NetResponse::new(id_1.clone(), req.id, ResponseKind::NoResult, Flags::empty())
             .with_public_key(pub_key_1.clone());
 
         let resp_encoded = w1.encode(DsfMessage::response(resp.clone())).unwrap();
-        let resp_message = NetMessage::new(0, addr_1, resp_encoded.into());
+        let resp_message = NetMessage::new(0, addr_1.clone().into(), resp_encoded.into());
 
         task::block_on(async move {
             // Create message passing task

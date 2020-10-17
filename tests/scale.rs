@@ -75,9 +75,8 @@ fn scale(n: usize, level: LevelFilter) {
             let _ = std::fs::remove_file(c.database_file);
 
             let addr = c.daemon_socket.clone();
+            let net_addr = c.bind_addresses[0].clone();
             let mut e = Engine::new(c1).await.expect("Error creating engine");
-
-            let net_addr = e.addrs()[0];
 
             // Build and run daemon
             let r = running.clone();

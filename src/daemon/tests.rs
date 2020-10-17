@@ -50,15 +50,15 @@ fn test_manager() {
 
     let (a2, s2) = (
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 0, 3)), 8112),
-        ServiceBuilder::default().generic().build().unwrap(),
+        ServiceBuilder::default().build().unwrap(),
     );
     let (a3, s3) = (
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 0, 3)), 8113),
-        ServiceBuilder::default().generic().build().unwrap(),
+        ServiceBuilder::default().build().unwrap(),
     );
     let (a4, mut s4) = (
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 0, 3)), 8114),
-        ServiceBuilder::default().generic().build().unwrap(),
+        ServiceBuilder::default().build().unwrap(),
     );
     let mut peers = vec![(&a2, &s2), (&a3, &s3), (&a4, &s4)];
     peers.sort_by_key(|(_, s)| DhtDatabaseId::xor(&id1.clone(), &s.id()));
@@ -69,8 +69,9 @@ fn test_manager() {
         assert_eq!(
             dsf.handle(
                 a2,
-                Request::new(s2.id(), RequestKind::Ping, Flags::ADDRESS_REQUEST)
+                Request::new(s2.id(), rand::random(), RequestKind::Ping, Flags::ADDRESS_REQUEST)
             )
+            .await
             .unwrap(),
             Response::new(
                 id1.clone(),
@@ -85,9 +86,10 @@ fn test_manager() {
         mux.expect(vec![
             // Initial connect, returns list of nodes
             MockTransaction::request(
-                a2,
+                a2.into(),
                 Request::new(
                     id1.clone(),
+                    rand::random(),
                     RequestKind::FindNode(id1.clone()),
                     Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST,
                 )
@@ -95,16 +97,17 @@ fn test_manager() {
                 Ok(Response::new(
                     s2.id(),
                     rand::random(),
-                    ResponseKind::NodesFound(id1.clone(), vec![(s3.id(), a3, s3.public_key())]),
+                    ResponseKind::NodesFound(id1.clone(), vec![(s3.id(), a3.into(), s3.public_key())]),
                     Flags::default(),
                 )
                 .with_public_key(s2.public_key())),
             ),
             // Second connect, using provided node
             MockTransaction::request(
-                a3,
+                a3.into(),
                 Request::new(
                     id1.clone(),
+                    rand::random(),
                     RequestKind::FindNode(id1.clone()),
                     Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST,
                 )
@@ -143,8 +146,8 @@ fn test_manager() {
         info!("Responds to find_nodes");
 
         let mut nodes = vec![
-            (s2.id(), a2, s2.public_key()),
-            (s3.id(), a3, s3.public_key()),
+            (s2.id(), a2.into(), s2.public_key()),
+            (s3.id(), a3.into(), s3.public_key()),
         ];
         nodes.sort_by_key(|(id, _, _)| DhtDatabaseId::xor(&s4.id(), &id));
 
@@ -153,10 +156,12 @@ fn test_manager() {
                 a2,
                 Request::new(
                     s2.id().clone(),
+                    rand::random(),
                     RequestKind::FindNode(s4.id().clone()),
                     Flags::default()
                 )
             )
+            .await
             .unwrap(),
             Response::new(
                 id1.clone(),
@@ -175,10 +180,12 @@ fn test_manager() {
                 a4,
                 Request::new(
                     s4.id().clone(),
+                    rand::random(),
                     RequestKind::Store(s4.id().clone(), vec![p4.clone()]),
                     Flags::default()
                 )
             )
+            .await
             .unwrap(),
             Response::new(
                 id1.clone(),
@@ -195,10 +202,12 @@ fn test_manager() {
                 a4,
                 Request::new(
                     s4.id().clone(),
+                    rand::random(),
                     RequestKind::FindValue(s4.id().clone()),
                     Flags::default()
                 )
             )
+            .await
             .unwrap(),
             Response::new(
                 id1.clone(),
@@ -225,9 +234,10 @@ fn test_manager() {
             .iter()
             .map(|(addr, id, _pk)| {
                 MockTransaction::request(
-                    addr.clone(),
+                    addr.clone().into(),
                     Request::new(
                         id1.clone(),
+                        rand::random(),
                         RequestKind::FindNode(id1.clone()),
                         Flags::PUB_KEY_REQUEST,
                     )
@@ -246,9 +256,10 @@ fn test_manager() {
             .iter()
             .map(|(addr, id, pk)| {
                 MockTransaction::request(
-                    addr.clone(),
+                    addr.clone().into(),
                     Request::new(
                         id1.clone(),
+                        rand::random(),
                         RequestKind::Store(id1.clone(), vec![p1.clone()]),
                         Flags::PUB_KEY_REQUEST,
                     )
@@ -301,9 +312,10 @@ fn test_manager() {
             .iter()
             .map(|(addr, id, _pk)| {
                 MockTransaction::request(
-                    addr.clone(),
+                    addr.clone().into(),
                     Request::new(
                         id1.clone(),
+                        rand::random(),
                         RequestKind::FindNode(info.id.clone()),
                         Flags::PUB_KEY_REQUEST,
                     )
@@ -322,9 +334,10 @@ fn test_manager() {
             .iter()
             .map(|(addr, id, pk)| {
                 MockTransaction::request(
-                    addr.clone(),
+                    addr.clone().into(),
                     Request::new(
                         id1.clone(),
+                        rand::random(),
                         RequestKind::Store(info.id.clone(), vec![page.clone()]),
                         Flags::PUB_KEY_REQUEST,
                     )
@@ -368,10 +381,12 @@ fn test_manager() {
                 a4,
                 Request::new(
                     s4.id().clone(),
+                    rand::random(),
                     RequestKind::Subscribe(info.id.clone()),
                     Flags::default()
                 )
             )
+            .await
             .unwrap(),
             Response::new(
                 id1.clone(),
@@ -392,9 +407,10 @@ fn test_manager() {
         info!("Publishes data to subscribers");
 
         mux.expect(vec![MockTransaction::request(
-            a4.clone(),
+            a4.clone().into(),
             Request::new(
                 s4.id().clone(),
+                rand::random(),
                 RequestKind::PushData(info.id.clone(), vec![page.clone()]),
                 Flags::PUB_KEY_REQUEST,
             )

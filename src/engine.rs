@@ -225,9 +225,9 @@ impl Engine {
 
         let (mut wire, mut net) = (self.wire.take().unwrap(), self.net.take().unwrap());
         let r = running.clone();
-        let mut net_dsf = self.dsf.clone();
+        let net_dsf = self.dsf.clone();
 
-        let net_handle = task::spawn(async move {
+        let _net_handle = task::spawn(async move {
             while r.load(Ordering::SeqCst) {
                 select! {
                     // Incoming network messages

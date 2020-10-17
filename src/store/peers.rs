@@ -186,6 +186,7 @@ impl Store {
 #[cfg(test)]
 mod test {
     use std::time::SystemTime;
+    use std::net::SocketAddr;
 
     extern crate tracing_subscriber;
     use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
@@ -214,7 +215,7 @@ mod test {
         let mut p = PeerInfo {
             id,
             index: 0,
-            address: PeerAddress::Explicit("127.0.0.1:8080".parse().unwrap()),
+            address: PeerAddress::Explicit("127.0.0.1:8080".parse::<SocketAddr>().unwrap().into()),
             state: PeerState::Known(public_key),
             seen: Some(SystemTime::now()),
             sent: 14,

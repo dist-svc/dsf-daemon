@@ -1,12 +1,6 @@
-use std::time::SystemTime;
-
 use tracing::{span, Level};
 
-use dsf_core::prelude::*;
-use dsf_core::service::Subscriber;
 use dsf_rpc::{LocateInfo, LocateOptions};
-
-use crate::core::services::ServiceState;
 
 use crate::daemon::Dsf;
 use crate::error::Error;
@@ -20,8 +14,7 @@ where
         let span = span!(Level::DEBUG, "locate");
         let _enter = span.enter();
 
-        let mut services = self.services();
-        let replica_manager = self.replicas();
+        let services = self.services();
 
         // Skip search for owned services...
         if let Some(service) = services.info(&options.id) {
@@ -34,7 +27,7 @@ where
         }
 
         // Search for associated service pages
-        let mut pages = self.search(&options.id).await?;
+        let pages = self.search(&options.id).await?;
 
         //let services = services.clone();
 

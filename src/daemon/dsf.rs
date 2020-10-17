@@ -270,8 +270,6 @@ where
 
     /// Run an update of the daemom and all managed services
     pub async fn update(&mut self, force: bool) -> Result<(), Error> {
-        use crate::core::services::ServiceState;
-
         info!("DSF update (forced: {:?})", force);
 
         let interval = Duration::from_secs(10 * 60);
