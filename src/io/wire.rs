@@ -184,7 +184,7 @@ impl Wire {
             Some(a) => {
                 trace!("Found pending request for id {}", req_id);
                 a
-            },
+            }
             None => {
                 error!("Received response id {} with no pending request", req_id);
                 return Ok(None);

@@ -137,11 +137,7 @@ impl SubscriberManager {
     }
 
     /// Remove a subscription
-    pub fn remove(
-        &mut self,
-        service_id: &Id,
-        peer_id: &Id,
-    ) -> Result<(), Error> {
+    pub fn remove(&mut self, service_id: &Id, peer_id: &Id) -> Result<(), Error> {
         let mut store = self.store.lock().unwrap();
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
@@ -150,7 +146,7 @@ impl SubscriberManager {
             match &subscribers[i].info.kind {
                 SubscriptionKind::Peer(id) if id == peer_id => {
                     subscribers.remove(i);
-                },
+                }
                 _ => (),
             }
         }

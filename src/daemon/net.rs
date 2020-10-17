@@ -21,7 +21,7 @@ use crate::daemon::dht::{Adapt, TryAdapt};
 
 use crate::core::data::DataInfo;
 use crate::core::peers::{Peer, PeerAddress, PeerState};
-use crate::core::subscribers::{SubscriptionKind};
+use crate::core::subscribers::SubscriptionKind;
 
 impl<C> Dsf<C>
 where
@@ -61,7 +61,8 @@ where
                 net::Response::new(own_id, req_id, kind, Flags::default())
             })
         } else {
-            self.handle_dsf(from, peer, req.data).await
+            self.handle_dsf(from, peer, req.data)
+                .await
                 .map(move |kind| net::Response::new(own_id, req_id, kind, Flags::default()))
 
             // Generic response processing here
@@ -314,9 +315,7 @@ where
                 info!("Unegister request from: {} for service: {}", from, id);
                 // TODO: determine whether we should allow this service to be unregistered
 
-                
                 unimplemented!()
-
             }
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
@@ -361,7 +360,7 @@ where
                 self.services().sync_inst(&service);
                 let service_id = service.id();
                 drop(service);
-                
+
                 // TODO: send data to subscribers
                 let req = net::Request::new(
                     self.id(),
@@ -369,9 +368,9 @@ where
                     net::RequestKind::PushData(service_id.clone(), data),
                     Flags::default(),
                 );
-    
+
                 let subscriptions = self.subscribers().find(&service_id)?;
-    
+
                 let addresses: Vec<_> = subscriptions
                     .iter()
                     .filter_map(|s| {

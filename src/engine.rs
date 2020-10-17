@@ -6,8 +6,8 @@ use std::time::Duration;
 use structopt::StructOpt;
 
 use async_std::stream;
-use async_std::task;
 use async_std::sync::channel;
+use async_std::task;
 
 use futures::prelude::*;
 use futures::select;
@@ -18,7 +18,7 @@ use bytes::Bytes;
 
 use dsf_core::net::Message as DsfMessage;
 use dsf_core::service::{Publisher, ServiceBuilder};
-use dsf_core::types::{Id, Address};
+use dsf_core::types::{Address, Id};
 
 use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
 
@@ -222,7 +222,7 @@ impl Engine {
         let (net_out_tx, mut net_out_rx) = channel(1000);
 
         // Setup network IO task
-        
+
         let (mut wire, mut net) = (self.wire.take().unwrap(), self.net.take().unwrap());
         let r = running.clone();
         let mut net_dsf = self.dsf.clone();
@@ -337,7 +337,6 @@ impl Engine {
 
         Ok(())
     }
-
 
     async fn handle_rpc(dsf: &mut Dsf<WireConnector>, unix_req: UnixMessage) -> Result<(), Error> {
         // Parse out message

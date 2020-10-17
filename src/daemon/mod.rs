@@ -30,9 +30,4 @@ impl Default for Options {
 /// DSF System Event
 /// Used to prompt asynchronous system updates
 #[derive(Clone, Debug, PartialEq)]
-pub enum Event {
-
-}
-
-
-
+pub enum Event {}

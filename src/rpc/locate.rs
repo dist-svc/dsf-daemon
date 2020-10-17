@@ -39,7 +39,7 @@ where
         //let services = services.clone();
 
         debug!("locate, found {} pages", pages.len());
-        
+
         // Register new service
         self.service_register(&options.id, pages)?;
 
