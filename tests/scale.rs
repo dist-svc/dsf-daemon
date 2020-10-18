@@ -34,7 +34,7 @@ use dsf_client::{Client, Options as ClientOptions};
 
 #[test]
 fn smol_scale() {
-    scale(10, LevelFilter::WARN);
+    scale(3, LevelFilter::INFO);
 }
 
 #[test]

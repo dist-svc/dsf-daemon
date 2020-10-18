@@ -16,7 +16,7 @@ use kad::store::Datastore;
 
 //use rr_mux::mock::{MockConnector, MockTransaction};
 
-use dsf_core::net::{self, Request, RequestKind, Response, ResponseKind};
+use dsf_core::net::{Request, RequestKind, Response, ResponseKind};
 use dsf_core::prelude::*;
 use dsf_core::service::{Publisher, ServiceBuilder};
 use dsf_core::types::Flags;
@@ -391,7 +391,7 @@ fn test_manager() {
             Response::new(
                 id1.clone(),
                 rand::random(),
-                ResponseKind::Status(net::Status::Ok),
+                ResponseKind::ValuesFound(info.id.clone(), vec![page.clone()]),
                 Flags::default()
             ),
         );

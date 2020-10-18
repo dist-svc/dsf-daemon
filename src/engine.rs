@@ -281,6 +281,8 @@ impl Engine {
                     }
                 }
             }
+
+            warn!("Exiting network handler");
         });
 
         while running.load(Ordering::SeqCst) {
