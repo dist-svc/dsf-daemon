@@ -69,7 +69,12 @@ fn test_manager() {
         assert_eq!(
             dsf.handle(
                 a2,
-                Request::new(s2.id(), rand::random(), RequestKind::Ping, Flags::ADDRESS_REQUEST)
+                Request::new(
+                    s2.id(),
+                    rand::random(),
+                    RequestKind::Ping,
+                    Flags::ADDRESS_REQUEST
+                )
             )
             .await
             .unwrap(),
@@ -97,7 +102,10 @@ fn test_manager() {
                 Ok(Response::new(
                     s2.id(),
                     rand::random(),
-                    ResponseKind::NodesFound(id1.clone(), vec![(s3.id(), a3.into(), s3.public_key())]),
+                    ResponseKind::NodesFound(
+                        id1.clone(),
+                        vec![(s3.id(), a3.into(), s3.public_key())],
+                    ),
                     Flags::default(),
                 )
                 .with_public_key(s2.public_key())),

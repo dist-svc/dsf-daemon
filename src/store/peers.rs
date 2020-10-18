@@ -185,8 +185,8 @@ impl Store {
 
 #[cfg(test)]
 mod test {
-    use std::time::SystemTime;
     use std::net::SocketAddr;
+    use std::time::SystemTime;
 
     extern crate tracing_subscriber;
     use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
