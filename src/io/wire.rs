@@ -117,7 +117,7 @@ impl Wire {
     }
 
     /// Handle incoming messages
-    pub async fn handle<PK>(
+    pub async fn handle_incoming<PK>(
         &mut self,
         msg: NetMessage,
         find_pub_key: PK,

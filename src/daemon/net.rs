@@ -28,7 +28,7 @@ where
     C: Connector + Clone + Sync + Send + 'static,
 {
     /// Handle a received request message and generate a response
-    pub async fn handle(
+    pub async fn handle_net(
         &mut self,
         addr: SocketAddr,
         req: net::Request,
