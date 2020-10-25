@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use dsf_core::prelude::*;
@@ -398,18 +398,29 @@ where
         debug!("found {} replicas", replicas.len());
 
         // Fetch service instance
-        let service_inst = match services.find(id) {
-            Some(s) => {
+        let _info = match services.known(id) {
+            true => {
                 info!("updating existing service");
-                s
+                
+                // Apply update to known instance
+                services.update_inst(id, |s| {
+                    // Apply primary page update
+                    if s.apply_update(&primary_page).unwrap() {
+                        s.primary_page = Some(primary_page.clone());
+                        s.last_updated = Some(SystemTime::now());
+                    }
+                }).unwrap()
             }
-            None => {
+            false => {
                 info!("creating new service entry");
+                
+                // Create instance from page
                 let service = match Service::load(&primary_page) {
                     Ok(s) => s,
                     Err(e) => return Err(e.into()),
                 };
 
+                // Register in service tracking
                 services
                     .register(
                         service,
@@ -421,25 +432,7 @@ where
             }
         };
 
-        // Update service
-        let mut inst = service_inst.write().unwrap();
-
-        // Apply page update
-        let updated = match inst.service().apply_primary(&primary_page) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("error updating service: {:?}", e);
-                return Err(e.into());
-            }
-        };
-
-        // Add updated instance information
-        if updated {
-            inst.primary_page = Some(primary_page.clone());
-            inst.last_updated = Some(SystemTime::now());
-        }
-
-        // Update replicas
+        // Update listed replicas
         for (peer_id, page) in &replicas {
             replica_manager.create_or_update(id, peer_id, page);
         }

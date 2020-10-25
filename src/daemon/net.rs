@@ -126,11 +126,8 @@ where
 
         // Build requests
         for a in addresses {
-            let mut req = req.clone();
-            req.common.id = RequestId::default();
-
             let req_future = c
-                .request(req.id, a.clone(), req, Duration::from_secs(10))
+                .request(req.id, a.clone(), req.clone(), Duration::from_secs(10))
                 .map(move |resp| (resp, a.clone()));
 
             f.push(req_future);
@@ -254,10 +251,12 @@ where
                     }
                 };
 
-                let service = service.write().unwrap();
-                let pages = match &service.primary_page {
-                    Some(p) => vec![p.clone()],
-                    None => vec![],
+                // Fetch pages for service
+                let pages = {
+                    match &self.services().fetch(&service_id, |s| s.primary_page.clone() ).flatten() {
+                        Some(p) => vec![p.clone()],
+                        None => vec![],
+                    }
                 };
 
                 // TODO: verify this is coming from an active upstream subscriber
@@ -295,9 +294,8 @@ where
                     }
                 };
 
-                let _service = service.write().unwrap();
-
                 // TODO: fetch and return data
+
 
                 info!("Query request complete");
 
@@ -319,6 +317,7 @@ where
             }
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
+
                 let service = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
@@ -328,48 +327,48 @@ where
                     }
                 };
 
-                let mut service = service.write().unwrap();
+                let data_mgr = self.data().clone();
 
-                // TODO: check we-re subscribed to the service (otherwise we shouldn't accept this data)
+                // Update service instance
+                self.services().update_inst(&id, |s| {
 
-                // Store data against service
-                for p in &data {
-                    // Validate data against service
-                    if let Err(e) = service.service().validate_page(p) {
-                        // TODO: handle errors properly here
-                        error!("Error validating page: {:?}", e);
-                        continue;
-                    }
+                    // TODO: check we're subscribed to the service (otherwise we shouldn't accept this data)
 
-                    if p.header().kind().is_page() {
-                        // Apply page to service
-                        if let Err(e) = service.apply_update(p) {
-                            error!("Error applying service update: {:?}", e);
+                    // Store data against service
+                    for p in &data {
+                        // Validate data against service
+                        if let Err(e) = s.service().validate_page(p) {
+                            // TODO: handle errors properly here
+                            error!("Error validating page: {:?}", e);
+                            continue;
+                        }
+
+                        if p.header().kind().is_page() {
+                            // Apply page to service
+                            if let Err(e) = s.apply_update(p) {
+                                error!("Error applying service update: {:?}", e);
+                            }
+                        }
+
+                        if p.header().kind().is_data() {
+                            // Store data
+                            if let Ok(info) = DataInfo::try_from(p) {
+                                data_mgr.store_data(&info, p).unwrap();
+                            };
                         }
                     }
-
-                    if p.header().kind().is_data() {
-                        // Store data
-                        if let Ok(info) = DataInfo::try_from(p) {
-                            self.data().store_data(&info, p).unwrap();
-                        };
-                    }
-                }
-
-                // TODO: update service with newly received data
-                self.services().sync_inst(&service);
-                let service_id = service.id();
-                drop(service);
+                });
 
                 // TODO: send data to subscribers
+                let req_id = rand::random();
                 let req = net::Request::new(
                     self.id(),
-                    rand::random(),
-                    net::RequestKind::PushData(service_id.clone(), data),
+                    req_id,
+                    net::RequestKind::PushData(id.clone(), data),
                     Flags::default(),
                 );
 
-                let subscriptions = self.subscribers().find(&service_id)?;
+                let subscriptions = self.subscribers().find(&id)?;
 
                 let addresses: Vec<_> = subscriptions
                     .iter()
@@ -382,7 +381,7 @@ where
                     })
                     .collect();
 
-                info!("Sending data push messages to: {:?}", addresses);
+                info!("Sending data push message id {} to: {:?}", req_id, addresses);
 
                 // TODO: this is, not ideal...
                 let mut dsf = self.clone();

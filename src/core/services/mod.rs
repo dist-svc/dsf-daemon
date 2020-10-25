@@ -3,7 +3,7 @@
 //!
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use crate::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime};
 
 use dsf_core::prelude::*;
@@ -48,8 +48,9 @@ impl ServiceManager {
         primary_page: &Page,
         state: ServiceState,
         updated: Option<SystemTime>,
-    ) -> Result<Arc<RwLock<ServiceInst>>, DsfError> {
+    ) -> Result<ServiceInfo, DsfError> {
         let services = self.services.clone();
+        warn!("service register lock");
         let mut services = services.lock().unwrap();
 
         let id = service.id();
@@ -65,38 +66,43 @@ impl ServiceManager {
             changed: true,
         };
 
+        let info = inst.info();
+
         // Write new instance to disk
         self.sync_inst(&inst);
 
         let inst = Arc::new(RwLock::new(inst));
         services.insert(id, inst.clone());
 
-        Ok(inst)
+        warn!("service register done");
+
+        Ok(info)
     }
 
     /// Determine whether a service is known in the database
     pub fn known(&self, id: &Id) -> bool {
-        let services = self.services.clone();
-        let services = services.lock().unwrap();
+        warn!("services known lock");
+        let services = self.services.lock().unwrap();
         services.contains_key(id)
     }
 
     /// Fetch service information for a given service id from the manager
-    pub fn find(&self, id: &Id) -> Option<Arc<RwLock<ServiceInst>>> {
-        let services = self.services.clone();
-        let services = services.lock().unwrap();
+    pub fn find(&self, id: &Id) -> Option<ServiceInfo> {
+        warn!("services find lock");
+        let services = self.services.lock().unwrap();
 
         let service = match services.get(id) {
             Some(v) => v,
             None => return None,
         };
 
-        Some(service.clone())
+        Some(service.info())
     }
 
     /// Fetch a service by local index
-    pub fn index(&self, index: usize) -> Option<Arc<RwLock<ServiceInst>>> {
+    pub fn index(&self, index: usize) -> Option<ServiceInfo> {
         let services = self.services.clone();
+        warn!("services index lock");
         let services = services.lock().unwrap();
         services
             .iter()
@@ -106,6 +112,7 @@ impl ServiceManager {
 
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
         let services = self.services.clone();
+        warn!("services index to id lock");
         let services = services.lock().unwrap();
         services
             .iter()
@@ -123,6 +130,7 @@ impl ServiceManager {
 
     pub fn remove(&self, id: &Id) -> Result<Option<ServiceInfo>, DsfError> {
         // Remove from memory
+        warn!("services remove lock");
         let service = { self.services.lock().unwrap().remove(id) };
 
         // Remove from database
@@ -162,12 +170,30 @@ impl ServiceManager {
     where
         F: Fn(&mut ServiceInst),
     {
+        warn!("services update inst");
+
         match self.find(id) {
             Some(s) => {
                 let mut svc = s.write().unwrap();
                 (f)(&mut svc);
                 svc.changed = true;
                 Some(svc.info())
+            }
+            None => None,
+        }
+    }
+
+    /// Fetch a field from a service instance
+    pub fn fetch<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
+    where
+        F: Fn(&mut ServiceInst) -> R,
+    {
+        warn!("services fetch inst");
+
+        match self.find(id) {
+            Some(s) => {
+                let mut svc = s.read().unwrap();
+                Some((f)(&mut svc))
             }
             None => None,
         }
@@ -193,7 +219,7 @@ impl ServiceManager {
             })
             .collect();
 
-        trace!("updates required (state: {:?}): {:?}", state, updates);
+        warn!("updates required (state: {:?}): {:?}", state, updates);
 
         updates
     }

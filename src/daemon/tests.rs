@@ -1,5 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 use std::time::Duration;
 
 extern crate async_std;

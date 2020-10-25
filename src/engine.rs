@@ -1,6 +1,6 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use structopt::StructOpt;
@@ -221,6 +221,8 @@ impl Engine {
         let (net_in_tx, mut net_in_rx) = channel(1000);
         let (net_out_tx, mut net_out_rx) = channel(1000);
 
+        //net_out_rx.fuse();
+
         // Setup network IO task
 
         let (mut wire, mut net) = (self.wire.take().unwrap(), self.net.take().unwrap());
@@ -232,10 +234,10 @@ impl Engine {
                 select! {
                     // Incoming network messages
                     net_rx = net.next().fuse() => {
+                        trace!("engine::net_rx {:?}", net_rx);
                         
                         if let Some(m) = net_rx {
-                            trace!("engine::net_rx {:?}", m);
-
+                        
                             let address = m.address.clone();
 
                             // Decode message via wire module
@@ -253,12 +255,15 @@ impl Engine {
 
                             // Forward to DSF for execution
                             net_in_tx.send((address, message)).await;
+                        } else {
+                            error!("net.next() no value");
                         }
                     },
                     net_tx = net_out_rx.next().fuse() => {
+                        trace!("engine::net_tx {:?}", net_tx);
 
                         if let Some((address, message)) = net_tx {
-                            trace!("engine::net_tx {:?} {:?}", address, message);
+                            
 
                             let net_tx = match wire.handle_outgoing(Address::from(address), message) {
                                 Ok(v) => v,
@@ -272,15 +277,20 @@ impl Engine {
                                 error!("error sending network message: {:?}", e);
                                 return Err(e)
                             }
+                        } else {
+                            error!("net_out_rx no value");
                         }
                     }
                     // Outgoing network messages
                     net_tx = wire.next().fuse() => {
+                        trace!("engine::wire_tx {:?}", net_tx);
                         
                         if let Some(m) = net_tx {
-                            trace!("engine::wire_tx {:?}", m);
+                            
 
                             net.send(m).await.unwrap();
+                        } else {
+                            error!("wire next no value");
                         }
                     }
                 }
@@ -317,7 +327,7 @@ impl Engine {
                                     }
                                 };
 
-                                trace!("engine::handle_net rx: {:?} tx: {:?} for {:?}", req, resp, address);
+                                //trace!("engine::handle_net rx: {:?} tx: {:?} for {:?}", req, resp, address);
 
                                 // Return response
                                 tx.send((address, DsfMessage::Response(resp))).await;

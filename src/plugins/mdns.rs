@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use futures::prelude::*;

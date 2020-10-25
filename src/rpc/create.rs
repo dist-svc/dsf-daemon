@@ -24,7 +24,7 @@ where
         let span = span!(Level::DEBUG, "create");
         let _enter = span.enter();
 
-        let _services = self.services();
+        let services = self.services();
 
         info!("Creating service: {:?}", options);
         let mut sb = ServiceBuilder::generic();
@@ -66,7 +66,7 @@ where
 
         // Register service in local database
         debug!("Storing service information");
-        let service = self
+        let mut info = self
             .services()
             .register(service, &primary_page, ServiceState::Created, None)
             .unwrap();
@@ -78,6 +78,7 @@ where
             info!("Registering service locally");
             // Write the service to the database
             self.datastore().store(&id, &pages);
+
         } else {
             info!("Registering and replicating service");
             // TODO URGENT: re-enable this when register is back
@@ -92,13 +93,13 @@ where
                 .await?;
 
             // Update local service state
-            let mut s = service.write().unwrap();
-            s.state = ServiceState::Registered;
-            s.last_updated = Some(SystemTime::now());
+            info = self.services().update_inst(&id, |s| {
+                s.state = ServiceState::Registered;
+                s.last_updated = Some(SystemTime::now());
+            }).unwrap();
         }
 
         // Return service info
-        let s = service.read().unwrap();
-        Ok(s.info())
+        Ok(info)
     }
 }

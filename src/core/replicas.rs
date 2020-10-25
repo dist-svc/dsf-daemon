@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use dsf_core::prelude::*;
@@ -52,6 +52,7 @@ impl ReplicaManager {
 
     /// Find replicas for a given service
     pub fn find(&self, service_id: &Id) -> Vec<ReplicaInst> {
+        trace!("find replica lock");
         let mut store = self.store.lock().unwrap();
 
         let v = store.entry(service_id.clone()).or_insert(vec![]);
@@ -61,6 +62,8 @@ impl ReplicaManager {
 
     /// Create or update a given replica instance
     pub fn create_or_update(&self, service_id: &Id, peer_id: &Id, page: &Page) {
+        trace!("create or update replica lock");
+
         let mut store = self.store.lock().unwrap();
         let replicas = store.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
@@ -81,6 +84,7 @@ impl ReplicaManager {
         peer_id: &Id,
         f: F,
     ) -> Result<(), ()> {
+        trace!("update replica lock");
         let mut store = self.store.lock().unwrap();
         let replicas = store.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);

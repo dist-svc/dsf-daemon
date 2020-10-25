@@ -34,67 +34,57 @@ where
         let mut services = self.services();
 
         // Generate pages
-        // This needs to be in a scope so the generator doesn't try moving the
-        // RwLockWriteGuart<'_, ServiceInst> over yeild points
-        let (mut info, pages) = {
-            // Fetch the known service from the service list
-            let service = match services.find(&id) {
-                Some(s) => s,
-                None => {
-                    // Only known services can be registered
-                    error!("unknown service (id: {})", id);
-                    return Err(Error::UnknownService.into());
-                }
-            };
 
-            let mut s = service.try_write().unwrap();
+        // Fetch the known service from the service list
+        let service_info = match services.find(&id) {
+            Some(s) => s,
+            None => {
+                // Only known services can be registered
+                error!("unknown service (id: {})", id);
+                return Err(Error::UnknownService.into());
+            }
+        };
+
+        let mut pages = vec![];
+        let mut page_version = 0u16;
+        let mut replica_version = None;
+
+        // Update service instance
+        let service_info = services.update_inst(&id, |s| {
 
             debug!("Generating service page");
             let primary_page = match s.publish(false) {
                 Ok(v) => v,
                 Err(e) => return Err(e.into()),
             };
-            drop(s);
 
-            let mut info = RegisterInfo {
-                page_version: primary_page.header().index(),
-                replica_version: None,
-                peers: 0,
-            };
+            page_version = primary_page.header().index();
 
-            let mut pages = vec![primary_page];
+            pages.push(primary_page);
 
             // Generate replica page unless disabled
             if !options.no_replica {
                 debug!("Generating replica page");
 
                 // Generate a replica page
-                let mut s = service.try_write().unwrap();
-
                 let replica_page = match s.replicate(self.service(), false) {
                     Ok(v) => v,
                     Err(e) => return Err(e.into()),
                 };
 
-                info.replica_version = Some(replica_page.header().index());
+                replica_version = Some(replica_page.header().index());
 
                 pages.push(replica_page);
-
-                drop(s);
             }
+        });
 
-            // Write back any changes to the instances
-            services.sync();
-
-            (info, pages)
-        };
 
         debug!("Registering service");
         trace!("Pages: {:?}", pages);
 
         // Store pages
         // TODO: get store info / number of peers storing
-        info.peers = self.store(&id, pages).await?;
+        let peers = self.store(&id, pages).await?;
 
         // Update local storage info
         services.update_inst(&id, |s| {
@@ -102,6 +92,10 @@ where
             s.last_updated = Some(SystemTime::now());
         });
 
-        Ok(info)
+        Ok(RegisterInfo{
+            peers,
+            page_version,
+            replica_version,
+        })
     }
 }

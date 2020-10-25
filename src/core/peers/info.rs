@@ -1,5 +1,6 @@
-use std::sync::{Arc, RwLock};
+use crate::sync::{Arc, RwLock};
 use std::time::SystemTime;
+use std::ops::Deref;
 
 use dsf_core::prelude::*;
 pub use dsf_rpc::peer::{PeerAddress, PeerInfo, PeerState};
@@ -7,10 +8,18 @@ pub use dsf_rpc::peer::{PeerAddress, PeerInfo, PeerState};
 /// Peer object used to store peer related state and information
 /// This is a global singleton representing a known peer and may be shared
 /// between components of the system
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Peer {
     pub(super) info: Arc<RwLock<PeerInfo>>,
 }
+
+impl std::fmt::Debug for Peer {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let i = self.info.read().unwrap();
+        std::fmt::Debug::fmt(i.deref(), f)
+    }
+}
+
 
 impl PartialEq for Peer {
     fn eq(&self, other: &Self) -> bool {

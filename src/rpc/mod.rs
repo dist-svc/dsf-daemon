@@ -182,7 +182,7 @@ where
 
                 self.services()
                     .find(&id)
-                    .map(|i| ResponseKind::Service(i.read().unwrap().info()))
+                    .map(|i| ResponseKind::Service(i))
                     .unwrap_or(ResponseKind::None)
             }
             ServiceCommands::Subscribe(options) => self

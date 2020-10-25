@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use dsf_core::prelude::*;

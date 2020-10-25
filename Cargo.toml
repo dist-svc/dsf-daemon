@@ -10,7 +10,7 @@ readme = "README.md"
 
 [features]
 profile = []
-default = [ "libsqlite3-sys/bundled" ] 
+default = [ "no_deadlocks", "libsqlite3-sys/bundled" ] 
 
 # Debian packaging metadata (for cargo-deb)
 [package.metadata.deb]
@@ -25,6 +25,7 @@ conf-files = [
   "/etc/dsfd/dsfd.env",
 ]
 maintainer-scripts = "scripts/"
+
 
 [dependencies]
 futures = "0.3.4"
@@ -49,6 +50,7 @@ ctrlc = "3.1.3"
 rand = "0.7.3"
 base64 = { version = "0.12.3", features = [ "alloc", "std" ] }
 tokio = "0.3.0"
+no_deadlocks = { version = "1.1.1", optional = true }
 
 
 [dependencies.dsf-core]

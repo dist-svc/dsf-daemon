@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use futures::channel::mpsc;
@@ -55,6 +55,7 @@ impl SubscriberManager {
         peer_id: &Id,
         f: F,
     ) -> Result<(), Error> {
+        trace!("update sub net lock");
         let mut store = self.store.lock().unwrap();
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
@@ -100,6 +101,8 @@ impl SubscriberManager {
         socket_id: u32,
         f: F,
     ) -> Result<(), Error> {
+        trace!("update sub socket lock");
+
         let mut store = self.store.lock().unwrap();
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
@@ -138,6 +141,8 @@ impl SubscriberManager {
 
     /// Remove a subscription
     pub fn remove(&mut self, service_id: &Id, peer_id: &Id) -> Result<(), Error> {
+        trace!("remove sub lock");
+
         let mut store = self.store.lock().unwrap();
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);

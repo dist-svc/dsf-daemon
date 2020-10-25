@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 
 use futures::channel::mpsc;
 use futures::prelude::*;

@@ -1,7 +1,7 @@
 //! Peer model, information, and map
 //! This module is used to provide a single map of PeerManager peers for sharing between DSF components
 
-use std::sync::{Arc, Mutex, RwLock};
+use crate::sync::{Arc, Mutex, RwLock};
 
 use std::collections::HashMap;
 
@@ -43,6 +43,8 @@ impl PeerManager {
     }
 
     pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
+        trace!("find or create peer lock");
+
         let mut peers = self.peers.lock().unwrap();
         let mut index = self.index.lock().unwrap();
 
@@ -77,12 +79,15 @@ impl PeerManager {
     }
 
     pub fn remove(&self, id: &Id) -> Option<PeerInfo> {
+        trace!("remove peer lock");
+
         let peer = { self.peers.lock().unwrap().remove(id) };
 
         match peer {
             Some(p) => {
                 let info = p.info();
 
+                trace!("update peer (store) lock");
                 if let Err(e) = self.store.lock().unwrap().delete_peer(&info) {
                     error!("Error removing peer from db: {:?}", e);
                 }
@@ -94,6 +99,8 @@ impl PeerManager {
     }
 
     pub fn count(&self) -> usize {
+        trace!("count peer lock");
+
         let peers = self.peers.lock().unwrap();
         peers.len()
     }
@@ -103,6 +110,8 @@ impl PeerManager {
     }
 
     pub fn list(&self) -> Vec<(Id, Peer)> {
+        trace!("list peer lock");
+
         let peers = self.peers.lock().unwrap();
         peers
             .iter()
@@ -111,6 +120,8 @@ impl PeerManager {
     }
 
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
+        trace!("index to id peer lock");
+
         let peers = self.peers.lock().unwrap();
 
         peers
@@ -120,7 +131,9 @@ impl PeerManager {
     }
 
     pub fn sync(&self) {
+        trace!("sync peer lock");
         let peers = self.peers.lock().unwrap();
+        trace!("sync peer (store) lock");
         let store = self.store.lock().unwrap();
 
         for (id, inst) in peers.iter() {
@@ -134,6 +147,7 @@ impl PeerManager {
 
     // Load all peers from store
     fn load(&mut self) {
+        trace!("load peers lock");
         let mut peers = self.peers.lock().unwrap();
         let store = self.store.lock().unwrap();
         let mut index = self.index.lock().unwrap();
