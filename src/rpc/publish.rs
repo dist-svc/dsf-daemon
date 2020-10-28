@@ -28,86 +28,87 @@ where
 
         let mut services = self.services();
 
-        let (info, addresses, req) = {
-            // Fetch the known service from the service list
-            let service_arc = match services.find(&id) {
-                Some(s) => s,
-                None => {
-                    // Only known services can be registered
-                    error!("unknown service (id: {})", id);
-                    return Err(Error::UnknownService);
-                }
-            };
-
-            let mut service_inst = service_arc.write().unwrap();
-            let service = &mut service_inst.service;
-
-            // Fetch the private key for signing service pages
-            let _private_key = match service.private_key() {
-                Some(s) => s,
-                None => {
-                    // Only known services can be registered
-                    error!("no service private key (id: {})", id);
-                    return Err(Error::NoPrivateKey);
-                }
-            };
-
-            let body = match options.data {
-                Some(d) => Body::Cleartext(d),
-                None => Body::None,
-            };
-
-            let data_options = DataOptions {
-                data_kind: options.kind.into(),
-                body,
-                ..Default::default()
-            };
-
-            info!("Generating data page");
-            let mut buff = vec![0u8; 1024];
-            let (n, mut page) = service.publish_data(data_options, &mut buff).unwrap();
-            page.raw = Some(buff[..n].to_vec());
-
-            let info = PublishInfo {
-                index: page.header().index(),
-            };
-
-            let service_id = service.id();
-
-            info!("Storing data page");
-
-            let data_info = DataInfo::try_from(&page).unwrap();
-
-            self.data().store_data(&data_info, &page)?;
-
-            // Store data against service
-            //service_inst.add_data(&page)?;
-            services.sync_inst(&service_inst);
-
-            // TODO: send data to subscribers
-            let req = net::Request::new(
-                self.id(),
-                rand::random(),
-                net::RequestKind::PushData(service_id.clone(), vec![page]),
-                Flags::default(),
-            );
-
-            let subscriptions = self.subscribers().find(&service_id)?;
-
-            let addresses: Vec<_> = subscriptions
-                .iter()
-                .filter_map(|s| {
-                    if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
-                        self.peers().find(peer_id).map(|p| p.address())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            (info, addresses, req)
+        // Fetch the known service from the service list
+        let service_info = match services.find(&id) {
+            Some(s) => s,
+            None => {
+                // Only known services can be registered
+                error!("unknown service (id: {})", id);
+                return Err(Error::UnknownService);
+            }
         };
 
+
+        // Fetch the private key for signing service pages
+        let _private_key = match service_info.private_key {
+            Some(s) => s,
+            None => {
+                // Only known services can be registered
+                error!("no service private key (id: {})", id);
+                return Err(Error::NoPrivateKey);
+            }
+        };
+
+        // Setup publishing object
+        let body = match options.data {
+            Some(d) => Body::Cleartext(d),
+            None => Body::None,
+        };
+        let data_options = DataOptions {
+            data_kind: options.kind.into(),
+            body,
+            ..Default::default()
+        };
+
+        let mut page: Option<Page> = None;
+
+        services.update_inst(&id, |s| {
+            let mut buff = vec![0u8; 1024];
+            let opts = data_options.clone();
+
+            info!("Generating data page");
+            let mut r = s.service.publish_data(opts, &mut buff).unwrap();
+
+            r.1.raw = Some(buff[..r.0].to_vec());
+            page = Some(r.1);
+        });
+
+        let page = page.unwrap();
+
+        let info = PublishInfo {
+            index: page.header().index(),
+        };
+
+        info!("Storing data page");
+
+        // Store new service data
+        let data_info = DataInfo::try_from(&page).unwrap();
+        self.data().store_data(&data_info, &page)?;
+
+
+        // Generate push data message
+        let req = net::Request::new(
+            self.id(),
+            rand::random(),
+            net::RequestKind::PushData(id.clone(), vec![page]),
+            Flags::default(),
+        );
+
+        // Generate subscriber address list
+        let subscriptions = self.subscribers().find(&id)?;
+        let addresses: Vec<_> = subscriptions
+            .iter()
+            .filter_map(|s| {
+                if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
+                    self.peers().find(peer_id).map(|p| p.address())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+
+        // Push updates to all subscribers
         info!("Sending data push messages");
         self.request_all(&addresses, req).await;
 

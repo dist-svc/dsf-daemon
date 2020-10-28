@@ -73,11 +73,7 @@ where
             }
 
             // Update peer info
-            if let Some(mut peer) = self.peers().find(&from2) {
-                peer.update(|mut p| {
-                    p.sent += 1;
-                });
-            }
+            self.peers().update(&from2, |p| p.info.sent += 1 );
 
             trace!("returning response (to: {:?})\n {:?}", from2, &resp);
 
@@ -186,16 +182,16 @@ where
         );
 
         // Find or create (and push) peer
-        let mut peer = self.peers().find_or_create(
+        let peer = self.peers().find_or_create(
             id.clone(),
             PeerAddress::Implicit(*address),
             c.public_key.clone(),
         );
 
         // Update peer info
-        peer.update(|mut p| {
-            p.set_seen(SystemTime::now());
-            p.received += 1;
+        self.peers().update(&id, |p| {
+            p.info.seen = Some(SystemTime::now());
+            p.info.received += 1;
         });
 
         assert!(id != &self.id(), "handle_base called for self...");
@@ -212,7 +208,7 @@ where
         match (peer.state(), &c.public_key) {
             (PeerState::Unknown, Some(pk)) => {
                 info!("Adding key: {:?} to peer: {:?}", pk, id);
-                peer.update(|p| p.set_state(PeerState::Known(pk.clone())))
+                self.peers().update(&id, |p| p.info.state = PeerState::Known(pk.clone()) );
             }
             _ => (),
         };
@@ -221,7 +217,7 @@ where
         if let Some(a) = c.remote_address {
             if a != peer.address() {
                 info!("Setting explicit address {:?} for peer: {:?}", a, id);
-                peer.update(|p| p.update_address(PeerAddress::Explicit(a)));
+                self.peers().update(&id, |p| p.info.address = PeerAddress::Explicit(a) );
             }
         }
 
@@ -253,7 +249,7 @@ where
 
                 // Fetch pages for service
                 let pages = {
-                    match &self.services().fetch(&service_id, |s| s.primary_page.clone() ).flatten() {
+                    match &self.services().filter(&service_id, |s| s.primary_page.clone() ).flatten() {
                         Some(p) => vec![p.clone()],
                         None => vec![],
                     }
@@ -305,7 +301,7 @@ where
                 info!("Register request from: {} for service: {}", from, id);
                 // TODO: determine whether we should allow this service to be registered
 
-                self.service_register(&id, pages)?;
+                //self.service_register(&id, pages)?;
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             }
@@ -384,6 +380,7 @@ where
                 info!("Sending data push message id {} to: {:?}", req_id, addresses);
 
                 // TODO: this is, not ideal...
+                // DEADLOCK MAYBE?
                 let mut dsf = self.clone();
                 async_std::task::spawn(async move {
                     dsf.request_all(&addresses, req).await;

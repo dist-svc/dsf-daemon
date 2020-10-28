@@ -129,6 +129,7 @@ impl Wire {
 
         // Decode network message to DSF message
         // TODO: provide ID to Key query..?
+        // DEADLOCK YO
         let decoded = match self.decode(&msg.data, |id| find_pub_key(id)) {
             Ok(v) => v,
             Err(e) => {

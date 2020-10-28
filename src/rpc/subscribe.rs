@@ -36,40 +36,32 @@ where
 
         let own_id = self.id();
 
-        let (service_id, searches) = {
-            // Fetch the known service from the service list
-            let service_arc = match self.services().find(&id) {
-                Some(s) => s,
-                None => {
-                    // Only known services can be registered
-                    error!("unknown service (id: {})", id);
-                    return Err(Error::UnknownService);
-                }
-            };
-
-            let service_inst = service_arc.read().unwrap();
-            let service_id = service_inst.id();
-
-            debug!("Service: {:?}", service_id);
-
-            // TODO: lookup replicas in distributed database?
-
-            // Fetch known replicas
-            let replicas = self.replicas().find(&id);
-
-            // Build peer search across known replicas
-            let mut searches = Vec::with_capacity(replicas.len());
-            for inst in replicas.iter() {
-                let mut s = self.clone();
-                let peer_id = inst.info.peer_id.clone();
-
-                searches.push(async move { s.lookup(&peer_id).await });
+        // Fetch the known service from the service list
+        let service_info = match self.services().find(&id) {
+            Some(s) => s,
+            None => {
+                // Only known services can be registered
+                error!("unknown service (id: {})", id);
+                return Err(Error::UnknownService);
             }
-
-            drop(service_inst);
-
-            (service_id, searches)
         };
+
+        debug!("Service: {:?}", id);
+
+        // TODO: lookup replicas in distributed database?
+
+        // Fetch known replicas
+        let replicas = self.replicas().find(&id);
+
+        // Build peer search across known replicas
+        // DEADLOCK MAYBE?
+        let mut searches = Vec::with_capacity(replicas.len());
+        for inst in replicas.iter() {
+            let mut s = self.clone();
+            let peer_id = inst.info.peer_id.clone();
+
+            searches.push(async move { s.lookup(&peer_id).await });
+        }
 
         info!("Searching for viable replicas");
 
@@ -88,16 +80,13 @@ where
         let req = net::Request::new(
             self.id(),
             rand::random(),
-            net::RequestKind::Subscribe(service_id.clone()),
+            net::RequestKind::Subscribe(id.clone()),
             Flags::default(),
         );
         info!("Sending subscribe messages to {} peers", addrs.len());
 
         let subscribe_responses = self.request_all(&addrs, req).await;
 
-        // Fetch the known service from the service list
-        let service_arc = self.services().find(&id).unwrap();
-        let mut service = service_arc.write().unwrap();
 
         let mut subscription_info = vec![];
 
@@ -120,14 +109,14 @@ where
 
                     // Update replica status
                     self.replicas()
-                        .update_replica(&service_id, &response.from, |r| {
+                        .update_replica(&id, &response.from, |r| {
                             r.info.active = true;
                         })
                         .unwrap();
 
                     subscription_info.push(SubscriptionInfo {
                         kind: SubscriptionKind::Peer(response.from.clone()),
-                        service_id: service_id.clone(),
+                        service_id: id.clone(),
                         updated: Some(SystemTime::now()),
                         expiry: None,
                     });
@@ -152,7 +141,7 @@ where
                 "[DSF ({:?})] Subscription complete, updating service state",
                 own_id
             );
-            service.update(|s| {
+            self.services().update_inst(&id, |s| {
                 if s.state == ServiceState::Located {
                     s.state = ServiceState::Subscribed;
                 }

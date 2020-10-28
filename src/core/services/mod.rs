@@ -3,7 +3,7 @@
 //!
 
 use std::collections::HashMap;
-use crate::sync::{Arc, Mutex, RwLock};
+use crate::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use dsf_core::prelude::*;
@@ -22,7 +22,7 @@ pub use data::Data;
 /// ServiceManager keeps track of local and remote services
 #[derive(Clone)]
 pub struct ServiceManager {
-    pub(crate) services: Arc<Mutex<HashMap<Id, Arc<RwLock<ServiceInst>>>>>,
+    pub(crate) services: Arc<Mutex<HashMap<Id, ServiceInst>>>,
     store: Arc<Mutex<Store>>,
 }
 
@@ -71,8 +71,8 @@ impl ServiceManager {
         // Write new instance to disk
         self.sync_inst(&inst);
 
-        let inst = Arc::new(RwLock::new(inst));
-        services.insert(id, inst.clone());
+        // Insert into storage
+        services.insert(id, inst);
 
         warn!("service register done");
 
@@ -106,8 +106,8 @@ impl ServiceManager {
         let services = services.lock().unwrap();
         services
             .iter()
-            .find(|(_id, s)| s.read().unwrap().index == index)
-            .map(|(_id, s)| s.clone())
+            .find(|(_id, s)| s.index == index )
+            .map(|(_id, s)| s.info() )
     }
 
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
@@ -116,16 +116,8 @@ impl ServiceManager {
         let services = services.lock().unwrap();
         services
             .iter()
-            .find(|(_id, s)| s.read().unwrap().index == index)
+            .find(|(_id, s)| s.index == index)
             .map(|(id, _s)| id.clone())
-    }
-
-    /// Fetch info for a given service
-    pub fn info(&self, id: &Id) -> Option<ServiceInfo> {
-        match self.find(id) {
-            Some(s) => Some(s.read().unwrap().info()),
-            None => None,
-        }
     }
 
     pub fn remove(&self, id: &Id) -> Result<Option<ServiceInfo>, DsfError> {
@@ -135,7 +127,7 @@ impl ServiceManager {
 
         // Remove from database
         if let Some(s) = service {
-            let info = s.read().unwrap().info();
+            let info = s.info();
             let _ = self.store.lock().unwrap().delete_service(&info);
 
             return Ok(Some(info));
@@ -152,7 +144,7 @@ impl ServiceManager {
             None => return Err(DsfError::UnknownService),
         };
 
-        let s = service.read().unwrap();
+        let s = service;
 
         let d = s.get_data(n).map(|d| DataInfo {
             service: id.clone(),
@@ -166,16 +158,17 @@ impl ServiceManager {
     }
 
     /// Update a service instance (if found)
-    pub fn update_inst<F>(&mut self, id: &Id, f: F) -> Option<ServiceInfo>
+    pub fn update_inst<F>(&mut self, id: &Id, mut f: F) -> Option<ServiceInfo>
     where
-        F: Fn(&mut ServiceInst),
+        F: FnMut(&mut ServiceInst),
     {
+        let mut services = self.services.lock().unwrap();
+
         warn!("services update inst");
 
-        match self.find(id) {
-            Some(s) => {
-                let mut svc = s.write().unwrap();
-                (f)(&mut svc);
+        match services.get_mut(id) {
+            Some(svc) => {
+                (f)(svc);
                 svc.changed = true;
                 Some(svc.info())
             }
@@ -184,16 +177,18 @@ impl ServiceManager {
     }
 
     /// Fetch a field from a service instance
-    pub fn fetch<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
+    pub fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
     where
-        F: Fn(&mut ServiceInst) -> R,
+        F: Fn(&ServiceInst) -> R,
     {
+        let services = self.services.lock().unwrap();
+
         warn!("services fetch inst");
 
-        match self.find(id) {
+        match services.get(id) {
             Some(s) => {
-                let mut svc = s.read().unwrap();
-                Some((f)(&mut svc))
+                let svc = s;
+                Some((f)(&svc))
             }
             None => None,
         }
@@ -211,7 +206,7 @@ impl ServiceManager {
         let updates: Vec<_> = services
             .iter()
             .filter_map(|(_id, svc)| {
-                let i = svc.read().unwrap();
+                let i = svc;
                 match i.update_required(state, interval, force) {
                     true => Some(i.info()),
                     false => None,
@@ -247,7 +242,7 @@ impl ServiceManager {
 
         services
             .iter()
-            .map(|(_k, v)| v.read().unwrap().info())
+            .map(|(_k, v)| v.info())
             .collect()
     }
 
@@ -259,35 +254,37 @@ impl ServiceManager {
 
     /// Sync the service database to disk
     pub fn sync(&self) {
-        let services = self.services.lock().unwrap();
+        trace!("services sync");
+
+        let mut services = self.services.lock().unwrap();
         let store = self.store.lock().unwrap();
 
-        for (id, inst) in services.iter() {
-            let mut inst = inst.write().unwrap();
-            let i: &mut ServiceInst = &mut inst;
+        for (id, inst) in services.iter_mut() {
             // Skip unchanged instances
-            if !i.changed {
+            if !inst.changed {
                 continue;
             }
 
-            if let Err(e) = store.save_service(&i.info()) {
+            if let Err(e) = store.save_service(&inst.info()) {
                 error!("Error writing service instance {}: {:?}", id, e);
             }
 
-            if let Some(p) = &i.primary_page {
+            if let Some(p) = &inst.primary_page {
                 store.save_page(p).unwrap();
             }
 
-            if let Some(p) = &i.replica_page {
+            if let Some(p) = &inst.replica_page {
                 store.save_page(p).unwrap();
             }
 
-            i.changed = false;
+            inst.changed = false;
         }
     }
 
     /// Load the service database from disk
     pub fn load(&self) {
+        trace!("services load");
+        
         let store = self.store.lock().unwrap();
         let mut services = self.services.lock().unwrap();
 
@@ -333,7 +330,7 @@ impl ServiceManager {
                 changed: false,
             };
 
-            services.entry(i.id).or_insert(Arc::new(RwLock::new(s)));
+            services.entry(i.id).or_insert(s);
         }
     }
 }

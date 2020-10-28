@@ -113,16 +113,14 @@ where
     async fn exec_peer(&mut self, req: rpc::PeerCommands) -> Result<rpc::ResponseKind, Error> {
         use rpc::*;
 
-        let mut s = self.clone();
-
         let res = match req {
             PeerCommands::List(_options) => ResponseKind::Peers(self.peer_info()),
             PeerCommands::Connect(options) => {
-                s.connect(options).await.map(ResponseKind::Connected)?
+                self.connect(options).await.map(ResponseKind::Connected)?
             }
             PeerCommands::Search(options) => {
                 // TODO: pass timeout here
-                s.lookup(&options.id)
+                self.lookup(&options.id)
                     .await
                     .map(|p| ResponseKind::Peers(vec![(p.id(), p.info())]))?
             }

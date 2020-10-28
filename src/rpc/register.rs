@@ -55,7 +55,10 @@ where
             debug!("Generating service page");
             let primary_page = match s.publish(false) {
                 Ok(v) => v,
-                Err(e) => return Err(e.into()),
+                Err(e) => {
+                    error!("Error generating primary page: {:?}", e);
+                    return
+                },
             };
 
             page_version = primary_page.header().index();
@@ -69,7 +72,10 @@ where
                 // Generate a replica page
                 let replica_page = match s.replicate(self.service(), false) {
                     Ok(v) => v,
-                    Err(e) => return Err(e.into()),
+                    Err(e) => {
+                        error!("Error generating replica page: {:?}", e);
+                        return
+                    },
                 };
 
                 replica_version = Some(replica_page.header().index());

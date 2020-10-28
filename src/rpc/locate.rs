@@ -17,8 +17,8 @@ where
         let services = self.services();
 
         // Skip search for owned services...
-        if let Some(service) = services.info(&options.id) {
-            if service.origin {
+        if let Some(service_info) = services.find(&options.id) {
+            if service_info.origin {
                 return Ok(LocateInfo {
                     origin: true,
                     updated: false,

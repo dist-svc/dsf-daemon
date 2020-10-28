@@ -135,15 +135,15 @@ where
         self.peers.clone()
     }
 
-    pub(crate) fn services(&mut self) -> ServiceManager {
+    pub(crate) fn services(&self) -> ServiceManager {
         self.services.clone()
     }
 
-    pub(crate) fn replicas(&mut self) -> ReplicaManager {
+    pub(crate) fn replicas(&self) -> ReplicaManager {
         self.replicas.clone()
     }
 
-    pub(crate) fn subscribers(&mut self) -> SubscriberManager {
+    pub(crate) fn subscribers(&self) -> SubscriberManager {
         self.subscribers.clone()
     }
 
@@ -320,7 +320,6 @@ where
 
         for (id, p) in peers {
             let timeout = Duration::from_millis(200).into();
-            let mut _s = self.clone();
 
             if let Ok(_) = self
                 .connect(dsf_rpc::ConnectOptions {
@@ -348,17 +347,17 @@ where
     }
 
     pub fn find_public_key(&self, id: &Id) -> Option<PublicKey> {
-        match (self.peers().find(id), self.services.info(id)) {
-            (_, Some(s)) => Some(s.public_key),
-            (Some(p), _) => {
-                if let PeerState::Known(pk) = p.state() {
-                    Some(pk)
-                } else {
-                    None
-                }
-            }
-            _ => None,
+        if let Some(s) = self.services().find(id) {
+            return Some(s.public_key)
         }
+
+        if let Some(p) = self.peers().find(id) {
+            if let PeerState::Known(pk) = p.state() {
+                return Some(pk)
+            }
+        }
+        
+        None
     }
 
     pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
@@ -396,6 +395,10 @@ where
             .collect();
 
         debug!("found {} replicas", replicas.len());
+
+        if primary_page.id() == id {
+            debug!("Registering service for matching peer");
+        }
 
         // Fetch service instance
         let _info = match services.known(id) {
