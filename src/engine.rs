@@ -225,15 +225,17 @@ impl Engine {
 
         // Setup network IO task
 
-        let (mut wire, mut net) = (self.wire.take().unwrap(), self.net.take().unwrap());
+        let (mut wire, net) = (self.wire.take().unwrap(), self.net.take().unwrap());
         let r = running.clone();
         let net_dsf = self.dsf.clone();
+
+        let mut net = net.fuse();
 
         let _net_handle = task::spawn(async move {
             while r.load(Ordering::SeqCst) {
                 select! {
                     // Incoming network messages
-                    net_rx = net.next().fuse() => {
+                    net_rx = net.next() => {
                         trace!("engine::net_rx {:?}", net_rx);
                         
                         if let Some(m) = net_rx {
@@ -260,7 +262,7 @@ impl Engine {
                         }
                     },
                     net_tx = net_out_rx.next().fuse() => {
-                        trace!("engine::net_tx {:?}", net_tx);
+                        warn!("engine::net_tx {:?}", net_tx);
 
                         if let Some((address, message)) = net_tx {
                             
@@ -273,7 +275,7 @@ impl Engine {
                                 }
                             };
 
-                            if let Err(e) = net.send(net_tx).await {
+                            if let Err(e) = net.get_mut().send(net_tx).await {
                                 error!("error sending network message: {:?}", e);
                                 return Err(e)
                             }
@@ -283,12 +285,10 @@ impl Engine {
                     }
                     // Outgoing network messages
                     net_tx = wire.next().fuse() => {
-                        trace!("engine::wire_tx {:?}", net_tx);
+                        warn!("engine::wire_tx {:?}", net_tx);
                         
                         if let Some(m) = net_tx {
-                            
-
-                            net.send(m).await.unwrap();
+                            net.get_mut().send(m).await.unwrap();
                         } else {
                             error!("wire next no value");
                         }

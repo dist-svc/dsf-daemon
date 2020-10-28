@@ -50,7 +50,7 @@ impl ServiceManager {
         updated: Option<SystemTime>,
     ) -> Result<ServiceInfo, DsfError> {
         let services = self.services.clone();
-        warn!("service register lock");
+        trace!("service register lock");
         let mut services = services.lock().unwrap();
 
         let id = service.id();
@@ -74,21 +74,21 @@ impl ServiceManager {
         // Insert into storage
         services.insert(id, inst);
 
-        warn!("service register done");
+        trace!("service register done");
 
         Ok(info)
     }
 
     /// Determine whether a service is known in the database
     pub fn known(&self, id: &Id) -> bool {
-        warn!("services known lock");
+        trace!("services known lock");
         let services = self.services.lock().unwrap();
         services.contains_key(id)
     }
 
     /// Fetch service information for a given service id from the manager
     pub fn find(&self, id: &Id) -> Option<ServiceInfo> {
-        warn!("services find lock");
+        trace!("services find lock");
         let services = self.services.lock().unwrap();
 
         let service = match services.get(id) {
@@ -102,7 +102,7 @@ impl ServiceManager {
     /// Fetch a service by local index
     pub fn index(&self, index: usize) -> Option<ServiceInfo> {
         let services = self.services.clone();
-        warn!("services index lock");
+        trace!("services index lock");
         let services = services.lock().unwrap();
         services
             .iter()
@@ -112,7 +112,7 @@ impl ServiceManager {
 
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
         let services = self.services.clone();
-        warn!("services index to id lock");
+        trace!("services index to id lock");
         let services = services.lock().unwrap();
         services
             .iter()
@@ -122,13 +122,14 @@ impl ServiceManager {
 
     pub fn remove(&self, id: &Id) -> Result<Option<ServiceInfo>, DsfError> {
         // Remove from memory
-        warn!("services remove lock");
+        trace!("services remove lock");
         let service = { self.services.lock().unwrap().remove(id) };
 
         // Remove from database
         if let Some(s) = service {
             let info = s.info();
-            let _ = self.store.lock().unwrap().delete_service(&info);
+            // DEADLOCK?
+            //let _ = self.store.lock().unwrap().delete_service(&info);
 
             return Ok(Some(info));
         };
@@ -162,9 +163,8 @@ impl ServiceManager {
     where
         F: FnMut(&mut ServiceInst),
     {
+        trace!("services update inst");
         let mut services = self.services.lock().unwrap();
-
-        warn!("services update inst");
 
         match services.get_mut(id) {
             Some(svc) => {
@@ -181,9 +181,8 @@ impl ServiceManager {
     where
         F: Fn(&ServiceInst) -> R,
     {
+        trace!("services filter inst");
         let services = self.services.lock().unwrap();
-
-        warn!("services fetch inst");
 
         match services.get(id) {
             Some(s) => {
@@ -214,13 +213,15 @@ impl ServiceManager {
             })
             .collect();
 
-        warn!("updates required (state: {:?}): {:?}", state, updates);
+        trace!("updates required (state: {:?}): {:?}", state, updates);
 
         updates
     }
 
     /// Sync a service instance to disk
     pub(crate) fn sync_inst(&mut self, inst: &ServiceInst) {
+        trace!("service sync inst");
+
         let store = self.store.lock().unwrap();
 
         if let Err(e) = store.save_service(&inst.info()) {
@@ -301,7 +302,7 @@ impl ServiceManager {
                     .unwrap()
                     .unwrap(),
                 None => {
-                    warn!("No primary page for service: {:?}", i);
+                    trace!("No primary page for service: {:?}", i);
                     continue;
                 }
             };

@@ -64,14 +64,16 @@ impl DataManager {
 
     /// Store data for a given service
     pub fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
+
         trace!("store data lock");
-        let store = self.store.lock().unwrap();
+        // DEADLOCK DISABLED
+        //let store = self.store.lock().unwrap();
 
         // Store data object
-        store.save_data(info)?;
+        //store.save_data(info)?;
 
         // Store backing raw object
-        store.save_page(page)?;
+        //store.save_page(page)?;
 
         Ok(())
     }

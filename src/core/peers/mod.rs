@@ -69,10 +69,10 @@ impl PeerManager {
             .clone();
 
         // Write to store
-        let store = self.store.lock().unwrap();
-        if let Err(e) = store.save_peer(&peer.info) {
-            error!("Error writing peer {} to db: {:?}", id, e);
-        }
+//        let store = self.store.lock().unwrap();
+//        if let Err(e) = store.save_peer(&peer.info) {
+//            error!("Error writing peer {} to db: {:?}", id, e);
+//        }
 
         peer
     }
@@ -135,7 +135,7 @@ impl PeerManager {
     {
         let mut peers = self.peers.lock().unwrap();
 
-        warn!("peer update inst");
+        trace!("peer update inst");
 
         match peers.get_mut(id) {
             Some(p) => {
@@ -153,7 +153,7 @@ impl PeerManager {
     {
         let mut peers = self.peers.lock().unwrap();
 
-        warn!("peer fetch inst");
+        trace!("peer fetch inst");
 
         match peers.get(id) {
             Some(p) => Some((f)(&p)),
@@ -164,13 +164,11 @@ impl PeerManager {
     pub fn sync(&self) {
         trace!("sync peer lock");
         let peers = self.peers.lock().unwrap();
-        trace!("sync peer (store) lock");
-        let store = self.store.lock().unwrap();
 
         for (id, inst) in peers.iter() {
             let info = inst.info();
 
-            if let Err(e) = store.save_peer(&info) {
+            if let Err(e) = self.store.lock().unwrap().save_peer(&info) {
                 error!("Error writing peer {} to db: {:?}", id, e);
             }
         }

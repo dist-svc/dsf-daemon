@@ -62,7 +62,6 @@ where
             })
         } else {
             self.handle_dsf(from, peer, req.data)
-                .await
                 .map(move |kind| net::Response::new(own_id, req_id, kind, Flags::default()))
 
             // Generic response processing here
@@ -225,7 +224,7 @@ where
     }
 
     /// Handle a DSF type message
-    async fn handle_dsf(
+    fn handle_dsf(
         &mut self,
         from: Id,
         peer: Peer,
@@ -381,10 +380,10 @@ where
 
                 // TODO: this is, not ideal...
                 // DEADLOCK MAYBE?
-                let mut dsf = self.clone();
-                async_std::task::spawn(async move {
-                    dsf.request_all(&addresses, req).await;
-                });
+                //let mut dsf = self.clone();
+                //async_std::task::spawn(async move {
+                //    dsf.request_all(&addresses, req).await;
+                //});
 
                 info!("Data push complete");
 
