@@ -35,20 +35,46 @@ pub enum NetCommand {
 }
 
 /// Network message
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct NetMessage {
     pub interface: u32,
     pub address: SocketAddr,
     pub data: Bytes,
+
+    pub resp_tx: Option<mpsc::Sender<NetMessage>>,
+}
+
+impl PartialEq for NetMessage {
+    fn eq(&self, o: &Self) -> bool {
+        self.interface == o.interface &&
+        self.address == o.address &&
+        self.data == o.data
+    }
 }
 
 impl NetMessage {
+    /// Create a new network message with no reply channel
     pub fn new(interface: u32, address: SocketAddr, data: Bytes) -> Self {
         Self {
             interface,
             address,
             data,
+            resp_tx: None,
         }
+    }
+
+    /// Reply to a received network message
+    pub async fn reply(&self, data: Bytes) -> Result<(), NetError> {
+        let mut resp_tx = self.resp_tx.clone();
+
+        let r = match resp_tx.as_mut() {
+            Some(r) => r,
+            None => return Err(NetError::NoResponseChannel),
+        };
+
+        r.send(NetMessage::new(self.interface, self.address, data)).await?;
+
+        Ok(())
     }
 }
 
@@ -57,6 +83,7 @@ pub enum NetError {
     Io(io::ErrorKind),
     Sender(mpsc::SendError),
     NoMatchingInterface,
+    NoResponseChannel,
 }
 
 impl From<io::Error> for NetError {
@@ -170,6 +197,7 @@ impl Net {
 
         debug!("Starting UDP listener {}: {}", interface, address);
 
+        let resp_tx = tx_sink.clone();
         let handle = task::spawn(
             async move {
                 let mut buff = vec![0u8; UDP_BUFF_SIZE];
@@ -187,7 +215,9 @@ impl Net {
                                         interface,
                                         address,
                                         data,
+                                        resp_tx: Some(resp_tx.clone()),
                                     };
+
                                     rx_sink.send(msg).await?;
                                 },
                                 Err(e) => {

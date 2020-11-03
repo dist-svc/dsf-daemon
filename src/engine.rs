@@ -7,7 +7,7 @@ use structopt::StructOpt;
 
 use async_std::stream;
 use async_std::sync::channel;
-use async_std::task;
+use async_std::task::{self, JoinHandle};
 
 use futures::prelude::*;
 use futures::select;
@@ -214,152 +214,93 @@ impl Engine {
             });
         }
 
-        // Create periodic timer
-        let mut update_timer = stream::interval(Duration::from_secs(30));
-        let mut tick_timer = stream::interval(Duration::from_secs(1));
-
-        let (net_in_tx, mut net_in_rx) = channel(1000);
-        let (net_out_tx, mut net_out_rx) = channel(1000);
-
-        //net_out_rx.fuse();
-
         // Setup network IO task
 
-        let (mut wire, net) = (self.wire.take().unwrap(), self.net.take().unwrap());
-        let r = running.clone();
-        let net_dsf = self.dsf.clone();
+        let (wire, mut net) = (self.wire.take().unwrap(), self.net.take().unwrap());
 
-        let mut net = net.fuse();
+        // Handle received network messages in the engine
+        let dsf_net = self.dsf.clone();
+        let _engine_net_handle: JoinHandle<Result<(), Error>> = task::spawn(async move {
+            while let Some(net_msg) = net.next().await {
+                let mut dsf = dsf_net.clone();
+                let mut wire = wire.clone();
 
-        let _net_handle = task::spawn(async move {
-            while r.load(Ordering::SeqCst) {
-                select! {
-                    // Incoming network messages
-                    net_rx = net.next() => {
-                        trace!("engine::net_rx {:?}", net_rx);
-                        
-                        if let Some(m) = net_rx {
-                        
-                            let address = m.address.clone();
+                task::spawn(async move {
+                    // Extract address
+                    let address = net_msg.address.clone();
 
-                            // Decode message via wire module
-                            let message = match wire.handle_incoming(m, |id| net_dsf.find_public_key(id)).await {
-                                // Incoming request
-                                Ok(Some(v)) => v,
-                                // Incoming response, routed internally
-                                Ok(None) => continue,
-                                // Decoding error
-                                Err(e) => {
-                                    error!("error decoding network message from: {:?}", address);
-                                    continue;
-                                }
-                            };
-
-                            // Forward to DSF for execution
-                            net_in_tx.send((address, message)).await;
-                        } else {
-                            error!("net.next() no value");
+                    // Decode message via wire module (routes responses internally)
+                    // Note this internal routing needs to _always_ occur (may not block)
+                    let req = match wire.handle_incoming(&net_msg, |id| dsf.find_public_key(id)).await {
+                        // Incoming request
+                        Ok(Some(v)) => v,
+                        // Incoming response, routed internally
+                        Ok(None) => return,
+                        // Decoding error
+                        Err(e) => {
+                            error!("error decoding network message from: {:?}", address);
+                            return;
                         }
-                    },
-                    net_tx = net_out_rx.next().fuse() => {
-                        warn!("engine::net_tx {:?}", net_tx);
+                    };
 
-                        if let Some((address, message)) = net_tx {
-                            
-
-                            let net_tx = match wire.handle_outgoing(Address::from(address), message) {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    error!("error encoding network message: {:?}", e);
-                                    continue;
-                                }
-                            };
-
-                            if let Err(e) = net.get_mut().send(net_tx).await {
-                                error!("error sending network message: {:?}", e);
-                                return Err(e)
-                            }
-                        } else {
-                            error!("net_out_rx no value");
+                    // Handle request via DSF
+                    // This may take some time
+                    // TODO: refactor to a request stack with polling
+                    let resp = match dsf.handle_net(address, req).await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("error handling DSF request: {:?}", e);
+                            return;
                         }
+                    };
+
+                    // Encode outgoing message
+                    let resp_data = match wire.encode(DsfMessage::Response(resp)) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("error encoding network message: {:?}", e);
+                            return;
+                        }
+                    };
+
+                    // Send response
+                    if let Err(e) = net_msg.reply(resp_data.into()).await {
+                        error!("error return DSF response")
                     }
-                    // Outgoing network messages
-                    net_tx = wire.next().fuse() => {
-                        warn!("engine::wire_tx {:?}", net_tx);
-                        
-                        if let Some(m) = net_tx {
-                            net.get_mut().send(m).await.unwrap();
-                        } else {
-                            error!("wire next no value");
-                        }
-                    }
-                }
+                });
             }
-
-            error!("Exiting network handler");
 
             Ok(())
         });
 
-        let mut unix = self.unix.take().unwrap();
-        let r = running.clone();
-        let engine_dsf = self.dsf.clone();
+        // Handle received RPC messages in the engine
+        let dsf_unix = self.dsf.clone();
+        let mut unix_rx = self.unix.take().unwrap();
+        let _engine_unix_handle: JoinHandle<Result<(), Error>>  = task::spawn(async move {
+            while let Some(rpc_msg) = unix_rx.next().await {
+                let mut dsf = dsf_unix.clone();
 
-        let _engine_handle = task::spawn(async move {
+                task::spawn(async move {
+                    if let Err(e) = Self::handle_rpc(&mut dsf, rpc_msg).await {
+                        error!("RPC error: {:?}", e);
+                    }
+                });
+            }
 
-            while r.load(Ordering::SeqCst) {
-                select! {
-                    // Incoming network _requests_
-                    net_rx = net_in_rx.next().fuse() => {
+            Ok(())
+        });
 
-                        if let Some((address, req)) = net_rx {
-                            let mut dsf = engine_dsf.clone();
-                            let mut tx = net_out_tx.clone();
+        // Create periodic timer
+        let mut update_timer = stream::interval(Duration::from_secs(30));
+        let mut _tick_timer = stream::interval(Duration::from_secs(1));
 
-                            task::spawn(async move {
+        // Handle DSF update ticks
+        let dsf_tick = self.dsf.clone();
+        let _engine_tick_handle: JoinHandle<Result<(), Error>> = task::spawn(async move {
 
-                                // Handle request via DSF
-                                let resp = match dsf.handle_net(address, req.clone()).await {
-                                    Ok(v) => v,
-                                    Err(e) => {
-                                        error!("error handling DSF request: {:?}", e);
-                                        return;
-                                    }
-                                };
-
-                                //trace!("engine::handle_net rx: {:?} tx: {:?} for {:?}", req, resp, address);
-
-                                // Return response
-                                tx.send((address, DsfMessage::Response(resp))).await;
-                            });
-                        }
-                    },
-                    // Incoming RPC messages, response is inline
-                    rpc_rx = unix.next().fuse() => {
-                        trace!("engine::unix_rx");
-
-                        if let Some(m) = rpc_rx {
-                            let mut dsf = engine_dsf.clone();
-                            //let mut unix = self.unix.clone();
-
-                            // RPC tasks can take some time and thus must be independent threads
-                            // To avoid blocking network operations
-                            task::spawn(async move {
-                                Self::handle_rpc(&mut dsf, m).await.unwrap();
-                            });
-                        }
-                    },
-                    // TODO: periodic update
-                    interval = update_timer.next().fuse() => {
-                        trace!("engine::tick");
-
-                        if let Some(_i) = interval {
-                            // TODO: do something
-                        }
-                    },
-                    // Tick timer for process reactivity
-                    tick = tick_timer.next().fuse() => {},
-                }
+            while let Some(interval) = update_timer.next().await {
+                trace!("engine::tick");
+                // TODO: do something
             }
 
             Ok(())
@@ -367,7 +308,7 @@ impl Engine {
 
         // TODO: join on net handle
 
-        futures::try_join!(_engine_handle, _net_handle)?;
+        futures::try_join!(_engine_net_handle, _engine_unix_handle);
 
         Ok(())
     }
