@@ -42,7 +42,7 @@ impl ServiceManager {
     }
 
     /// Register a local service for tracking
-    pub fn register(
+    pub async fn register(
         &mut self,
         service: Service,
         primary_page: &Page,
@@ -51,7 +51,7 @@ impl ServiceManager {
     ) -> Result<ServiceInfo, DsfError> {
         let services = self.services.clone();
         trace!("service register lock");
-        let mut services = services.lock().unwrap();
+        let mut services = services.lock().await;
 
         let id = service.id();
 
@@ -80,16 +80,16 @@ impl ServiceManager {
     }
 
     /// Determine whether a service is known in the database
-    pub fn known(&self, id: &Id) -> bool {
+    pub async fn known(&self, id: &Id) -> bool {
         trace!("services known lock");
-        let services = self.services.lock().unwrap();
+        let services = self.services.lock().await;
         services.contains_key(id)
     }
 
     /// Fetch service information for a given service id from the manager
-    pub fn find(&self, id: &Id) -> Option<ServiceInfo> {
+    pub async fn find(&self, id: &Id) -> Option<ServiceInfo> {
         trace!("services find lock");
-        let services = self.services.lock().unwrap();
+        let services = self.services.lock().await;
 
         let service = match services.get(id) {
             Some(v) => v,
@@ -100,36 +100,36 @@ impl ServiceManager {
     }
 
     /// Fetch a service by local index
-    pub fn index(&self, index: usize) -> Option<ServiceInfo> {
+    pub async fn index(&self, index: usize) -> Option<ServiceInfo> {
         let services = self.services.clone();
         trace!("services index lock");
-        let services = services.lock().unwrap();
+        let services = services.lock().await;
         services
             .iter()
             .find(|(_id, s)| s.index == index )
             .map(|(_id, s)| s.info() )
     }
 
-    pub fn index_to_id(&self, index: usize) -> Option<Id> {
+    pub async fn index_to_id(&self, index: usize) -> Option<Id> {
         let services = self.services.clone();
         trace!("services index to id lock");
-        let services = services.lock().unwrap();
+        let services = services.lock().await;
         services
             .iter()
             .find(|(_id, s)| s.index == index)
             .map(|(id, _s)| id.clone())
     }
 
-    pub fn remove(&self, id: &Id) -> Result<Option<ServiceInfo>, DsfError> {
+    pub async fn remove(&self, id: &Id) -> Result<Option<ServiceInfo>, DsfError> {
         // Remove from memory
         trace!("services remove lock");
-        let service = { self.services.lock().unwrap().remove(id) };
+        let service = { self.services.lock().await.remove(id) };
 
         // Remove from database
         if let Some(s) = service {
             let info = s.info();
             // DEADLOCK?
-            //let _ = self.store.lock().unwrap().delete_service(&info);
+            //let _ = self.store.lock().await.delete_service(&info);
 
             return Ok(Some(info));
         };
@@ -159,12 +159,12 @@ impl ServiceManager {
     }
 
     /// Update a service instance (if found)
-    pub fn update_inst<F>(&mut self, id: &Id, mut f: F) -> Option<ServiceInfo>
+    pub async fn update_inst<F>(&mut self, id: &Id, mut f: F) -> Option<ServiceInfo>
     where
         F: FnMut(&mut ServiceInst),
     {
         trace!("services update inst");
-        let mut services = self.services.lock().unwrap();
+        let mut services = self.services.lock().await;
 
         match services.get_mut(id) {
             Some(svc) => {
@@ -177,12 +177,12 @@ impl ServiceManager {
     }
 
     /// Fetch a field from a service instance
-    pub fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
+    pub async fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
     where
         F: Fn(&ServiceInst) -> R,
     {
         trace!("services filter inst");
-        let services = self.services.lock().unwrap();
+        let services = self.services.lock().await;
 
         match services.get(id) {
             Some(s) => {
@@ -194,13 +194,13 @@ impl ServiceManager {
     }
 
     /// Fetch services with a matching state requiring update
-    pub fn updates_required(
+    pub async fn updates_required(
         &mut self,
         state: ServiceState,
         interval: Duration,
         force: bool,
     ) -> Vec<ServiceInfo> {
-        let services = self.services.lock().unwrap();
+        let services = self.services.lock().await;
 
         let updates: Vec<_> = services
             .iter()
@@ -219,10 +219,10 @@ impl ServiceManager {
     }
 
     /// Sync a service instance to disk
-    pub(crate) fn sync_inst(&mut self, inst: &ServiceInst) {
+    pub(crate) async fn sync_inst(&mut self, inst: &ServiceInst) {
         trace!("service sync inst");
 
-        let store = self.store.lock().unwrap();
+        let store = self.store.lock().await;
 
         if let Err(e) = store.save_service(&inst.info()) {
             error!("Error writing service instance {}: {:?}", inst.id(), e);
@@ -238,8 +238,8 @@ impl ServiceManager {
     }
 
     /// Fetch a list of information for known services
-    pub fn list(&self) -> Vec<ServiceInfo> {
-        let services = self.services.lock().unwrap();
+    pub async fn list(&self) -> Vec<ServiceInfo> {
+        let services = self.services.lock().await;
 
         services
             .iter()
@@ -248,17 +248,17 @@ impl ServiceManager {
     }
 
     /// Fetch the number of known services
-    pub fn count(&self) -> usize {
-        let services = self.services.lock().unwrap();
+    pub async fn count(&self) -> usize {
+        let services = self.services.lock().await;
         services.len()
     }
 
     /// Sync the service database to disk
-    pub fn sync(&self) {
+    pub async fn sync(&self) {
         trace!("services sync");
 
-        let mut services = self.services.lock().unwrap();
-        let store = self.store.lock().unwrap();
+        let mut services = self.services.lock().await;
+        let store = self.store.lock().await;
 
         for (id, inst) in services.iter_mut() {
             // Skip unchanged instances
@@ -283,11 +283,11 @@ impl ServiceManager {
     }
 
     /// Load the service database from disk
-    pub fn load(&self) {
+    pub async fn load(&self) {
         trace!("services load");
         
-        let store = self.store.lock().unwrap();
-        let mut services = self.services.lock().unwrap();
+        let store = self.store.lock().await;
+        let mut services = self.services.lock().await;
 
         let service_info = store.load_services().unwrap();
 

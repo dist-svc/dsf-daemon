@@ -36,7 +36,7 @@ where
         // Generate pages
 
         // Fetch the known service from the service list
-        let service_info = match services.find(&id) {
+        let service_info = match services.find(&id).await {
             Some(s) => s,
             None => {
                 // Only known services can be registered
@@ -82,7 +82,7 @@ where
 
                 pages.push(replica_page);
             }
-        });
+        }).await;
 
 
         debug!("Registering service");
@@ -96,7 +96,7 @@ where
         services.update_inst(&id, |s| {
             s.state = ServiceState::Registered;
             s.last_updated = Some(SystemTime::now());
-        });
+        }).await;
 
         Ok(RegisterInfo{
             peers,

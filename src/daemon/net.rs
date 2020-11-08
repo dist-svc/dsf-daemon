@@ -52,32 +52,34 @@ where
         );
 
         // Generic request processing here
-        let peer = self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now()));
+        let peer = self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now())).await;
 
         // Handle specific DSF and DHT messages
-        if let Some(kad_req) = req.data.try_to(()) {
+        let resp = if let Some(kad_req) = req.data.try_to(()) {
             self.handle_dht(from, peer, kad_req).map(move |resp| {
                 let kind = resp.to();
                 net::Response::new(own_id, req_id, kind, Flags::default())
             })
         } else {
             self.handle_dsf(from, peer, req.data)
-                .map(move |kind| net::Response::new(own_id, req_id, kind, Flags::default()))
+                .await
+                .map(move |kind| net::Response::new(own_id, req_id, kind, Flags::default()))  
+        };
 
+        if let Ok(resp) = resp.as_mut() {
             // Generic response processing here
-        }
-        .map(move |mut resp| {
+
             if flags.contains(Flags::PUB_KEY_REQUEST) {
                 resp.common.public_key = Some(our_pub_key);
             }
 
             // Update peer info
-            self.peers().update(&from2, |p| p.info.sent += 1 );
+            self.peers().update(&from2, |p| p.info.sent += 1 ).await;
 
             trace!("returning response (to: {:?})\n {:?}", from2, &resp);
+        }
 
-            resp
-        })
+        resp
     }
 
     // Internal function to send a request and await a response
@@ -104,7 +106,7 @@ where
         );
 
         // Handle received message
-        self.handle_base(&resp.from, &address, &resp.common, Some(SystemTime::now()));
+        self.handle_base(&resp.from, &address, &resp.common, Some(SystemTime::now())).await;
 
         Ok(resp)
     }
@@ -132,7 +134,7 @@ where
 
         for (r, a) in &responses {
             if let Ok(resp) = r {
-                self.handle_base(&resp.from, a, &resp.common, Some(SystemTime::now()));
+                self.handle_base(&resp.from, a, &resp.common, Some(SystemTime::now())).await;
             }
         }
 
@@ -165,7 +167,7 @@ where
     }
 
     /// Handles a base message, updating internal state for the sender
-    pub(crate) fn handle_base(
+    pub(crate) async fn handle_base(
         &mut self,
         id: &Id,
         address: &Address,
@@ -185,13 +187,13 @@ where
             id.clone(),
             PeerAddress::Implicit(*address),
             c.public_key.clone(),
-        );
+        ).await;
 
         // Update peer info
         self.peers().update(&id, |p| {
             p.info.seen = Some(SystemTime::now());
             p.info.received += 1;
-        });
+        }).await;
 
         assert!(id != &self.id(), "handle_base called for self...");
 
@@ -207,7 +209,7 @@ where
         match (peer.state(), &c.public_key) {
             (PeerState::Unknown, Some(pk)) => {
                 info!("Adding key: {:?} to peer: {:?}", pk, id);
-                self.peers().update(&id, |p| p.info.state = PeerState::Known(pk.clone()) );
+                self.peers().update(&id, |p| p.info.state = PeerState::Known(pk.clone()) ).await;
             }
             _ => (),
         };
@@ -216,7 +218,7 @@ where
         if let Some(a) = c.remote_address {
             if a != peer.address() {
                 info!("Setting explicit address {:?} for peer: {:?}", a, id);
-                self.peers().update(&id, |p| p.info.address = PeerAddress::Explicit(a) );
+                self.peers().update(&id, |p| p.info.address = PeerAddress::Explicit(a) ).await;
             }
         }
 
@@ -224,7 +226,7 @@ where
     }
 
     /// Handle a DSF type message
-    fn handle_dsf(
+    async fn handle_dsf(
         &mut self,
         from: Id,
         peer: Peer,
@@ -237,7 +239,7 @@ where
                     "Subscribe request from: {} for service: {}",
                     from, service_id
                 );
-                let service = match self.services().find(&service_id) {
+                let service = match self.services().find(&service_id).await {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -248,7 +250,7 @@ where
 
                 // Fetch pages for service
                 let pages = {
-                    match &self.services().filter(&service_id, |s| s.primary_page.clone() ).flatten() {
+                    match &self.services().filter(&service_id, |s| s.primary_page.clone() ).await.flatten() {
                         Some(p) => vec![p.clone()],
                         None => vec![],
                     }
@@ -264,6 +266,7 @@ where
                         inst.info.updated = Some(SystemTime::now());
                         inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
                     })
+                    .await
                     .unwrap();
 
                 Ok(net::ResponseKind::ValuesFound(service_id, pages))
@@ -274,13 +277,13 @@ where
                     from, service_id
                 );
 
-                self.subscribers().remove(&service_id, &peer.id()).unwrap();
+                self.subscribers().remove(&service_id, &peer.id()).await.unwrap();
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             }
             net::RequestKind::Query(id) => {
                 info!("Query request from: {} for service: {}", from, id);
-                let service = match self.services().find(&id) {
+                let service = match self.services().find(&id).await {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -313,7 +316,7 @@ where
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
 
-                let service = match self.services().find(&id) {
+                let service = match self.services().find(&id).await {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -325,7 +328,7 @@ where
                 let data_mgr = self.data().clone();
 
                 // Update service instance
-                self.services().update_inst(&id, |s| {
+                self.services().update_inst(&id, |s| async {
 
                     // TODO: check we're subscribed to the service (otherwise we shouldn't accept this data)
 
@@ -348,11 +351,13 @@ where
                         if p.header().kind().is_data() {
                             // Store data
                             if let Ok(info) = DataInfo::try_from(p) {
-                                data_mgr.store_data(&info, p).unwrap();
+                                data_mgr.store_data(&info, p).await.unwrap();
                             };
                         }
                     }
-                });
+
+                    Ok(())
+                }).await;
 
                 // TODO: send data to subscribers
                 let req_id = rand::random();
@@ -363,13 +368,13 @@ where
                     Flags::default(),
                 );
 
-                let subscriptions = self.subscribers().find(&id)?;
+                let subscriptions = self.subscribers().find(&id).await?;
 
                 let addresses: Vec<_> = subscriptions
                     .iter()
-                    .filter_map(|s| {
+                    .filter_map(|s| async {
                         if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
-                            self.peers().find(peer_id).map(|p| p.address())
+                            self.peers().find(&peer_id).await.map(|p| p.address())
                         } else {
                             None
                         }

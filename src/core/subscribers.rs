@@ -39,8 +39,8 @@ impl SubscriberManager {
     }
 
     /// Fetch subscribers for a given service
-    pub fn find(&self, service_id: &Id) -> Result<Vec<SubscriberInst>, Error> {
-        let s = self.store.lock().unwrap();
+    pub async fn find(&self, service_id: &Id) -> Result<Vec<SubscriberInst>, Error> {
+        let s = self.store.lock().await;
 
         match s.get(service_id) {
             Some(v) => Ok(v.clone()),
@@ -49,14 +49,14 @@ impl SubscriberManager {
     }
 
     /// Update a specified peer subscription (for remote clients)
-    pub fn update_peer<F: Fn(&mut SubscriberInst)>(
+    pub async fn update_peer<F: Fn(&mut SubscriberInst)>(
         &mut self,
         service_id: &Id,
         peer_id: &Id,
         f: F,
     ) -> Result<(), Error> {
         trace!("update sub net lock");
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().await;
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
 
@@ -95,7 +95,7 @@ impl SubscriberManager {
     }
 
     /// Update a specified socket subscription (for local clients)
-    pub fn update_socket<F: Fn(&mut SubscriberInst)>(
+    pub async fn update_socket<F: Fn(&mut SubscriberInst)>(
         &mut self,
         service_id: &Id,
         socket_id: u32,
@@ -103,7 +103,7 @@ impl SubscriberManager {
     ) -> Result<(), Error> {
         trace!("update sub socket lock");
 
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().await;
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
 
@@ -140,10 +140,10 @@ impl SubscriberManager {
     }
 
     /// Remove a subscription
-    pub fn remove(&mut self, service_id: &Id, peer_id: &Id) -> Result<(), Error> {
+    pub async fn remove(&mut self, service_id: &Id, peer_id: &Id) -> Result<(), Error> {
         trace!("remove sub lock");
 
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().await;
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
 

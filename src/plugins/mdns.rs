@@ -128,7 +128,7 @@ impl MdnsPlugin {
                     debug!("discovered service: {:?}", v);
 
                     // Add to discovered services array
-                    let mut s = services.lock().unwrap();
+                    let mut s = services.lock().await;
                     let e = s.entry(*addr).or_insert(SystemTime::now());
                     *e = SystemTime::now();
 

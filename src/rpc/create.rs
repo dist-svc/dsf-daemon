@@ -69,6 +69,7 @@ where
         let mut info = self
             .services()
             .register(service, &primary_page, ServiceState::Created, None)
+            .await
             .unwrap();
 
         let pages = vec![primary_page];
@@ -77,7 +78,7 @@ where
         if !options.register {
             info!("Registering service locally");
             // Write the service to the database
-            self.datastore().store(&id, &pages);
+            self.datastore().store(&id, &pages).await;
 
         } else {
             info!("Registering and replicating service");
@@ -96,7 +97,7 @@ where
             info = self.services().update_inst(&id, |s| {
                 s.state = ServiceState::Registered;
                 s.last_updated = Some(SystemTime::now());
-            }).unwrap();
+            }).await.unwrap();
         }
 
         // Return service info

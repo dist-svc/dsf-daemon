@@ -166,19 +166,22 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
 
 /// Adapt trait to allow coercion between different types from unrelated crates
 /// without requiring implementations in either (eg. between dsf_core and kad messages)
+#[async_trait]
 pub trait Adapt<T> {
-    fn to(&self) -> T;
+    async fn to(&self) -> T;
 }
 
 /// TryAdapt trait to allow coercion between different types from unrelated crates
 /// without requiring implementations in either (eg. between dsf_core and kad messages)
+#[async_trait]
 pub trait TryAdapt<T, C> {
-    fn try_to(&self, c: C) -> Option<T>;
+    async fn try_to(&self, c: C) -> Option<T>;
 }
 
 /// Adapt from DhtRequest to RequestKind (outgoing requests)
+#[async_trait]
 impl Adapt<RequestKind> for DhtRequest<Id, Data> {
-    fn to(&self) -> RequestKind {
+    async fn to(&self) -> RequestKind {
         trace!("Adapt: {:?}", self);
 
         match self {
@@ -194,7 +197,7 @@ impl Adapt<RequestKind> for DhtRequest<Id, Data> {
 
 /// Adapt from DhtResponse to ResponseKind (outgoing responses)
 impl Adapt<ResponseKind> for DhtResponse<Id, Peer, Data> {
-    fn to(&self) -> ResponseKind {
+    async fn to(&self) -> ResponseKind {
         trace!("Adapt: {:?}", self);
 
         match self {
@@ -227,7 +230,7 @@ impl Adapt<ResponseKind> for DhtResponse<Id, Peer, Data> {
 
 /// Adapt from RequestKind to DhtRequest (incoming requests)
 impl TryAdapt<DhtRequest<Id, Data>, ()> for RequestKind {
-    fn try_to(&self, _c: ()) -> Option<DhtRequest<Id, Data>> {
+    async fn try_to(&self, _c: ()) -> Option<DhtRequest<Id, Data>> {
         trace!("Adapt: {:?}", self);
 
         match self {
@@ -244,7 +247,7 @@ impl TryAdapt<DhtRequest<Id, Data>, ()> for RequestKind {
 
 /// Adapt from ResponseKind to DhtResponse (incoming responses)
 impl TryAdapt<DhtResponse<Id, Peer, Data>, (Id, PeerManager)> for ResponseKind {
-    fn try_to(&self, ctx: (Id, PeerManager)) -> Option<DhtResponse<Id, Peer, Data>> {
+    async fn try_to(&self, ctx: (Id, PeerManager)) -> Option<DhtResponse<Id, Peer, Data>> {
         trace!("Adapt: {:?}", self);
         let own_id = ctx.0;
         let mut known = ctx.1.clone();
@@ -267,7 +270,7 @@ impl TryAdapt<DhtResponse<Id, Peer, Data>, (Id, PeerManager)> for ResponseKind {
                                     id.clone(),
                                     PeerAddress::Implicit(addr.clone()),
                                     Some(key.clone()),
-                                ),
+                                ).await,
                             )
                                 .into(),
                         )

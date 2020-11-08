@@ -39,22 +39,12 @@ extern crate dsf_core;
 extern crate dsf_rpc;
 extern crate kad;
 
-#[cfg(feature = "no_deadlocks")]
 pub(crate) mod sync {
     pub(crate) type Arc<T> = std::sync::Arc<T>;
 
-    pub(crate) type Mutex<T> = no_deadlocks::Mutex<T>;
+    pub(crate) type Mutex<T> = async_std::sync::Mutex<T>;
 
-    pub(crate) type RwLock<T> = no_deadlocks::RwLock<T>;
-}
-
-#[cfg(not(feature = "no_deadlocks"))]
-pub(crate) mod sync {
-    pub(crate) type Arc<T> = std::sync::Arc<T>;
-
-    pub(crate) type Mutex<T> = std::sync::Mutex<T>;
-
-    pub(crate) type RwLock<T> = std::sync::RwLock<T>;
+    pub(crate) type RwLock<T> = async_std::sync::RwLock<T>;
 }
 
 

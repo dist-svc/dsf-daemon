@@ -280,21 +280,21 @@ where
         // Fetch instance lists for each operation
         let register_ops =
             self.services
-                .updates_required(ServiceState::Registered, interval, force);
+                .updates_required(ServiceState::Registered, interval, force).await;
         for _o in &register_ops {
             //self.register(rpc::RegisterOptions{service: rpc::ServiceIdentifier{id: Some(inst.id), index: None}, no_replica: false })
         }
 
         let update_ops = self
             .services
-            .updates_required(ServiceState::Located, interval, force);
+            .updates_required(ServiceState::Located, interval, force).await;
         for _o in &update_ops {
             //self.locate(rpc::LocateOptions{id: inst.id}).await;
         }
 
         let subscribe_ops =
             self.services
-                .updates_required(ServiceState::Subscribed, interval, force);
+                .updates_required(ServiceState::Subscribed, interval, force).await;
         for _o in &subscribe_ops {
             //self.locate(rpc::LocateOptions{id: inst.id}).await;
             //self.subscribe(rpc::SubscribeOptions{service: rpc::ServiceIdentifier{id: Some(inst.id), index: None}}).await;
@@ -307,7 +307,7 @@ where
     ///
     /// This bootstraps using known peers then updates all tracked services
     pub async fn bootstrap(&mut self) -> Result<(), Error> {
-        let peers = self.peers.list();
+        let peers = self.peers.list().await;
 
         info!("DSF bootstrap ({} peers)", peers.len());
 
@@ -346,12 +346,12 @@ where
         Ok(())
     }
 
-    pub fn find_public_key(&self, id: &Id) -> Option<PublicKey> {
-        if let Some(s) = self.services().find(id) {
+    pub async fn find_public_key(&self, id: &Id) -> Option<PublicKey> {
+        if let Some(s) = self.services().find(id).await {
             return Some(s.public_key)
         }
 
-        if let Some(p) = self.peers().find(id) {
+        if let Some(p) = self.peers().find(id).await {
             if let PeerState::Known(pk) = p.state() {
                 return Some(pk)
             }
@@ -360,7 +360,7 @@ where
         None
     }
 
-    pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
+    pub async fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
         let mut services = self.services();
         let replica_manager = self.replicas();
 
@@ -401,7 +401,7 @@ where
         }
 
         // Fetch service instance
-        let _info = match services.known(id) {
+        let _info = match services.known(id).await {
             true => {
                 info!("updating existing service");
                 
@@ -412,7 +412,7 @@ where
                         s.primary_page = Some(primary_page.clone());
                         s.last_updated = Some(SystemTime::now());
                     }
-                }).unwrap()
+                }).await.unwrap()
             }
             false => {
                 info!("creating new service entry");
@@ -431,13 +431,14 @@ where
                         ServiceState::Located,
                         Some(SystemTime::now()),
                     )
+                    .await
                     .unwrap()
             }
         };
 
         // Update listed replicas
         for (peer_id, page) in &replicas {
-            replica_manager.create_or_update(id, peer_id, page);
+            replica_manager.create_or_update(id, peer_id, page).await;
         }
 
         Ok(())
