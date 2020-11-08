@@ -151,7 +151,7 @@ impl PeerManager {
     where
         F: Fn(&Peer) -> R,
     {
-        let mut peers = self.peers.lock().await;
+        let peers = self.peers.lock().await;
 
         trace!("peer fetch inst");
 

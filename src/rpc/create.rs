@@ -78,7 +78,7 @@ where
         if !options.register {
             info!("Registering service locally");
             // Write the service to the database
-            self.datastore().store(&id, &pages).await;
+            self.datastore().store(&id, &pages);
 
         } else {
             info!("Registering and replicating service");

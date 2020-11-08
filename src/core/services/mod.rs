@@ -176,6 +176,20 @@ impl ServiceManager {
         }
     }
 
+    pub async fn validate_pages(&mut self, id: &Id, pages: &[Page]) -> Result<(), DsfError> {
+        let mut services = self.services.lock().await;
+        let service_inst = match services.get_mut(id) {
+            Some(s) => s,
+            None => return Err(DsfError::UnknownService),
+        };
+
+        for p in pages {
+            service_inst.service().validate_page(p)?;
+        }
+
+        Ok(())
+    }
+
     /// Fetch a field from a service instance
     pub async fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
     where

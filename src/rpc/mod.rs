@@ -47,7 +47,7 @@ where
         debug!("Handling request: {:?}", req);
 
         let res = match req {
-            RequestKind::Status => Ok(ResponseKind::Status(self.status())),
+            RequestKind::Status => Ok(ResponseKind::Status(self.status().await)),
 
             RequestKind::Peer(options) => self.exec_peer(options).await,
             RequestKind::Service(options) => self.exec_service(options).await,
@@ -90,14 +90,14 @@ where
                 ResponseKind::None
             }
             DebugCommands::Dht(DhtCommands::Data(service)) => {
-                let id = self.resolve_identifier(&service)?;
+                let id = self.resolve_identifier(&service).await?;
 
                 let pages = self.search(&id).await?;
 
                 ResponseKind::Pages(pages)
             }
             DebugCommands::Dht(DhtCommands::Peer(id)) => {
-                let id = self.resolve_peer_identifier(&id)?;
+                let id = self.resolve_peer_identifier(&id).await?;
 
                 let peer = self.lookup(&id).await?;
 
@@ -145,8 +145,9 @@ where
 
         let res = match req {
             DataCommands::List(data::ListOptions { service, bounds }) => {
-                let id = self.resolve_identifier(&service)?;
+                let id = self.resolve_identifier(&service).await?;
                 self.get_data(&id, bounds.count.unwrap_or(100))
+                    .await
                     .map(ResponseKind::Data)?
             }
             DataCommands::Publish(options) => {
@@ -176,7 +177,7 @@ where
                 self.locate(options).await.map(ResponseKind::Located)?
             }
             ServiceCommands::Info(options) => {
-                let id = self.resolve_identifier(&options.service)?;
+                let id = self.resolve_identifier(&options.service).await?;
 
                 self.services()
                     .find(&id)

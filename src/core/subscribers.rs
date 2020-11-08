@@ -40,12 +40,31 @@ impl SubscriberManager {
 
     /// Fetch subscribers for a given service
     pub async fn find(&self, service_id: &Id) -> Result<Vec<SubscriberInst>, Error> {
-        let s = self.store.lock().await;
+        let store = self.store.lock().await;
 
-        match s.get(service_id) {
+        match store.get(service_id) {
             Some(v) => Ok(v.clone()),
             None => Ok(vec![]),
         }
+    }
+
+    pub async fn find_peers(&self, service_id: &Id) -> Result<Vec<Id>, Error> {
+        let store = self.store.lock().await;
+
+        let subs = match store.get(service_id) {
+            Some(v) => v,
+            None => return Ok(vec![]),
+        };
+
+        let subs = subs.iter().filter_map(|s| {
+            if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
+                Some(peer_id.clone())
+            } else {
+                None
+            }
+        });
+
+        Ok(subs.collect())
     }
 
     /// Update a specified peer subscription (for remote clients)

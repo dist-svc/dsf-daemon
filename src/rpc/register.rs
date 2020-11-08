@@ -29,7 +29,7 @@ where
 
         info!("Register: {:?}", &options.service);
 
-        let id = self.resolve_identifier(&options.service)?;
+        let id = self.resolve_identifier(&options.service).await?;
 
         let mut services = self.services();
 

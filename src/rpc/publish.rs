@@ -95,18 +95,15 @@ where
         );
 
         // Generate subscriber address list
-        let subscriptions = self.subscribers().find(&id).await?;
-        let addresses: Vec<_> = subscriptions
-            .iter()
-            .filter_map(|s| async {
-                if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
-                    self.peers().find(peer_id).map(|p| p.address()).await
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let peers = self.peers();
+        let peer_subs = self.subscribers().find_peers(&id).await?;
+        let mut addresses = Vec::<Address>::with_capacity(peer_subs.len());
 
+        for peer_id in peer_subs {
+            if let Some(p) = peers.find(&peer_id).await {
+                addresses.push(p.address());
+            }
+        }
 
         // Push updates to all subscribers
         info!("Sending data push messages");

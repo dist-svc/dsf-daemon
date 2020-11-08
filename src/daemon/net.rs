@@ -55,31 +55,30 @@ where
         let peer = self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now())).await;
 
         // Handle specific DSF and DHT messages
-        let resp = if let Some(kad_req) = req.data.try_to(()) {
-            self.handle_dht(from, peer, kad_req).map(move |resp| {
-                let kind = resp.to();
-                net::Response::new(own_id, req_id, kind, Flags::default())
-            })
+        let mut resp = if let Some(kad_req) = req.data.try_to(()).await {
+            let dht_resp = self.handle_dht(from, peer, kad_req)?;
+
+            net::Response::new(own_id, req_id, dht_resp.to().await, Flags::default()
+        )
         } else {
-            self.handle_dsf(from, peer, req.data)
-                .await
-                .map(move |kind| net::Response::new(own_id, req_id, kind, Flags::default()))  
+            let dsf_resp = self.handle_dsf(from, peer, req.data).await?;
+
+             net::Response::new(own_id, req_id, dsf_resp, Flags::default())
         };
 
-        if let Ok(resp) = resp.as_mut() {
-            // Generic response processing here
+        // Generic response processing here
 
-            if flags.contains(Flags::PUB_KEY_REQUEST) {
-                resp.common.public_key = Some(our_pub_key);
-            }
-
-            // Update peer info
-            self.peers().update(&from2, |p| p.info.sent += 1 ).await;
-
-            trace!("returning response (to: {:?})\n {:?}", from2, &resp);
+        if flags.contains(Flags::PUB_KEY_REQUEST) {
+            resp.common.public_key = Some(our_pub_key);
         }
 
-        resp
+        // Update peer info
+        self.peers().update(&from2, |p| p.info.sent += 1 ).await;
+
+        trace!("returning response (to: {:?})\n {:?}", from2, &resp);
+
+
+        Ok(resp)
     }
 
     // Internal function to send a request and await a response
@@ -325,39 +324,30 @@ where
                     }
                 };
 
+                // Validate incoming data prior to processing
+                if let Err(e) = self.services().validate_pages(&id, &data).await {
+                    error!("Invalid data for service: {}", id);
+                    return Ok(net::ResponseKind::Status(net::Status::InvalidRequest));
+                }
+
+                // Pick out service pages
+
                 let data_mgr = self.data().clone();
 
-                // Update service instance
-                self.services().update_inst(&id, |s| async {
-
-                    // TODO: check we're subscribed to the service (otherwise we shouldn't accept this data)
-
-                    // Store data against service
-                    for p in &data {
-                        // Validate data against service
-                        if let Err(e) = s.service().validate_page(p) {
-                            // TODO: handle errors properly here
-                            error!("Error validating page: {:?}", e);
-                            continue;
-                        }
-
-                        if p.header().kind().is_page() {
-                            // Apply page to service
-                            if let Err(e) = s.apply_update(p) {
-                                error!("Error applying service update: {:?}", e);
-                            }
-                        }
-
-                        if p.header().kind().is_data() {
-                            // Store data
-                            if let Ok(info) = DataInfo::try_from(p) {
-                                data_mgr.store_data(&info, p).await.unwrap();
-                            };
-                        }
+                for p in &data {
+                    // Apply page to service
+                    if p.header().kind().is_page() {
+                        self.services().update_inst(&id, |s| { let _ = s.apply_update(p); } ).await;
                     }
 
-                    Ok(())
-                }).await;
+                    // Store data
+                    if p.header().kind().is_data() {
+                        if let Ok(info) = DataInfo::try_from(p) {
+                            data_mgr.store_data(&info, p).await.unwrap();
+                        };
+                    }
+                }
+                
 
                 // TODO: send data to subscribers
                 let req_id = rand::random();
@@ -368,18 +358,14 @@ where
                     Flags::default(),
                 );
 
-                let subscriptions = self.subscribers().find(&id).await?;
+                let peer_subs = self.subscribers().find_peers(&id).await?;
+                let mut addresses = Vec::with_capacity(peer_subs.len());
 
-                let addresses: Vec<_> = subscriptions
-                    .iter()
-                    .filter_map(|s| async {
-                        if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
-                            self.peers().find(&peer_id).await.map(|p| p.address())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+                for peer_id in peer_subs {
+                    if let Some(peer) = self.peers().find(&peer_id).await {
+                        addresses.push(peer.address());
+                    }
+                }
 
                 info!("Sending data push message id {} to: {:?}", req_id, addresses);
 
