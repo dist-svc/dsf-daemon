@@ -59,7 +59,7 @@ impl MockConnector {
     where
         T: Into<VecDeque<MockTransaction>>,
     {
-        *self.transactions.lock().await = transactions.into();
+        *self.transactions.lock().unwrap() = transactions.into();
 
         self.clone()
     }
@@ -68,7 +68,7 @@ impl MockConnector {
     pub async fn finalise(&mut self) {
         debug!("Finalizing expectations");
 
-        let transactions: Vec<_> = self.transactions.lock().await.drain(..).collect();
+        let transactions: Vec<_> = self.transactions.lock().unwrap().drain(..).collect();
         let expectations = Vec::<MockTransaction>::new();
         assert_eq!(
             &expectations, &transactions,
@@ -87,7 +87,7 @@ impl Connector for MockConnector {
         req: NetRequest,
         _timeout: Duration,
     ) -> Result<NetResponse, Error> {
-        let mut transactions = self.transactions.lock().await;
+        let mut transactions = self.transactions.lock().unwrap();
         let transaction = transactions.pop_front().expect(&format!(
             "request error, no more transactions available (request: {:?})",
             req
@@ -113,7 +113,7 @@ impl Connector for MockConnector {
         target: Address,
         resp: NetResponse,
     ) -> Result<(), Error> {
-        let mut transactions = self.transactions.lock().await;
+        let mut transactions = self.transactions.lock().unwrap();
         let transaction = transactions.pop_front().expect(&format!(
             "response error, no more transactions available (response: {:?})",
             resp

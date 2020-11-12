@@ -38,15 +38,15 @@ impl PeerManager {
         s
     }
 
-    pub async fn find(&self, id: &Id) -> Option<Peer> {
-        let peers = self.peers.lock().await;
+    pub fn find(&self, id: &Id) -> Option<Peer> {
+        let peers = self.peers.lock().unwrap();
 
         peers.get(id).map(|p| p.clone())
     }
 
-    pub async fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
+    pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
         // Create new peer
-        let peer = self.peers.lock().await
+        let peer = self.peers.lock().unwrap()
             .entry(id.clone())
             .or_insert_with(|| {
                 debug!(
@@ -69,7 +69,7 @@ impl PeerManager {
             .clone();
 
         // Write to store
-//        let store = self.store.lock().await;
+//        let store = self.store.lock().unwrap();
 //        if let Err(e) = store.save_peer(&peer.info) {
 //            error!("Error writing peer {} to db: {:?}", id, e);
 //        }
@@ -77,16 +77,16 @@ impl PeerManager {
         peer
     }
 
-    pub async fn remove(&self, id: &Id) -> Option<PeerInfo> {
+    pub fn remove(&self, id: &Id) -> Option<PeerInfo> {
         trace!("remove peer lock");
 
-        let peer = { self.peers.lock().await.remove(id) };
+        let peer = { self.peers.lock().unwrap().remove(id) };
 
         if let Some(p) = peer {
             let info = p.info();
 
             trace!("update peer (store) lock");
-            if let Err(e) = self.store.lock().await.delete_peer(&info) {
+            if let Err(e) = self.store.lock().unwrap().delete_peer(&info) {
                 error!("Error removing peer from db: {:?}", e);
             }
 
@@ -96,31 +96,31 @@ impl PeerManager {
         }
     }
 
-    pub async fn count(&self) -> usize {
+    pub fn count(&self) -> usize {
         trace!("count peer lock");
 
-        let peers = self.peers.lock().await;
+        let peers = self.peers.lock().unwrap();
         peers.len()
     }
 
-    pub async fn info(&self, id: &Id) -> Option<PeerInfo> {
-        self.find(id).await.map(|p| p.info())
+    pub fn info(&self, id: &Id) -> Option<PeerInfo> {
+        self.find(id).map(|p| p.info())
     }
 
-    pub async fn list(&self) -> Vec<(Id, Peer)> {
+    pub fn list(&self) -> Vec<(Id, Peer)> {
         trace!("list peer lock");
 
-        let peers = self.peers.lock().await;
+        let peers = self.peers.lock().unwrap();
         peers
             .iter()
             .map(|(id, p)| (id.clone(), p.clone()))
             .collect()
     }
 
-    pub async fn index_to_id(&self, index: usize) -> Option<Id> {
+    pub fn index_to_id(&self, index: usize) -> Option<Id> {
         trace!("index to id peer lock");
 
-        let peers = self.peers.lock().await;
+        let peers = self.peers.lock().unwrap();
 
         peers
             .iter()
@@ -129,11 +129,11 @@ impl PeerManager {
     }
 
     /// Update a peer instance (if found)
-    pub async fn update<F>(&mut self, id: &Id, mut f: F) -> Option<PeerInfo>
+    pub fn update<F>(&mut self, id: &Id, mut f: F) -> Option<PeerInfo>
     where
         F: FnMut(&mut Peer),
     {
-        let mut peers = self.peers.lock().await;
+        let mut peers = self.peers.lock().unwrap();
 
         trace!("peer update inst");
 
@@ -147,11 +147,11 @@ impl PeerManager {
     }
 
     /// Fetch a field from a service instance
-    pub async fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
+    pub fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
     where
         F: Fn(&Peer) -> R,
     {
-        let peers = self.peers.lock().await;
+        let peers = self.peers.lock().unwrap();
 
         trace!("peer fetch inst");
 
@@ -161,14 +161,14 @@ impl PeerManager {
         }
     }
 
-    pub async fn sync(&self) {
+    pub fn sync(&self) {
         trace!("sync peer lock");
-        let peers = self.peers.lock().await;
+        let peers = self.peers.lock().unwrap();
 
         for (id, inst) in peers.iter() {
             let info = inst.info();
 
-            if let Err(e) = self.store.lock().await.save_peer(&info) {
+            if let Err(e) = self.store.lock().unwrap().save_peer(&info) {
                 error!("Error writing peer {} to db: {:?}", id, e);
             }
         }
@@ -178,10 +178,10 @@ impl PeerManager {
     async fn load(&mut self) {
 
         trace!("load peers lock");
-        let mut peers = self.peers.lock().await;
+        let mut peers = self.peers.lock().unwrap();
 
         trace!("take store lock");
-        let store = self.store.lock().await;
+        let store = self.store.lock().unwrap();
 
         let peer_info: Vec<PeerInfo> = match store.load_peers() {
             Ok(v) => v,

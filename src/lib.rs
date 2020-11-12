@@ -42,9 +42,9 @@ extern crate kad;
 pub(crate) mod sync {
     pub(crate) type Arc<T> = std::sync::Arc<T>;
 
-    pub(crate) type Mutex<T> = async_std::sync::Mutex<T>;
+    pub(crate) type Mutex<T> = std::sync::Mutex<T>;
 
-    pub(crate) type RwLock<T> = async_std::sync::RwLock<T>;
+    pub(crate) type RwLock<T> = std::sync::RwLock<T>;
 }
 
 

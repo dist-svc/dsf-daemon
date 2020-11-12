@@ -182,7 +182,7 @@ impl Wire {
         // Find pending request
         trace!("pending request lock");
         let mut a = {
-                match self.requests.lock().await.remove(&(msg.address.into(), req_id)) {
+                match self.requests.lock().unwrap().remove(&(msg.address.into(), req_id)) {
                 Some(a) => {
                     trace!("Found pending request for id {} address: {}", req_id, msg.address);
                     a
@@ -276,7 +276,7 @@ impl Connector for WireConnector {
 
         // Add response channel to map
         trace!("Adding request to tracking");
-        { self.requests.lock().await.insert((target, req_id), tx) };
+        { self.requests.lock().unwrap().insert((target, req_id), tx) };
 
         // Pass message to internal sink
         let mut sink = self.sink.clone();
@@ -304,7 +304,7 @@ impl Connector for WireConnector {
 
         // Remove request from tracking
         trace!("Removing request from tracking");
-        self.requests.lock().await.remove(&(target, req_id));
+        self.requests.lock().unwrap().remove(&(target, req_id));
 
         res
     }

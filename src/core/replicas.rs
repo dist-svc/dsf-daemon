@@ -51,9 +51,9 @@ impl ReplicaManager {
     }
 
     /// Find replicas for a given service
-    pub async fn find(&self, service_id: &Id) -> Vec<ReplicaInst> {
+    pub fn find(&self, service_id: &Id) -> Vec<ReplicaInst> {
         trace!("find replica lock");
-        let mut store = self.store.lock().await;
+        let mut store = self.store.lock().unwrap();
 
         let v = store.entry(service_id.clone()).or_insert(vec![]);
 
@@ -61,10 +61,10 @@ impl ReplicaManager {
     }
 
     /// Create or update a given replica instance
-    pub async fn create_or_update(&self, service_id: &Id, peer_id: &Id, page: &Page) {
+    pub fn create_or_update(&self, service_id: &Id, peer_id: &Id, page: &Page) {
         trace!("create or update replica lock");
 
-        let mut store = self.store.lock().await;
+        let mut store = self.store.lock().unwrap();
         let replicas = store.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 
@@ -78,14 +78,14 @@ impl ReplicaManager {
     }
 
     /// Update a specified replica
-    pub async fn update_replica<F: Fn(&mut ReplicaInst)>(
+    pub fn update_replica<F: Fn(&mut ReplicaInst)>(
         &self,
         service_id: &Id,
         peer_id: &Id,
         f: F,
     ) -> Result<(), ()> {
         trace!("update replica lock");
-        let mut store = self.store.lock().await;
+        let mut store = self.store.lock().unwrap();
         let replicas = store.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 
@@ -97,7 +97,7 @@ impl ReplicaManager {
     }
 
     /// Remove a specified replica
-    pub async fn remove(&self, _service_id: &Id, _peer_id: &Id) -> Result<Self, ()> {
+    pub fn remove(&self, _service_id: &Id, _peer_id: &Id) -> Result<Self, ()> {
         unimplemented!()
     }
 }

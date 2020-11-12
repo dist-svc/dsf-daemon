@@ -76,8 +76,8 @@ where
     pub(crate) async fn status(&mut self) -> rpc::StatusInfo {
         rpc::StatusInfo {
             id: self.id(),
-            peers: self.peers().count().await,
-            services: self.services().count().await,
+            peers: self.peers().count(),
+            services: self.services().count(),
         }
     }
 
@@ -90,14 +90,14 @@ where
                 ResponseKind::None
             }
             DebugCommands::Dht(DhtCommands::Data(service)) => {
-                let id = self.resolve_identifier(&service).await?;
+                let id = self.resolve_identifier(&service)?;
 
                 let pages = self.search(&id).await?;
 
                 ResponseKind::Pages(pages)
             }
             DebugCommands::Dht(DhtCommands::Peer(id)) => {
-                let id = self.resolve_peer_identifier(&id).await?;
+                let id = self.resolve_peer_identifier(&id)?;
 
                 let peer = self.lookup(&id).await?;
 
@@ -125,9 +125,9 @@ where
                     .map(|p| ResponseKind::Peers(vec![(p.id(), p.info())]))?
             }
             PeerCommands::Remove(options) => {
-                let id = self.resolve_peer_identifier(&options).await?;
+                let id = self.resolve_peer_identifier(&options)?;
 
-                let p = self.peers().remove(&id).await;
+                let p = self.peers().remove(&id);
 
                 match p {
                     Some(p) => ResponseKind::Peer(p),
@@ -145,7 +145,7 @@ where
 
         let res = match req {
             DataCommands::List(data::ListOptions { service, bounds }) => {
-                let id = self.resolve_identifier(&service).await?;
+                let id = self.resolve_identifier(&service)?;
                 self.get_data(&id, bounds.count.unwrap_or(100))
                     .await
                     .map(ResponseKind::Data)?
@@ -166,7 +166,7 @@ where
         use rpc::*;
 
         let res = match req {
-            ServiceCommands::List(_options) => ResponseKind::Services(self.get_services().await),
+            ServiceCommands::List(_options) => ResponseKind::Services(self.get_services()),
             ServiceCommands::Create(options) => {
                 self.create(options).await.map(ResponseKind::Service)?
             }
@@ -177,11 +177,10 @@ where
                 self.locate(options).await.map(ResponseKind::Located)?
             }
             ServiceCommands::Info(options) => {
-                let id = self.resolve_identifier(&options.service).await?;
+                let id = self.resolve_identifier(&options.service)?;
 
                 self.services()
                     .find(&id)
-                    .await
                     .map(|i| ResponseKind::Service(i))
                     .unwrap_or(ResponseKind::None)
             }
@@ -190,12 +189,12 @@ where
                 .await
                 .map(ResponseKind::Subscribed)?,
             ServiceCommands::SetKey(options) => {
-                let id = self.resolve_identifier(&options.service).await?;
+                let id = self.resolve_identifier(&options.service)?;
 
                 // TODO: Ehh?
                 let s = self.services().update_inst(&id, |s| {
                     s.service.set_secret_key(options.secret_key.clone());
-                }).await;
+                });
 
                 match s {
                     Some(s) => ResponseKind::Services(vec![s]),
@@ -203,9 +202,9 @@ where
                 }
             }
             ServiceCommands::Remove(options) => {
-                let id = self.resolve_identifier(&options.service).await?;
+                let id = self.resolve_identifier(&options.service)?;
 
-                let s = self.services().remove(&id).await?;
+                let s = self.services().remove(&id)?;
 
                 match s {
                     Some(s) => ResponseKind::Service(s),
@@ -221,7 +220,6 @@ where
     pub(super) async fn peer_info(&mut self) -> Vec<(Id, rpc::PeerInfo)> {
         self.peers()
             .list()
-            .await
             .drain(..)
             .map(|(id, p)| (id, p.info()))
             .collect()
@@ -232,15 +230,15 @@ where
         id: &Id,
         count: usize,
     ) -> Result<Vec<dsf_rpc::DataInfo>, Error> {
-        let d = self.data().fetch_data(id, count).await?;
+        let d = self.data().fetch_data(id, count)?;
         Ok(d.iter().map(|i| i.info.clone()).collect())
     }
 
-    pub(super) async fn get_services(&mut self) -> Vec<dsf_rpc::ServiceInfo> {
-        self.services().list().await
+    pub(super) fn get_services(&mut self) -> Vec<dsf_rpc::ServiceInfo> {
+        self.services().list()
     }
 
-    pub(super) async fn resolve_identifier(
+    pub(super) fn resolve_identifier(
         &mut self,
         identifier: &ServiceIdentifier,
     ) -> Result<Id, Error> {
@@ -254,7 +252,7 @@ where
             (_, Some(index)) => index,
         };
 
-        match self.services().index_to_id(index).await {
+        match self.services().index_to_id(index) {
             Some(id) => Ok(id),
             None => {
                 error!("no service matching index: {}", index);
@@ -263,7 +261,7 @@ where
         }
     }
 
-    pub(super) async fn resolve_peer_identifier(
+    pub(super) fn resolve_peer_identifier(
         &mut self,
         identifier: &ServiceIdentifier,
     ) -> Result<Id, Error> {
@@ -277,7 +275,7 @@ where
             (_, Some(index)) => index,
         };
 
-        match self.peers().index_to_id(index).await {
+        match self.peers().index_to_id(index) {
             Some(id) => Ok(id),
             None => {
                 error!("no peer matching index: {}", index);

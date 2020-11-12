@@ -17,7 +17,7 @@ where
         let services = self.services();
 
         // Skip search for owned services...
-        if let Some(service_info) = services.find(&options.id).await {
+        if let Some(service_info) = services.find(&options.id) {
             if service_info.origin {
                 return Ok(LocateInfo {
                     origin: true,
@@ -34,7 +34,7 @@ where
         debug!("locate, found {} pages", pages.len());
 
         // Register new service
-        self.service_register(&options.id, pages).await?;
+        self.service_register(&options.id, pages)?;
 
         Ok(LocateInfo {
             origin: false,

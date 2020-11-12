@@ -69,7 +69,6 @@ where
         let mut info = self
             .services()
             .register(service, &primary_page, ServiceState::Created, None)
-            .await
             .unwrap();
 
         let pages = vec![primary_page];
@@ -97,7 +96,7 @@ where
             info = self.services().update_inst(&id, |s| {
                 s.state = ServiceState::Registered;
                 s.last_updated = Some(SystemTime::now());
-            }).await.unwrap();
+            }).unwrap();
         }
 
         // Return service info

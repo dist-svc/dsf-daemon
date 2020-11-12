@@ -267,7 +267,7 @@ impl TryAdapt<DhtResponse<Id, Peer, Data>, (Id, PeerManager)> for ResponseKind {
                         id.clone(),
                         PeerAddress::Implicit(addr.clone()),
                         Some(key.clone()),
-                    ).await;
+                    );
 
                     dht_nodes.push((id.clone(), node).into());
                 }

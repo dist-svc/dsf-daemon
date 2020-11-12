@@ -240,9 +240,7 @@ impl Engine {
                             let address = m.address.clone();
 
                             // Decode message via wire module
-                            let message = match wire.handle_incoming(&m, |id| {
-                                futures::executor::block_on(async { net_dsf.find_public_key(id).await })
-                            }).await {
+                            let message = match wire.handle_incoming(&m, |id| net_dsf.find_public_key(id) ).await {
                                 // Incoming request
                                 Ok(Some(v)) => v,
                                 // Incoming response, routed internally

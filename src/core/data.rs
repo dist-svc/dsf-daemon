@@ -32,9 +32,9 @@ impl DataManager {
 
     /// Fetch data for a given service
     // TODO: add paging?
-    pub async fn fetch_data(&self, service_id: &Id, _limit: usize) -> Result<Vec<DataInst>, Error> {
+    pub fn fetch_data(&self, service_id: &Id, _limit: usize) -> Result<Vec<DataInst>, Error> {
         trace!("fetch data lock");
-        let store = self.store.lock().await;
+        let store = self.store.lock().unwrap();
 
         // Load service info
         let service = match store.find_service(service_id)? {
@@ -63,11 +63,11 @@ impl DataManager {
     }
 
     /// Store data for a given service
-    pub async fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
+    pub fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
 
         trace!("store data lock");
         // DEADLOCK DISABLED
-        //let store = self.store.lock().await;
+        //let store = self.store.lock().unwrap();
 
         // Store data object
         //store.save_data(info)?;

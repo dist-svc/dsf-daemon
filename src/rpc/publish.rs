@@ -24,12 +24,12 @@ where
         let _enter = span.enter();
 
         // Resolve ID from ID or Index options
-        let id = self.resolve_identifier(&options.service).await?;
+        let id = self.resolve_identifier(&options.service)?;
 
         let mut services = self.services();
 
         // Fetch the known service from the service list
-        let service_info = match services.find(&id).await {
+        let service_info = match services.find(&id) {
             Some(s) => s,
             None => {
                 // Only known services can be registered
@@ -71,7 +71,7 @@ where
 
             r.1.raw = Some(buff[..r.0].to_vec());
             page = Some(r.1);
-        }).await;
+        });
 
         let page = page.unwrap();
 
@@ -83,7 +83,7 @@ where
 
         // Store new service data
         let data_info = DataInfo::try_from(&page).unwrap();
-        self.data().store_data(&data_info, &page).await?;
+        self.data().store_data(&data_info, &page)?;
 
 
         // Generate push data message
@@ -96,11 +96,11 @@ where
 
         // Generate subscriber address list
         let peers = self.peers();
-        let peer_subs = self.subscribers().find_peers(&id).await?;
+        let peer_subs = self.subscribers().find_peers(&id)?;
         let mut addresses = Vec::<Address>::with_capacity(peer_subs.len());
 
         for peer_id in peer_subs {
-            if let Some(p) = peers.find(&peer_id).await {
+            if let Some(p) = peers.find(&id) {
                 addresses.push(p.address());
             }
         }

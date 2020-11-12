@@ -83,7 +83,7 @@ where
             resp.from.clone(),
             PeerAddress::Implicit(address.into()),
             None,
-        ).await;
+        );
         let mut info = ConnectInfo {
             id: resp.from.clone(),
             peers: 0,

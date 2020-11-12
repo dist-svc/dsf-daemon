@@ -125,7 +125,7 @@ impl Unix {
                     let conn = Connection::new(stream, index, rx_sink.clone());
 
                     trace!("connections lock");
-                    c.lock().await.insert(index, conn);
+                    c.lock().unwrap().insert(index, conn);
 
                     index += 1;
                 }
@@ -152,7 +152,7 @@ impl Unix {
 
         let (mut tx_sink, mut exit_sink) = {
             trace!("response lock");
-            let mut connections = self.connections.lock().await;
+            let mut connections = self.connections.lock().unwrap();
 
             let interface = match connections.get_mut(&connection_id) {
                 Some(v) => v,

@@ -29,7 +29,7 @@ where
 
         info!("Subscribe: {:?}", &options.service);
 
-        let id = match self.resolve_identifier(&options.service).await {
+        let id = match self.resolve_identifier(&options.service) {
             Ok(id) => id,
             Err(e) => return Err(e),
         };
@@ -37,7 +37,7 @@ where
         let own_id = self.id();
 
         // Fetch the known service from the service list
-        let service_info = match self.services().find(&id).await {
+        let service_info = match self.services().find(&id) {
             Some(s) => s,
             None => {
                 // Only known services can be registered
@@ -51,7 +51,7 @@ where
         // TODO: lookup replicas in distributed database?
 
         // Fetch known replicas
-        let replicas = self.replicas().find(&id).await;
+        let replicas = self.replicas().find(&id);
 
         // Build peer search across known replicas
         // DEADLOCK MAYBE?
@@ -112,7 +112,6 @@ where
                         .update_replica(&id, &response.from, |r| {
                             r.info.active = true;
                         })
-                        .await
                         .unwrap();
 
                     subscription_info.push(SubscriptionInfo {
@@ -146,7 +145,7 @@ where
                 if s.state == ServiceState::Located {
                     s.state = ServiceState::Subscribed;
                 }
-            }).await;
+            });
         } else {
             warn!(
                 "[DSF ({:?})] Subscription failed, no viable replicas found",

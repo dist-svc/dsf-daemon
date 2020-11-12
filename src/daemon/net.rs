@@ -10,6 +10,7 @@ use tracing::{span, Level};
 use dsf_core::net;
 use dsf_core::prelude::*;
 use dsf_core::service::Subscriber;
+use dsf_core::wire::Container;
 
 use kad::prelude::*;
 
@@ -27,6 +28,29 @@ impl<C> Dsf<C>
 where
     C: Connector + Clone + Sync + Send + 'static,
 {
+    pub async fn handle_net_raw(&mut self, msg: crate::io::NetMessage) -> Result<(), DaemonError> {
+
+
+        // Decode message
+        let (container, _n) = Container::from(&msg.data);
+        let _id: Id = container.id().into();
+
+        // Parse out base object
+        // TODO: pass secret keys for encode / decode here
+        let (base, _n) = Base::parse(&msg.data, |id| self.find_public_key(id), |_id| None)?;
+
+        // TODO: use n here?
+
+        // Convert into message type
+        let message = net::Message::convert(base, |id| self.find_public_key(id) )?;
+
+        // Route responses to incoming requests 
+
+        // Add to 
+
+        unimplemented!()
+    }
+
     /// Handle a received request message and generate a response
     pub async fn handle_net(
         &mut self,
@@ -73,7 +97,7 @@ where
         }
 
         // Update peer info
-        self.peers().update(&from2, |p| p.info.sent += 1 ).await;
+        self.peers().update(&from2, |p| p.info.sent += 1 );
 
         trace!("returning response (to: {:?})\n {:?}", from2, &resp);
 
@@ -186,13 +210,13 @@ where
             id.clone(),
             PeerAddress::Implicit(*address),
             c.public_key.clone(),
-        ).await;
+        );
 
         // Update peer info
         self.peers().update(&id, |p| {
             p.info.seen = Some(SystemTime::now());
             p.info.received += 1;
-        }).await;
+        });
 
         assert!(id != &self.id(), "handle_base called for self...");
 
@@ -208,7 +232,7 @@ where
         match (peer.state(), &c.public_key) {
             (PeerState::Unknown, Some(pk)) => {
                 info!("Adding key: {:?} to peer: {:?}", pk, id);
-                self.peers().update(&id, |p| p.info.state = PeerState::Known(pk.clone()) ).await;
+                self.peers().update(&id, |p| p.info.state = PeerState::Known(pk.clone()) );
             }
             _ => (),
         };
@@ -217,7 +241,7 @@ where
         if let Some(a) = c.remote_address {
             if a != peer.address() {
                 info!("Setting explicit address {:?} for peer: {:?}", a, id);
-                self.peers().update(&id, |p| p.info.address = PeerAddress::Explicit(a) ).await;
+                self.peers().update(&id, |p| p.info.address = PeerAddress::Explicit(a) );
             }
         }
 
@@ -238,7 +262,7 @@ where
                     "Subscribe request from: {} for service: {}",
                     from, service_id
                 );
-                let service = match self.services().find(&service_id).await {
+                let service = match self.services().find(&service_id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -249,7 +273,7 @@ where
 
                 // Fetch pages for service
                 let pages = {
-                    match &self.services().filter(&service_id, |s| s.primary_page.clone() ).await.flatten() {
+                    match &self.services().filter(&service_id, |s| s.primary_page.clone() ).flatten() {
                         Some(p) => vec![p.clone()],
                         None => vec![],
                     }
@@ -265,7 +289,7 @@ where
                         inst.info.updated = Some(SystemTime::now());
                         inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
                     })
-                    .await
+                    
                     .unwrap();
 
                 Ok(net::ResponseKind::ValuesFound(service_id, pages))
@@ -276,13 +300,13 @@ where
                     from, service_id
                 );
 
-                self.subscribers().remove(&service_id, &peer.id()).await.unwrap();
+                self.subscribers().remove(&service_id, &peer.id()).unwrap();
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             }
             net::RequestKind::Query(id) => {
                 info!("Query request from: {} for service: {}", from, id);
-                let service = match self.services().find(&id).await {
+                let service = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -315,7 +339,7 @@ where
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
 
-                let service = match self.services().find(&id).await {
+                let service = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -325,7 +349,7 @@ where
                 };
 
                 // Validate incoming data prior to processing
-                if let Err(e) = self.services().validate_pages(&id, &data).await {
+                if let Err(e) = self.services().validate_pages(&id, &data) {
                     error!("Invalid data for service: {}", id);
                     return Ok(net::ResponseKind::Status(net::Status::InvalidRequest));
                 }
@@ -337,13 +361,13 @@ where
                 for p in &data {
                     // Apply page to service
                     if p.header().kind().is_page() {
-                        self.services().update_inst(&id, |s| { let _ = s.apply_update(p); } ).await;
+                        self.services().update_inst(&id, |s| { let _ = s.apply_update(p); } );
                     }
 
                     // Store data
                     if p.header().kind().is_data() {
                         if let Ok(info) = DataInfo::try_from(p) {
-                            data_mgr.store_data(&info, p).await.unwrap();
+                            data_mgr.store_data(&info, p).unwrap();
                         };
                     }
                 }
@@ -358,11 +382,11 @@ where
                     Flags::default(),
                 );
 
-                let peer_subs = self.subscribers().find_peers(&id).await?;
+                let peer_subs = self.subscribers().find_peers(&id)?;
                 let mut addresses = Vec::with_capacity(peer_subs.len());
 
                 for peer_id in peer_subs {
-                    if let Some(peer) = self.peers().find(&peer_id).await {
+                    if let Some(peer) = self.peers().find(&peer_id) {
                         addresses.push(peer.address());
                     }
                 }
