@@ -1,11 +1,13 @@
 use crate::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
+use std::collections::HashMap;
 
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
 
 use kad::prelude::*;
 
+use futures::channel::mpsc;
 use async_std::future::timeout;
 
 use tracing::{span, Level};
@@ -54,6 +56,8 @@ pub struct Dsf<C> {
 
     store: Arc<Mutex<Store>>,
 
+    net_requests: Arc<Mutex<HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>>>,
+
     /// Connector for external communication
     connector: C,
 }
@@ -101,6 +105,8 @@ where
             dht_store.clone(),
         );
 
+        let net_requests = Arc::new(Mutex::new(HashMap::new()));
+
         // Create DSF object
         let s = Self {
             service,
@@ -116,6 +122,8 @@ where
             dht_store,
             store,
             connector,
+
+            net_requests,
         };
 
         Ok(s)

@@ -310,7 +310,7 @@ impl Engine {
                             task::spawn(async move {
 
                                 // Handle request via DSF
-                                let resp = match dsf.handle_net(address, req.clone()).await {
+                                let resp = match dsf.handle_net_req(address, req.clone()).await {
                                     Ok(v) => v,
                                     Err(e) => {
                                         error!("error handling DSF request: {:?}", e);

@@ -30,7 +30,6 @@ where
 {
     pub async fn handle_net_raw(&mut self, msg: crate::io::NetMessage) -> Result<(), DaemonError> {
 
-
         // Decode message
         let (container, _n) = Container::from(&msg.data);
         let _id: Id = container.id().into();
@@ -44,15 +43,49 @@ where
         // Convert into message type
         let message = net::Message::convert(base, |id| self.find_public_key(id) )?;
 
-        // Route responses to incoming requests 
+        // Route responses as required internally
+        let resp = match message {
+            NetMessage::Response(resp) => {
+                let resp = self.handle_net_resp(msg.address, resp).await?;
+                resp
+            },
+            NetMessage::Request(req) => {
+                let resp = self.handle_net_req(msg.address, req).await?;
+                Some(resp)
+            },
+        };
 
-        // Add to 
+        // Return response if provided
+        if let Some(r) = resp {
+            // Encode response
+            let mut buff = vec![0u8; 4096];
+
+            // Convert to base message
+            let mut b: Base = net::Message::Response(r).into();
+    
+            // Sign and encode outgoing message
+            // TODO: pass secret keys for encode / encrypt here
+            let n = b.encode(self.service().private_key().as_ref(), None, &mut buff)?;
+
+            // Short-circuit to respond
+            msg.reply(&buff[..n]).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Handle a received response message and generate an (optional) response
+    pub async fn handle_net_resp(
+        &mut self,
+        addr: SocketAddr,
+        resp: net::Response,
+    ) -> Result<Option<net::Response>, DaemonError> {
 
         unimplemented!()
     }
 
     /// Handle a received request message and generate a response
-    pub async fn handle_net(
+    pub async fn handle_net_req(
         &mut self,
         addr: SocketAddr,
         req: net::Request,
@@ -82,12 +115,11 @@ where
         let mut resp = if let Some(kad_req) = req.data.try_to(()).await {
             let dht_resp = self.handle_dht(from, peer, kad_req)?;
 
-            net::Response::new(own_id, req_id, dht_resp.to().await, Flags::default()
-        )
+            net::Response::new(own_id, req_id, dht_resp.to().await, Flags::default())
         } else {
             let dsf_resp = self.handle_dsf(from, peer, req.data).await?;
 
-             net::Response::new(own_id, req_id, dsf_resp, Flags::default())
+            net::Response::new(own_id, req_id, dsf_resp, Flags::default())
         };
 
         // Generic response processing here

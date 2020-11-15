@@ -15,7 +15,7 @@ use async_std::task::{self, JoinHandle};
 use tracing::{span, Level};
 use tracing_futures::Instrument;
 
-use bytes::Bytes;
+use bytes::{Bytes};
 
 pub const UDP_BUFF_SIZE: usize = 4096;
 
@@ -64,15 +64,17 @@ impl NetMessage {
     }
 
     /// Reply to a received network message
-    pub async fn reply(&self, data: Bytes) -> Result<(), NetError> {
+    pub async fn reply(&self, data: &[u8]) -> Result<(), NetError> {
         let mut resp_tx = self.resp_tx.clone();
+
+        let d = Bytes::from(data.to_vec());
 
         let r = match resp_tx.as_mut() {
             Some(r) => r,
             None => return Err(NetError::NoResponseChannel),
         };
 
-        r.send(NetMessage::new(self.interface, self.address, data)).await?;
+        r.send(NetMessage::new(self.interface, self.address, d)).await?;
 
         Ok(())
     }
