@@ -1,5 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::pin::Pin;
+use std::task::{Poll, Context};
 
 use std::time::Duration;
 
@@ -117,6 +119,14 @@ impl Options {
                 dht: self.daemon_options.dht.clone(),
             },
         }
+    }
+}
+
+impl Future for Engine {
+    type Output = Result<(), Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        unimplemented!()
     }
 }
 

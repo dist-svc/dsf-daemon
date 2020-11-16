@@ -4,6 +4,8 @@ use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
 use async_std::future::timeout;
+use futures::channel::mpsc;
+
 use futures::prelude::*;
 use tracing::{span, Level};
 
@@ -74,6 +76,34 @@ where
         Ok(())
     }
 
+    pub async fn issue_net_req(
+        &mut self,
+        addr: SocketAddr,
+        req: net::Request,
+        t: Duration,
+    ) -> Result<mpsc::Receiver<NetResponse>, DaemonError> {
+        trace!(
+            "issuing request: {:?} to: {:?} (expiry {}s)",
+            req,
+            addr,
+            t.as_secs()
+        );
+
+        let req_id = req.id;
+
+        // Add message to internal tracking
+        let (tx, mut rx) = mpsc::channel(0);
+        { self.net_requests.lock().unwrap().insert((addr.into(), req_id), tx) };
+
+        // Pass message to sink for transmission
+        // TODO: TX HERE
+        //let mut sink = self.sink.clone();
+        //sink.send((addr, NetMessage::Request(req))).await.unwrap();
+
+        // Return future channel
+        Ok(rx)
+    }
+
     /// Handle a received response message and generate an (optional) response
     pub async fn handle_net_resp(
         &mut self,
@@ -81,7 +111,22 @@ where
         resp: net::Response,
     ) -> Result<Option<net::Response>, DaemonError> {
 
-        unimplemented!()
+        let req_id = resp.id;
+
+        // Look for matching requests
+        match self.net_requests.lock().unwrap().remove(&(addr.into(), req_id)) {
+            Some(mut a) => {
+                trace!("Found pending request for id {} address: {}", req_id, addr);
+                a.send(resp).await?;
+            },
+            None => {
+                error!("Received response id {} with no pending request", req_id);
+            }
+        }
+
+        // TODO: three-way-ack support?
+
+        Ok(None)
     }
 
     /// Handle a received request message and generate a response

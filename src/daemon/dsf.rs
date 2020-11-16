@@ -56,7 +56,7 @@ pub struct Dsf<C> {
 
     store: Arc<Mutex<Store>>,
 
-    net_requests: Arc<Mutex<HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>>>,
+    pub(crate) net_requests: Arc<Mutex<HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>>>,
 
     /// Connector for external communication
     connector: C,

@@ -1,4 +1,7 @@
 use std::time::Duration;
+use std::pin::Pin;
+use std::task::{Poll, Context};
+use std::future::Future;
 
 use tracing::{span, Level};
 
@@ -17,6 +20,24 @@ use crate::core::peers::PeerAddress;
 use crate::error::Error as DsfError;
 
 use crate::daemon::dht::TryAdapt;
+
+
+pub enum ConnectState {
+
+}
+
+pub struct ConnectFuture {
+
+}
+
+impl Future for ConnectFuture {
+    type Output = Result<ConnectInfo, DsfError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        unimplemented!()
+    }
+}
+
 
 impl<C> Dsf<C>
 where
