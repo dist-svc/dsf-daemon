@@ -14,12 +14,9 @@ use dsf_rpc::{ConnectInfo, ConnectOptions};
 
 use crate::daemon::dht::Ctx;
 use crate::daemon::Dsf;
-use crate::io;
 
 use crate::core::peers::PeerAddress;
 use crate::error::Error as DsfError;
-
-use crate::daemon::dht::TryAdapt;
 
 
 pub enum ConnectState {
@@ -39,10 +36,7 @@ impl Future for ConnectFuture {
 }
 
 
-impl<C> Dsf<C>
-where
-    C: io::Connector + Clone + Sync + Send + 'static,
-{
+impl Dsf {
     pub async fn connect(&mut self, options: ConnectOptions) -> Result<ConnectInfo, DsfError> {
         let span = span!(Level::DEBUG, "connect");
         let _enter = span.enter();

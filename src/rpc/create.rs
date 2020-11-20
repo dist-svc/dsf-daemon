@@ -13,12 +13,8 @@ use dsf_rpc::{CreateOptions, RegisterOptions, ServiceIdentifier};
 use crate::core::services::*;
 use crate::daemon::Dsf;
 use crate::error::Error;
-use crate::io;
 
-impl<C> Dsf<C>
-where
-    C: io::Connector + Clone + Sync + Send + 'static,
-{
+impl Dsf {
     /// Create (and publish) a new service
     pub async fn create(&mut self, options: CreateOptions) -> Result<ServiceInfo, Error> {
         let span = span!(Level::DEBUG, "create");

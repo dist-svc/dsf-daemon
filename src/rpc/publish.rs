@@ -10,14 +10,10 @@ use dsf_rpc::{DataInfo, PublishInfo, PublishOptions};
 
 use crate::daemon::Dsf;
 use crate::error::Error;
-use crate::io;
 
 use crate::core::subscribers::SubscriptionKind;
 
-impl<C> Dsf<C>
-where
-    C: io::Connector + Clone + Sync + Send + 'static,
-{
+impl Dsf {
     /// Register a locally known service
     pub async fn publish(&mut self, options: PublishOptions) -> Result<PublishInfo, Error> {
         let span = span!(Level::DEBUG, "publish");

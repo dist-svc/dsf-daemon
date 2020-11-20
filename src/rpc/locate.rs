@@ -4,12 +4,8 @@ use dsf_rpc::{LocateInfo, LocateOptions};
 
 use crate::daemon::Dsf;
 use crate::error::Error;
-use crate::io;
 
-impl<C> Dsf<C>
-where
-    C: io::Connector + Clone + Sync + Send + 'static,
-{
+impl Dsf {
     pub async fn locate(&mut self, options: LocateOptions) -> Result<LocateInfo, Error> {
         let span = span!(Level::DEBUG, "locate");
         let _enter = span.enter();

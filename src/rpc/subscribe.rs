@@ -13,12 +13,9 @@ use crate::core::services::ServiceState;
 use crate::error::Error;
 
 use crate::daemon::Dsf;
-use crate::io;
 
-impl<C> Dsf<C>
-where
-    C: io::Connector + Clone + Sync + Send + 'static,
-{
+
+impl Dsf {
     // Subscribe to data from a given service
     pub async fn subscribe(
         &mut self,

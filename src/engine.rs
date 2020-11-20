@@ -35,7 +35,7 @@ use crate::store::*;
 use crate::daemon::Options as DaemonOptions;
 
 pub struct Engine {
-    dsf: Dsf<WireConnector>,
+    dsf: Dsf,
 
     unix: Option<Unix>,
     wire: Option<Wire>,
@@ -373,7 +373,7 @@ impl Engine {
         Ok(())
     }
 
-    async fn handle_rpc(dsf: &mut Dsf<WireConnector>, unix_req: UnixMessage) -> Result<(), Error> {
+    async fn handle_rpc(dsf: &mut Dsf, unix_req: UnixMessage) -> Result<(), Error> {
         // Parse out message
         let req: RpcRequest = serde_json::from_slice(&unix_req.data).unwrap();
 

@@ -6,7 +6,6 @@ use dsf_rpc::{self as rpc, ServiceIdentifier};
 
 use crate::daemon::Dsf;
 use crate::error::{CoreError, Error};
-use crate::io::Connector;
 
 // Connect to an existing peer
 pub mod connect;
@@ -32,10 +31,7 @@ pub mod subscribe;
 //
 pub mod debug;
 
-impl<C> Dsf<C>
-where
-    C: Connector + Clone + Sync + Send + 'static,
-{
+impl Dsf {
     /// Execute an RPC command
     // TODO: Actually execute RPC commands
     pub async fn exec(&mut self, req: rpc::RequestKind) -> Result<rpc::ResponseKind, Error> {

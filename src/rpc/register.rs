@@ -9,7 +9,7 @@ use crate::core::services::ServiceState;
 
 use crate::daemon::Dsf;
 use crate::error::Error;
-use crate::io;
+
 
 #[derive(Debug, Clone)]
 pub enum RegisterError {
@@ -18,10 +18,7 @@ pub enum RegisterError {
     Inner(DsfError),
 }
 
-impl<C> Dsf<C>
-where
-    C: io::Connector + Clone + Sync + Send + 'static,
-{
+impl Dsf {
     /// Register a locally known service
     pub async fn register(&mut self, options: RegisterOptions) -> Result<RegisterInfo, Error> {
         let span = span!(Level::DEBUG, "register");

@@ -1,24 +1,27 @@
 use std::collections::HashMap;
-use std::time::Duration;
 
 use kad::prelude::*;
+
+use futures::channel::mpsc;
 
 use dsf_core::net::{Request, RequestKind, ResponseKind};
 use dsf_core::prelude::*;
 use dsf_core::types::{Data, Flags, Id, RequestId};
 
-use crate::core::peers::{Peer, PeerAddress, PeerManager};
-use crate::io::Connector;
+use super::Dsf;
+
+use crate::core::peers::{Peer, PeerAddress};
 
 /// Adaptor to convert between DSF and DHT requests/responses
 #[derive(Clone)]
-pub struct DhtAdaptor<C> {
-    id: Id,
-    pub_key: PublicKey,
+pub struct DhtAdaptor {
+    dht_sink: mpsc::Sender<DsfDhtMessage>,
+}
 
-    peers: PeerManager,
-
-    connector: C,
+pub struct DsfDhtMessage {
+    target: DhtEntry<Id, Peer>,
+    req: DhtRequest<Id, Data>,
+    resp_sink: mpsc::Sender<DhtResponse<Id, Peer, Data>>,
 }
 
 bitflags!(
@@ -31,25 +34,27 @@ bitflags!(
     }
 );
 
-impl<C> DhtAdaptor<C>
-where
-    C: Connector + Clone + Sync + Send,
-{
-    pub fn new(id: Id, pub_key: PublicKey, peers: PeerManager, connector: C) -> Self {
+
+impl DhtAdaptor {
+    pub fn new(dht_sink: mpsc::Sender<DsfDhtMessage>) -> Self {
         DhtAdaptor {
-            id,
-            pub_key,
-            peers,
-            connector,
+            dht_sink
         }
     }
 }
 
+pub fn is_dht_msg(msg: &NetRequest) -> bool {
+    match msg.data {
+        RequestKind::Ping | 
+        RequestKind::Store(_) |
+        RequestKind::FindValue(_) |
+        RequestKind::FindNode(_) => true,
+        _ => false,
+    }
+}
+
 #[async_trait]
-impl<C> DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor<C>
-where
-    C: Connector + Clone + Sync + Send,
-{
+impl DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor {
     // Send a request and receive a response or error at some time in the future
     async fn request(
         &mut self,
@@ -58,54 +63,21 @@ where
         target: DhtEntry<Id, Peer>,
         req: DhtRequest<Id, Data>,
     ) -> Result<DhtResponse<Id, Peer, Data>, DhtError> {
-        let peers = self.peers.clone();
-        let id = self.id.clone();
-        let c = self.connector.clone();
 
-        let req_id = rand::random::<u16>();
+        // Create new response channel
+        let (resp_source, resp_sink) = mpsc::channel(1);
 
-        // Build DSF Request from DHT request
-        let mut net_req = Request::new(self.id.clone(), req_id, req.to().await, Flags::default());
-        trace!("DHT request: {:?}", req);
-
-        if ctx.contains(Ctx::INCLUDE_PUBLIC_KEY) {
-            net_req.set_public_key(self.pub_key.clone());
-        }
-        if ctx.contains(Ctx::ADDRESS_REQUEST) {
-            net_req.flags().insert(Flags::ADDRESS_REQUEST);
-        }
-        if ctx.contains(Ctx::PUB_KEY_REQUEST) {
-            net_req.flags().insert(Flags::PUB_KEY_REQUEST);
-        }
-
-        // Issue request and await response
-        // TODO: remove timeout duration from here
-        let resp = match c
-            .request(
-                req_id,
-                target.info().address().clone(),
-                net_req,
-                Duration::from_secs(2),
-            )
-            .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                error!("error issuing DHT request: {:?}", e);
-                return Err(DhtError::Connector);
-            }
+        let m = DsfDhtMessage{
+            target,
+            req,
+            resp_sink,
         };
 
-        trace!("DHT response: {:?}", resp);
+        // Send request
+        self.dht_sink.send(m).await;
 
-        // Convert response
-        let resp = match resp.data.try_to((id, peers)).await {
-            Some(v) => v,
-            None => {
-                error!("error converting response to DHT object");
-                return Err(DhtError::Connector);
-            }
-        };
+        // Await response
+        let resp = resp_source.await;
 
         Ok(resp)
     }
@@ -119,6 +91,109 @@ where
         _resp: DhtResponse<Id, Peer, Data>,
     ) -> Result<(), DhtError> {
         unimplemented!()
+    }
+}
+
+impl Dsf {
+    /// Handle a DHT request message
+    fn handle_dht(
+        &mut self,
+        from: Id,
+        peer: Peer,
+        req: DhtRequest<Id, Data>,
+    ) -> Result<DhtResponse<Id, Peer, Data>, anyhow::Error> {
+        // TODO: resolve this into existing entry
+        let from = DhtEntry::new(from.into(), peer);
+
+        // Pass to DHT
+        let resp = self.dht().handle(&from, &req).unwrap();
+
+        Ok(resp)
+    }
+    
+
+    fn dht_to_net_request(&mut self, req: DhtRequest<Id, Data>) -> Result<Option<NetRequestKind>, anyhow::Error> {
+
+        match req {
+            DhtRequest::Ping => RequestKind::Ping,
+            DhtRequest::FindNode(id) => RequestKind::FindNode(Id::from(id.clone())),
+            DhtRequest::FindValue(id) => RequestKind::FindValue(Id::from(id.clone())),
+            DhtRequest::Store(id, values) => {
+                RequestKind::Store(Id::from(id.clone()), values.to_vec())
+            }
+        }
+    }
+
+    fn dht_to_net_response(&mut self, resp: DhtResponse<Id, Peer, Data>) -> Result<Option<NetResponseKind>, anyhow::Error> {
+
+        match resp {
+            DhtResponse::NodesFound(id, nodes) => {
+                
+            let nodes = nodes
+                .iter()
+                .filter_map(|n| {
+                    // Drop nodes without keys from responses
+                    // TODO: is this the desired behaviour?
+                    if n.info().pub_key().is_none() {
+                        None
+                    } else {
+                        Some((
+                            Id::from(n.id().clone()),
+                            n.info().address(),
+                            n.info().pub_key().unwrap(),
+                        ))
+                    }
+                })
+                .collect();
+        
+                ResponseKind::NodesFound(Id::from(id.clone()), nodes)
+            },
+            DhtResponse::ValuesFound(id, values) => {
+                ResponseKind::ValuesFound(Id::from(id.clone()), values.to_vec())
+            }
+            DhtResponse::NoResult => ResponseKind::NoResult,
+        }
+
+    }
+
+    fn net_to_dht_request(&mut self, req: NetRequestKind) -> Result<Option<DhtRequest<Id, Data>>, anyhow::Error> {
+        match req {
+            RequestKind::Ping => Some(DhtRequest::Ping),
+            RequestKind::FindNode(id) => Some(DhtRequest::FindNode(Id::into(id.clone()))),
+            RequestKind::FindValue(id) => Some(DhtRequest::FindValue(Id::into(id.clone()))),
+            RequestKind::Store(id, values) => {
+                Some(DhtRequest::Store(Id::into(id.clone()), values.to_vec()))
+            }
+            _ => None,
+        }
+    }
+
+    fn net_to_dht_response(&mut self, resp: NetResponseKind) -> Result<Option<DhtResponse<Id, Peer, Data>>, anyhow::Error> {
+
+        // TODO: fix peers:new here peers:new
+        match resp {
+            ResponseKind::NodesFound(id, nodes) => {
+                let mut dht_nodes = Vec::with_capacity(nodes.len());
+
+                for (id, addr, key) in nodes {
+                    let node = self.peers().find_or_create(
+                        id.clone(),
+                        PeerAddress::Implicit(addr.clone()),
+                        Some(key.clone()),
+                    );
+
+                    dht_nodes.push((id.clone(), node).into());
+                }
+
+                Some(DhtResponse::NodesFound(Id::into(id.clone()), dht_nodes))
+            }
+            ResponseKind::ValuesFound(id, values) => Some(DhtResponse::ValuesFound(
+                Id::into(id.clone()),
+                values.to_vec(),
+            )),
+            ResponseKind::NoResult => Some(DhtResponse::NoResult),
+            _ => None,
+        }
     }
 }
 
@@ -164,122 +239,3 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
         .collect()
 }
 
-/// Adapt trait to allow coercion between different types from unrelated crates
-/// without requiring implementations in either (eg. between dsf_core and kad messages)
-#[async_trait]
-pub trait Adapt<T> {
-    async fn to(&self) -> T;
-}
-
-/// TryAdapt trait to allow coercion between different types from unrelated crates
-/// without requiring implementations in either (eg. between dsf_core and kad messages)
-#[async_trait]
-pub trait TryAdapt<T, C> {
-    async fn try_to(&self, c: C) -> Option<T>;
-}
-
-/// Adapt from DhtRequest to RequestKind (outgoing requests)
-#[async_trait]
-impl Adapt<RequestKind> for DhtRequest<Id, Data> {
-    async fn to(&self) -> RequestKind {
-        trace!("Adapt: {:?}", self);
-
-        match self {
-            DhtRequest::Ping => RequestKind::Ping,
-            DhtRequest::FindNode(id) => RequestKind::FindNode(Id::from(id.clone())),
-            DhtRequest::FindValue(id) => RequestKind::FindValue(Id::from(id.clone())),
-            DhtRequest::Store(id, values) => {
-                RequestKind::Store(Id::from(id.clone()), values.to_vec())
-            }
-        }
-    }
-}
-
-/// Adapt from DhtResponse to ResponseKind (outgoing responses)
-#[async_trait]
-impl Adapt<ResponseKind> for DhtResponse<Id, Peer, Data> {
-    async fn to(&self) -> ResponseKind {
-        trace!("Adapt: {:?}", self);
-
-        match self {
-            DhtResponse::NodesFound(id, nodes) => {
-                
-            let nodes = nodes
-                .iter()
-                .filter_map(|n| {
-                    // Drop nodes without keys from responses
-                    // TODO: is this the desired behaviour?
-                    if n.info().pub_key().is_none() {
-                        None
-                    } else {
-                        Some((
-                            Id::from(n.id().clone()),
-                            n.info().address(),
-                            n.info().pub_key().unwrap(),
-                        ))
-                    }
-                })
-                .collect();
-        
-                ResponseKind::NodesFound(Id::from(id.clone()), nodes)
-            },
-            DhtResponse::ValuesFound(id, values) => {
-                ResponseKind::ValuesFound(Id::from(id.clone()), values.to_vec())
-            }
-            DhtResponse::NoResult => ResponseKind::NoResult,
-        }
-    }
-}
-
-/// Adapt from RequestKind to DhtRequest (incoming requests)
-#[async_trait]
-impl TryAdapt<DhtRequest<Id, Data>, ()> for RequestKind {
-    async fn try_to(&self, _c: ()) -> Option<DhtRequest<Id, Data>> {
-        trace!("Adapt: {:?}", self);
-
-        match self {
-            RequestKind::Ping => Some(DhtRequest::Ping),
-            RequestKind::FindNode(id) => Some(DhtRequest::FindNode(Id::into(id.clone()))),
-            RequestKind::FindValue(id) => Some(DhtRequest::FindValue(Id::into(id.clone()))),
-            RequestKind::Store(id, values) => {
-                Some(DhtRequest::Store(Id::into(id.clone()), values.to_vec()))
-            }
-            _ => None,
-        }
-    }
-}
-
-/// Adapt from ResponseKind to DhtResponse (incoming responses)
-#[async_trait]
-impl TryAdapt<DhtResponse<Id, Peer, Data>, (Id, PeerManager)> for ResponseKind {
-    async fn try_to(&self, ctx: (Id, PeerManager)) -> Option<DhtResponse<Id, Peer, Data>> {
-        trace!("Adapt: {:?}", self);
-        let own_id = ctx.0;
-        let mut known = ctx.1.clone();
-
-        // TODO: fix peers:new here peers:new
-        match self {
-            ResponseKind::NodesFound(id, nodes) => {
-                let mut dht_nodes = Vec::with_capacity(nodes.len());
-
-                for (id, addr, key) in nodes {
-                    let node = known.find_or_create(
-                        id.clone(),
-                        PeerAddress::Implicit(addr.clone()),
-                        Some(key.clone()),
-                    );
-
-                    dht_nodes.push((id.clone(), node).into());
-                }
-
-                Some(DhtResponse::NodesFound(Id::into(id.clone()), dht_nodes))
-            }
-            ResponseKind::ValuesFound(id, values) => Some(DhtResponse::ValuesFound(
-                Id::into(id.clone()),
-                values.to_vec(),
-            )),
-            ResponseKind::NoResult => Some(DhtResponse::NoResult),
-            _ => None,
-        }
-    }
-}

@@ -9,9 +9,8 @@ use futures::channel::mpsc;
 use futures::prelude::*;
 use tracing::{span, Level};
 
-use dsf_core::net;
 use dsf_core::prelude::*;
-use dsf_core::service::Subscriber;
+use dsf_core::net;
 use dsf_core::wire::Container;
 
 use kad::prelude::*;
@@ -20,16 +19,10 @@ use crate::daemon::Dsf;
 use crate::error::Error as DaemonError;
 use crate::io::Connector;
 
-use crate::daemon::dht::{Adapt, TryAdapt};
-
 use crate::core::data::DataInfo;
 use crate::core::peers::{Peer, PeerAddress, PeerState};
-use crate::core::subscribers::SubscriptionKind;
 
-impl<C> Dsf<C>
-where
-    C: Connector + Clone + Sync + Send + 'static,
-{
+impl Dsf {
     pub async fn handle_net_raw(&mut self, msg: crate::io::NetMessage) -> Result<(), DaemonError> {
 
         // Decode message
@@ -98,7 +91,7 @@ where
         // Pass message to sink for transmission
         // TODO: TX HERE
         //let mut sink = self.sink.clone();
-        //sink.send((addr, NetMessage::Request(req))).await.unwrap();
+        self.net_sink.send((addr, NetMessage::Request(req))).await.unwrap();
 
         // Return future channel
         Ok(rx)
@@ -483,21 +476,5 @@ where
             }
             _ => Err(DaemonError::Unimplemented),
         }
-    }
-
-    /// Handle a DHT request message
-    fn handle_dht(
-        &mut self,
-        from: Id,
-        peer: Peer,
-        req: DhtRequest<Id, Data>,
-    ) -> Result<DhtResponse<Id, Peer, Data>, DaemonError> {
-        // TODO: resolve this into existing entry
-        let from = DhtEntry::new(from.into(), peer);
-
-        // Pass to DHT
-        let resp = self.dht().handle(&from, &req).unwrap();
-
-        Ok(resp)
     }
 }
