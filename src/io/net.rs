@@ -37,7 +37,7 @@ pub enum NetCommand {
 /// Network message
 #[derive(Debug, Clone)]
 pub struct NetMessage {
-    pub interface: u32,
+    pub interface: Option<u32>,
     pub address: SocketAddr,
     pub data: Bytes,
 
@@ -54,7 +54,7 @@ impl PartialEq for NetMessage {
 
 impl NetMessage {
     /// Create a new network message with no reply channel
-    pub fn new(interface: u32, address: SocketAddr, data: Bytes) -> Self {
+    pub fn new(interface: Option<u32>, address: SocketAddr, data: Bytes) -> Self {
         Self {
             interface,
             address,
@@ -109,6 +109,8 @@ pub struct Net {
 
     rx_sink: mpsc::Sender<NetMessage>,
     rx_stream: mpsc::Receiver<NetMessage>,
+
+    default_interface: u32,
 }
 
 #[derive(Debug)]
@@ -142,6 +144,7 @@ impl Net {
         Net {
             bindings: HashMap::new(),
             index: 0,
+            default_interface: 0,
             rx_sink,
             rx_stream,
         }
@@ -154,9 +157,13 @@ impl Net {
 
     /// Bind to a new interface
     pub async fn bind(&mut self, kind: NetKind, addr: SocketAddr) -> Result<(), NetError> {
-        match kind {
+        let interface = match kind {
             NetKind::Udp => self.listen_udp(addr).await?,
             NetKind::Tcp => unimplemented!(),
+        };
+
+        if self.bindings.len() == 1 {
+            self.default_interface = interface;
         }
 
         Ok(())
@@ -176,19 +183,30 @@ impl Net {
 
     /// Send a network message
     /// TODO: what if you don't know what interface to send on??
-    pub async fn send(&mut self, msg: NetMessage) -> Result<(), NetError> {
-        let interface = match self.bindings.get_mut(&msg.interface) {
+    pub async fn send(&mut self, address: SocketAddr, interface: Option<u32>, data: Bytes) -> Result<(), NetError> {
+        // Use interface by index if specified
+        let index = match &interface {
+            Some(v) => *v,
+            None => self.default_interface,
+        };
+
+        // Find matching interface
+        let binding = match self.bindings.get_mut(&index) {
             Some(v) => v,
             None => return Err(NetError::NoMatchingInterface),
         };
 
-        interface.sink.send(msg).await?;
+        // Build a message
+        let msg = NetMessage::new(interface, address, data);
+
+        // Send to appropriate binding
+        binding.sink.send(msg).await?;
 
         Ok(())
     }
 
     /// Start listening on the provided UDP address
-    async fn listen_udp(&mut self, address: SocketAddr) -> Result<(), NetError> {
+    async fn listen_udp(&mut self, address: SocketAddr) -> Result<u32, NetError> {
         let socket = UdpSocket::bind(address).await?;
         let interface = self.index;
 
@@ -214,7 +232,7 @@ impl Net {
                                     event!(Level::TRACE, kind="UDP receive", address = %address);
 
                                     let msg = NetMessage{
-                                        interface,
+                                        interface: Some(interface),
                                         address,
                                         data,
                                         resp_tx: Some(resp_tx.clone()),
@@ -264,7 +282,7 @@ impl Net {
         self.bindings.insert(interface, binding);
         self.index += 1;
 
-        Ok(())
+        Ok(interface)
     }
 }
 

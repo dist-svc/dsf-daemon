@@ -82,16 +82,16 @@ impl Dsf {
         );
         info!("Sending subscribe messages to {} peers", addrs.len());
 
-        let subscribe_responses = self.request_all(&addrs, req).await;
+        let subscribe_responses = self.request_all(&addrs, req).await?;
 
 
         let mut subscription_info = vec![];
 
         for r in &subscribe_responses {
             let response = match r {
-                Ok(v) => v,
-                Err(e) => {
-                    warn!("[DSF ({:?})] Subscribe request error: {:?}", own_id, e);
+                Some(v) => v,
+                None => {
+                    warn!("[DSF ({:?})] No response to subscribe request", own_id);
                     continue;
                 }
             };

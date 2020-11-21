@@ -25,7 +25,7 @@ use super::dht::{dht_reducer, Ctx, DhtAdaptor, DsfDhtMessage};
 use super::Options;
 
 /// Re-export of Dht type used for DSF
-pub type Dht<C> = StandardDht<Id, Peer, Data, RequestId, DhtAdaptor, Ctx>;
+pub type Dht = StandardDht<Id, Peer, Data, RequestId, DhtAdaptor, Ctx>;
 
 #[derive(Clone)]
 pub struct Dsf {
@@ -59,7 +59,9 @@ pub struct Dsf {
 
     pub(crate) net_requests: Arc<Mutex<HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>>>,
 
-    pub(crate) net_sink: Arc<Mutex<mpsc::Sender<(Address, NetMessage)>>>,
+    pub(crate) net_sink: mpsc::Sender<(Address, NetMessage)>,
+
+    //pub(crate) net_source: Arc<Mutex<mpsc::Receiver<(Address, NetMessage)>>>,
 }
 
 impl Dsf {
@@ -69,7 +71,7 @@ impl Dsf {
         service: Service,
         store: Arc<Mutex<Store>>,
         net_sink: mpsc::Sender<(Address, NetMessage)>,
-    ) -> Result<Self, anyhow::Error> {
+    ) -> Result<Self, Error> {
         debug!("Creating new DSF instance");
 
         // Create managers
@@ -83,7 +85,7 @@ impl Dsf {
 
         let id = service.id();
 
-        let (dht_source, dht_sink) = mpsc::channel(100);
+        let (dht_sink, dht_source) = mpsc::channel(100);
 
         // Create DHT components
         let dht_conn = DhtAdaptor::new(dht_sink);
@@ -113,10 +115,10 @@ impl Dsf {
             data,
 
             dht,
+            dht_source: Arc::new(Mutex::new(dht_source)),
+
             dht_store,
             store,
-
-            dht_source,
 
             net_sink,
             net_requests,
@@ -155,8 +157,7 @@ impl Dsf {
         self.data.clone()
     }
 
-    #[cfg(temp)]
-    pub(crate) fn dht(&mut self) -> &mut Dht<C> {
+    pub(crate) fn dht(&mut self) -> &mut Dht {
         &mut self.dht
     }
 
@@ -171,13 +172,13 @@ impl Dsf {
     pub(crate) fn primary<T: AsRef<[u8]> + AsMut<[u8]>>(
         &mut self,
         buff: T,
-    ) -> Result<(usize, Page), anyhow::Error> {
+    ) -> Result<(usize, Page), Error> {
         // TODO: this should generate a peer page / contain peer contact info
         self.service.publish_primary(buff).map_err(|e| e.into())
     }
 
     /// Store pages in the database at the provided ID
-    pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<usize, anyhow::Error> {
+    pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<usize, Error> {
         let span = span!(Level::DEBUG, "store", "{}", self.id());
         let _enter = span.enter();
 
@@ -218,7 +219,7 @@ impl Dsf {
     }
 
     /// Search for pages in the database at the provided ID
-    pub async fn search(&mut self, id: &Id) -> Result<Vec<Page>, anyhow::Error> {
+    pub async fn search(&mut self, id: &Id) -> Result<Vec<Page>, Error> {
         let span = span!(Level::DEBUG, "search", "{}", self.id());
         let _enter = span.enter();
 
@@ -247,7 +248,7 @@ impl Dsf {
     }
 
     /// Look up a peer in the database
-    pub async fn lookup(&mut self, id: &Id) -> Result<Peer, anyhow::Error> {
+    pub async fn lookup(&mut self, id: &Id) -> Result<Peer, Error> {
         let span = span!(Level::DEBUG, "lookup", "{}", self.id());
         let _enter = span.enter();
 
@@ -270,7 +271,7 @@ impl Dsf {
     }
 
     /// Run an update of the daemom and all managed services
-    pub async fn update(&mut self, force: bool) -> Result<(), anyhow::Error> {
+    pub async fn update(&mut self, force: bool) -> Result<(), Error> {
         info!("DSF update (forced: {:?})", force);
 
         let interval = Duration::from_secs(10 * 60);
@@ -307,7 +308,7 @@ impl Dsf {
     /// Initialise a DSF instance
     ///
     /// This bootstraps using known peers then updates all tracked services
-    pub async fn bootstrap(&mut self) -> Result<(), anyhow::Error> {
+    pub async fn bootstrap(&mut self) -> Result<(), Error> {
         let peers = self.peers.list();
 
         info!("DSF bootstrap ({} peers)", peers.len());
@@ -361,7 +362,7 @@ impl Dsf {
         None
     }
 
-    pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), anyhow::Error> {
+    pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
         let mut services = self.services();
         let replica_manager = self.replicas();
 

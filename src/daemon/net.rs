@@ -3,43 +3,39 @@ use std::net::SocketAddr;
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use bytes::Bytes;
+
 use async_std::future::timeout;
-use futures::channel::mpsc;
 
 use futures::prelude::*;
+use futures::channel::mpsc;
+use futures::stream::StreamExt;
+use futures::{select, Stream};
+
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 use dsf_core::net;
 use dsf_core::wire::Container;
 
-use kad::prelude::*;
-
 use crate::daemon::Dsf;
 use crate::error::Error as DaemonError;
-use crate::io::Connector;
 
 use crate::core::data::DataInfo;
 use crate::core::peers::{Peer, PeerAddress, PeerState};
+
 
 impl Dsf {
     pub async fn handle_net_raw(&mut self, msg: crate::io::NetMessage) -> Result<(), DaemonError> {
 
         // Decode message
-        let (container, _n) = Container::from(&msg.data);
-        let _id: Id = container.id().into();
-
-        // Parse out base object
-        // TODO: pass secret keys for encode / decode here
-        let (base, _n) = Base::parse(&msg.data, |id| self.find_public_key(id), |_id| None)?;
-
-        // TODO: use n here?
-
-        // Convert into message type
-        let message = net::Message::convert(base, |id| self.find_public_key(id) )?;
+        let decoded = self.net_decode(&msg.data).await?;
 
         // Route responses as required internally
-        let resp = match message {
+        let resp = match decoded {
             NetMessage::Response(resp) => {
                 let resp = self.handle_net_resp(msg.address, resp).await?;
                 resp
@@ -53,45 +49,65 @@ impl Dsf {
         // Return response if provided
         if let Some(r) = resp {
             // Encode response
-            let mut buff = vec![0u8; 4096];
-
-            // Convert to base message
-            let mut b: Base = net::Message::Response(r).into();
-    
-            // Sign and encode outgoing message
-            // TODO: pass secret keys for encode / encrypt here
-            let n = b.encode(self.service().private_key().as_ref(), None, &mut buff)?;
+            let d = self.net_encode(net::Message::Response(r)).await?;
 
             // Short-circuit to respond
-            msg.reply(&buff[..n]).await?;
+            msg.reply(&d).await?;
         }
 
         Ok(())
+    }
+
+    pub async fn net_decode(&mut self, data: &[u8]) -> Result<net::Message, DaemonError> {
+        // Decode message
+        let (container, _n) = Container::from(&data);
+        let _id: Id = container.id().into();
+
+        // Parse out base object
+        // TODO: pass secret keys for encode / decode here
+        let (base, _n) = Base::parse(&data, |id| self.find_public_key(id), |_id| None)?;
+
+        // TODO: use n here?
+
+        // Convert into message type
+        let message = net::Message::convert(base, |id| self.find_public_key(id) )?;
+
+        Ok(message)
+    }
+
+    pub async fn net_encode(&mut self, msg: net::Message) -> Result<Bytes, DaemonError> {
+        // Encode response
+        let mut buff = vec![0u8; 4096];
+
+        // Convert to base message
+        let mut b: Base = msg.into();
+
+        // Sign and encode outgoing message
+        // TODO: pass secret keys for encode / encrypt here
+        let n = b.encode(self.service().private_key().as_ref(), None, &mut buff)?;
+
+        Ok(Bytes::from((&buff[..n]).to_vec()))
     }
 
     pub async fn issue_net_req(
         &mut self,
         addr: SocketAddr,
         req: net::Request,
-        t: Duration,
     ) -> Result<mpsc::Receiver<NetResponse>, DaemonError> {
         trace!(
-            "issuing request: {:?} to: {:?} (expiry {}s)",
+            "issuing request: {:?} to: {:?}",
             req,
             addr,
-            t.as_secs()
         );
 
         let req_id = req.id;
 
         // Add message to internal tracking
-        let (tx, mut rx) = mpsc::channel(0);
+        let (tx, rx) = mpsc::channel(10);
         { self.net_requests.lock().unwrap().insert((addr.into(), req_id), tx) };
 
         // Pass message to sink for transmission
-        // TODO: TX HERE
-        //let mut sink = self.sink.clone();
-        self.net_sink.send((addr, NetMessage::Request(req))).await.unwrap();
+        self.net_sink.send((addr.into(), NetMessage::Request(req))).await.unwrap();
 
         // Return future channel
         Ok(rx)
@@ -107,15 +123,16 @@ impl Dsf {
         let req_id = resp.id;
 
         // Look for matching requests
-        match self.net_requests.lock().unwrap().remove(&(addr.into(), req_id)) {
-            Some(mut a) => {
-                trace!("Found pending request for id {} address: {}", req_id, addr);
-                a.send(resp).await?;
-            },
+        let mut a = match self.net_requests.lock().unwrap().remove(&(addr.into(), req_id)) {
+            Some(a) => a,
             None => {
                 error!("Received response id {} with no pending request", req_id);
+                return Ok(None);
             }
-        }
+        };
+
+        trace!("Found pending request for id {} address: {}", req_id, addr);
+                a.send(resp).await?;
 
         // TODO: three-way-ack support?
 
@@ -150,10 +167,13 @@ impl Dsf {
         let peer = self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now())).await;
 
         // Handle specific DSF and DHT messages
-        let mut resp = if let Some(kad_req) = req.data.try_to(()).await {
-            let dht_resp = self.handle_dht(from, peer, kad_req)?;
+        let mut resp = if let Some(dht_req) = self.net_to_dht_request(&req.data) {
 
-            net::Response::new(own_id, req_id, dht_resp.to().await, Flags::default())
+            let dht_resp = self.handle_dht(from, peer, dht_req)?;
+
+            let net_resp = self.dht_to_net_response(dht_resp);
+
+            net::Response::new(own_id, req_id, net_resp, Flags::default())
         } else {
             let dsf_resp = self.handle_dsf(from, peer, req.data).await?;
 
@@ -181,17 +201,25 @@ impl Dsf {
         &mut self,
         address: Address,
         req: net::Request,
-        timeout: Duration,
+        t: Duration,
     ) -> Result<net::Response, DaemonError> {
         let req = req.clone();
 
         debug!("Sending request to: {:?} request: {:?}", address, &req);
 
         // Issue request and await response
-        let resp = self
-            .connector()
-            .request(req.id, address.clone(), req, timeout)
+        let mut resp_ch = self
+            .issue_net_req(address.clone().into(), req.clone())
             .await?;
+
+        // Await response
+        let resp = match timeout(t, resp_ch.next()).await {
+           Ok(Some(v)) => v,
+           _ => {
+               debug!("No response from: {:?} for request: {:?}", address, &req);
+               return Err(DaemonError::Timeout);
+           } 
+        };
 
         debug!(
             "Received response from: {:?} request: {:?}",
@@ -209,54 +237,29 @@ impl Dsf {
         &mut self,
         addresses: &[Address],
         req: net::Request,
-    ) -> Vec<Result<net::Response, DaemonError>> {
+    ) -> Result<Vec<Option<net::Response>>, DaemonError> {
         let mut f = Vec::with_capacity(addresses.len());
-
-        let c = self.connector();
 
         // Build requests
         for a in addresses {
-            let req_future = c
-                .request(req.id, a.clone(), req.clone(), Duration::from_secs(10))
-                .map(move |resp| (resp, a.clone()));
-
-            f.push(req_future);
+            let mut req_ch = self
+                .issue_net_req(a.clone().into(), req.clone())
+                .await?;
+                
+            f.push(async move {
+                req_ch.next().await.map(move |resp| (resp, a.clone()))
+            });
         }
 
         let mut responses = future::join_all(f).await;
 
-        for (r, a) in &responses {
-            if let Ok(resp) = r {
-                self.handle_base(&resp.from, a, &resp.common, Some(SystemTime::now())).await;
+        for r in &responses {
+            if let Some((resp, addr)) = r {
+                self.handle_base(&resp.from, addr, &resp.common, Some(SystemTime::now())).await;
             }
         }
 
-        responses.drain(..).map(|(resp, _addr)| resp).collect()
-    }
-
-    /// Internal function to send a response
-    /// This MUST be used in place of self.connector.clone.respond for correct system behavior
-    pub(crate) async fn respond(
-        &mut self,
-        address: Address,
-        resp: net::Response,
-    ) -> Result<(), DaemonError> {
-        let resp = resp.clone();
-
-        trace!(
-            "[DSF ({:?})] Sending response to: {:?} response: {:?}",
-            self.id(),
-            address,
-            &resp
-        );
-
-        timeout(
-            Duration::from_secs(10),
-            self.connector().respond(resp.id, address, resp),
-        )
-        .await??;
-
-        Ok(())
+        Ok(responses.drain(..).map(|v| v.map(|r| r.0 )).collect())
     }
 
     /// Handles a base message, updating internal state for the sender

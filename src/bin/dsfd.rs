@@ -1,25 +1,18 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
-extern crate async_std;
 use async_std::task;
 
-extern crate futures;
+use futures::prelude::*;
+use futures::select;
+use futures::channel::oneshot;
 
-extern crate ctrlc;
+use log::{info, error};
 
-extern crate structopt;
 use structopt::StructOpt;
 
-#[macro_use]
-extern crate tracing;
-
-#[cfg(feature = "profile")]
-extern crate flame;
-
-extern crate tracing_subscriber;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::FmtSubscriber;
+
+use async_signals::Signals;
 
 use dsf_daemon::engine::{Engine, Options};
 
@@ -47,15 +40,8 @@ fn main() {
         .with_max_level(opts.level.clone())
         .try_init();
 
-    // Create running flag
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
     // Bind exit handler
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
+    let mut exit_rx = Signals::new(vec![libc::SIGINT]).expect("Error setting Ctrl-C handler");
 
     // Create async task
     let res = task::block_on(async move {
@@ -63,15 +49,27 @@ fn main() {
         let mut d = match Engine::new(opts.daemon_opts).await {
             Ok(d) => d,
             Err(e) => {
-                error!("Error running daemon: {:?}", e);
+                error!("Daemon creation error: {:?}", e);
                 return Err(e);
             }
         };
 
         // Run daemon
-        if let Err(e) = d.run(running).await {
-            error!("Daemon runtime error: {:?}", e);
-            return Err(e);
+        let h = match d.start().await {
+            Ok(i) => i,
+            Err(e) => {
+                error!("Daemon launch error: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        // Await exit signal
+        // TODO: this means we can't _currently_ abort on internal daemon errors?!
+        let _ = exit_rx.next().await;
+
+        // Block and return exit code
+        if let Err(e) = h.exit().await {
+            error!("Daemon error: {:?}", e);
         }
 
         Ok(())

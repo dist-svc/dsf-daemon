@@ -1,5 +1,4 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::pin::Pin;
 use std::task::{Poll, Context};
 
@@ -8,10 +7,10 @@ use std::time::Duration;
 use structopt::StructOpt;
 
 use async_std::stream;
-use async_std::sync::channel;
-use async_std::task;
+use async_std::task::{self, JoinHandle};
 
 use futures::prelude::*;
+use futures::channel::{mpsc, oneshot};
 use futures::select;
 
 use tracing::{span, Level};
@@ -34,15 +33,6 @@ use crate::store::*;
 
 use crate::daemon::Options as DaemonOptions;
 
-pub struct Engine {
-    dsf: Dsf,
-
-    unix: Option<Unix>,
-    wire: Option<Wire>,
-    net: Option<Net>,
-
-    options: Options,
-}
 
 pub const DEFAULT_UNIX_SOCKET: &str = "/tmp/dsf.sock";
 pub const DEFAULT_DATABASE_FILE: &str = "/tmp/dsf.db";
@@ -122,13 +112,19 @@ impl Options {
     }
 }
 
-impl Future for Engine {
-    type Output = Result<(), Error>;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        unimplemented!()
-    }
+pub struct Engine {
+    id: Id,
+    dsf: Dsf,
+
+    unix: Unix,
+    net: Net,
+
+    net_source: mpsc::Receiver<(Address, dsf_core::net::Message)>,
+
+    options: Options,
 }
+
 
 impl Engine {
     /// Create a new daemon instance
@@ -185,43 +181,45 @@ impl Engine {
             }
         };
 
-        // Create new wire adaptor
-        let wire = Wire::new(service.private_key().unwrap());
+        let (net_sink, mut net_source) = mpsc::channel(1000);
 
         // Create new DSF instance
         let dsf = Dsf::new(
             options.daemon_options.clone(),
             service,
             Arc::new(Mutex::new(store)),
-            wire.connector(),
+            net_sink,
         )?;
 
         debug!("Engine created!");
 
         Ok(Self {
-            dsf,
-            wire: Some(wire),
-            net: Some(net),
-            unix: Some(unix),
+            id: dsf.id(),
+            dsf: dsf,
+            net: net,
+            net_source: net_source,
+            unix: unix,
             options,
         })
     }
 
     pub fn id(&self) -> Id {
-        self.dsf.id()
+        self.id.clone()
     }
 
     // Run the DSF daemon
-    pub async fn run(&mut self, running: Arc<AtomicBool>) -> Result<(), Error> {
-        let span = span!(Level::DEBUG, "engine", "{}", self.dsf.id());
+    pub async fn start(self) -> Result<Instance, Error> {
+        let Engine { id, mut dsf, mut net, mut net_source, mut unix, options, } = self;
+
+        let span = span!(Level::DEBUG, "engine", "{}", dsf.id());
         let _enter = span.enter();
 
-        if !self.options.no_bootstrap {
-            let mut d = self.dsf.clone();
-            // Create future bootstrap event
+        if !options.no_bootstrap {
+            // TODO: Create future bootstrap event
             task::spawn(async move {
                 task::sleep(Duration::from_secs(2)).await;
-                let _ = d.bootstrap().await;
+                warn!("bootstrap not yet implemented")
+                //let _ = d.bootstrap().await;
             });
         }
 
@@ -229,70 +227,51 @@ impl Engine {
         let mut update_timer = stream::interval(Duration::from_secs(30));
         let mut tick_timer = stream::interval(Duration::from_secs(1));
 
-        let (net_in_tx, mut net_in_rx) = channel(1000);
-        let (net_out_tx, mut net_out_rx) = channel(1000);
+        let (mut net_in_tx, mut net_in_rx) = mpsc::channel(1000);
+        let (mut net_out_tx, mut net_out_rx) = mpsc::channel(1000);
+
+        let (exit_tx, mut exit_rx) = mpsc::channel(1);
+        let (mut dsf_exit_tx, mut dsf_exit_rx) = mpsc::channel(1);
+        let (mut net_exit_tx, mut net_exit_rx) = mpsc::channel(1);
+
+       // Setup exist task
+       let _exit_handle = task::spawn(async move {
+            // Await exit signal
+            exit_rx.next().await;
+
+            // Send othert exists
+            net_exit_tx.send(());
+            dsf_exit_tx.send(());
+       });
+
 
         // Setup network IO task
-
-        let (mut wire, mut net) = (self.wire.take().unwrap(), self.net.take().unwrap());
-        let r = running.clone();
-        let net_dsf = self.dsf.clone();
-
-        let _net_handle = task::spawn(async move {
-            while r.load(Ordering::SeqCst) {
+        let net_handle: JoinHandle<Result<(), Error>> = task::spawn(async move {
+            loop {
                 select! {
                     // Incoming network messages
                     net_rx = net.next().fuse() => {
-                        
                         if let Some(m) = net_rx {
                             trace!("engine::net_rx {:?}", m);
 
-                            let address = m.address.clone();
-
-                            // Decode message via wire module
-                            let message = match wire.handle_incoming(&m, |id| net_dsf.find_public_key(id) ).await {
-                                // Incoming request
-                                Ok(Some(v)) => v,
-                                // Incoming response, routed internally
-                                Ok(None) => continue,
-                                // Decoding error
-                                Err(e) => {
-                                    error!("error decoding network message from: {:?}", address);
-                                    continue;
-                                }
-                            };
-
                             // Forward to DSF for execution
-                            net_in_tx.send((address, message)).await;
+                            if let Err(e) = net_in_tx.send(m).await {
+                                error!("error forwarding incoming network message: {:?}", e);
+                            }
                         }
                     },
                     net_tx = net_out_rx.next().fuse() => {
+                        if let Some((address, data)) = net_tx {
+                            trace!("engine::net_tx {:?} {:?}", address, data);
 
-                        if let Some((address, message)) = net_tx {
-                            trace!("engine::net_tx {:?} {:?}", address, message);
-
-                            let net_tx = match wire.handle_outgoing(Address::from(address), message) {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    error!("error encoding network message: {:?}", e);
-                                    continue;
-                                }
-                            };
-
-                            if let Err(e) = net.send(net_tx).await {
-                                error!("error sending network message: {:?}", e);
-                                return Err(e)
+                            if let Err(e) = net.send(address, None, data).await {
+                                error!("error sending ougoing network message: {:?}", e);
                             }
                         }
-                    }
-                    // Outgoing network messages
-                    net_tx = wire.next().fuse() => {
-                        
-                        if let Some(m) = net_tx {
-                            trace!("engine::wire_tx {:?}", m);
-
-                            net.send(m).await.unwrap();
-                        }
+                    },
+                    _exit = net_exit_rx.next().fuse() => {
+                        debug!("Received net exit signal");
+                        return Ok(())
                     }
                 }
             }
@@ -302,37 +281,38 @@ impl Engine {
             Ok(())
         });
 
-        let mut unix = self.unix.take().unwrap();
-        let r = running.clone();
-        let engine_dsf = self.dsf.clone();
+        // Setup DSF main task
+        let dsf_handle: JoinHandle<Result<(), Error>> = task::spawn(async move {
 
-        let _engine_handle = task::spawn(async move {
-
-            while r.load(Ordering::SeqCst) {
+            loop {
                 select! {
                     // Incoming network _requests_
                     net_rx = net_in_rx.next().fuse() => {
 
-                        if let Some((address, req)) = net_rx {
-                            let mut dsf = engine_dsf.clone();
-                            let mut tx = net_out_tx.clone();
+                        if let Some(m) = net_rx {
 
-                            task::spawn(async move {
+                            // Handle request via DSF
+                            let resp = match dsf.handle_net_raw(m).await {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    error!("error handling DSF message: {:?}", e);
+                                    continue;
+                                }
+                            };
+                        }
+                    },
+                    // Outgoing network _requests_
+                    net_tx = net_source.next().fuse() => {
+                        if let Some((addr, msg)) = net_tx {
+                            let enc = match dsf.net_encode(msg).await {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    error!("error encoding outgoing DSF message: {:?}", e);
+                                    continue;
+                                }
+                            };
 
-                                // Handle request via DSF
-                                let resp = match dsf.handle_net_req(address, req.clone()).await {
-                                    Ok(v) => v,
-                                    Err(e) => {
-                                        error!("error handling DSF request: {:?}", e);
-                                        return;
-                                    }
-                                };
-
-                                trace!("engine::handle_net rx: {:?} tx: {:?} for {:?}", req, resp, address);
-
-                                // Return response
-                                tx.send((address, DsfMessage::Response(resp))).await;
-                            });
+                            net_out_tx.send((addr.into(), enc)).await;
                         }
                     },
                     // Incoming RPC messages, response is inline
@@ -340,7 +320,7 @@ impl Engine {
                         trace!("engine::unix_rx");
 
                         if let Some(m) = rpc_rx {
-                            let mut dsf = engine_dsf.clone();
+                            let mut dsf = dsf.clone();
                             //let mut unix = self.unix.clone();
 
                             // RPC tasks can take some time and thus must be independent threads
@@ -360,17 +340,23 @@ impl Engine {
                     },
                     // Tick timer for process reactivity
                     tick = tick_timer.next().fuse() => {},
+                    // Exit signal
+                    _exit = dsf_exit_rx.next().fuse() => {
+                        debug!("Received dsf exit signal");
+                        return Ok(())
+                    }
                 }
             }
 
             Ok(())
         });
 
-        // TODO: join on net handle
-
-        futures::try_join!(_engine_handle, _net_handle)?;
-
-        Ok(())
+        Ok(Instance {
+            id,
+            dsf_handle,
+            net_handle,
+            exit_tx,
+        })
     }
 
     async fn handle_rpc(dsf: &mut Dsf, unix_req: UnixMessage) -> Result<(), Error> {
@@ -398,5 +384,53 @@ impl Engine {
         }
 
         Ok(())
+    }
+}
+
+
+
+pub struct Instance {
+    id: Id,
+
+    dsf_handle: JoinHandle<Result<(), Error>>,
+    net_handle: JoinHandle<Result<(), Error>>,
+
+    exit_tx: mpsc::Sender<()>,
+}
+
+impl Instance {
+    /// Fetch the ID for a given engine
+    pub fn id(&self) -> Id {
+        self.id.clone()
+    }
+
+    /// Fetch exit tx sender
+    pub fn exit_tx(&self) -> mpsc::Sender<()> {
+        self.exit_tx.clone()
+    }
+
+    /// Exit the running engine instance
+    pub async fn exit(mut self) -> Result<(), Error> {
+        self.exit_tx.send(());
+
+        futures::try_join!(self.dsf_handle, self.net_handle)?;
+
+        Ok(())
+    }
+}
+
+impl Future for Instance {
+    type Output = Result<(), Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        if let Poll::Ready(v) = Pin::new(&mut self.dsf_handle).poll(cx) {
+            return Poll::Ready(v);
+        }
+
+        if let Poll::Ready(v) = Pin::new(&mut self.net_handle).poll(cx) {
+            return Poll::Ready(v);
+        }
+
+        Poll::Pending
     }
 }

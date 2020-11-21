@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use kad::prelude::*;
 
+use futures::prelude::*;
 use futures::channel::mpsc;
 
 use dsf_core::net::{Request, RequestKind, ResponseKind};
@@ -10,6 +11,7 @@ use dsf_core::types::{Data, Flags, Id, RequestId};
 
 use super::Dsf;
 
+use crate::error::Error;
 use crate::core::peers::{Peer, PeerAddress};
 
 /// Adaptor to convert between DSF and DHT requests/responses
@@ -43,15 +45,7 @@ impl DhtAdaptor {
     }
 }
 
-pub fn is_dht_msg(msg: &NetRequest) -> bool {
-    match msg.data {
-        RequestKind::Ping | 
-        RequestKind::Store(_) |
-        RequestKind::FindValue(_) |
-        RequestKind::FindNode(_) => true,
-        _ => false,
-    }
-}
+
 
 #[async_trait]
 impl DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor {
@@ -65,7 +59,7 @@ impl DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor {
     ) -> Result<DhtResponse<Id, Peer, Data>, DhtError> {
 
         // Create new response channel
-        let (resp_source, resp_sink) = mpsc::channel(1);
+        let (resp_sink, mut resp_source) = mpsc::channel(1);
 
         let m = DsfDhtMessage{
             target,
@@ -77,9 +71,12 @@ impl DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor {
         self.dht_sink.send(m).await;
 
         // Await response
-        let resp = resp_source.await;
+        let resp = resp_source.next().await;
 
-        Ok(resp)
+        match resp {
+            Some(v) => Ok(v),
+            None => Err(DhtError::Timeout),
+        }
     }
 
     // Send a response message
@@ -96,23 +93,45 @@ impl DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor {
 
 impl Dsf {
     /// Handle a DHT request message
-    fn handle_dht(
+    pub(crate) fn handle_dht(
         &mut self,
         from: Id,
         peer: Peer,
         req: DhtRequest<Id, Data>,
-    ) -> Result<DhtResponse<Id, Peer, Data>, anyhow::Error> {
-        // TODO: resolve this into existing entry
+    ) -> Result<DhtResponse<Id, Peer, Data>, Error> {
+
+        // Map peer to existing DHT entry
+        // TODO: resolve this rather than creating a new instance
+        // (or, use only the index and rely on external storage etc.?)
         let from = DhtEntry::new(from.into(), peer);
 
         // Pass to DHT
+        // TODO: actuall pass here
         let resp = self.dht().handle(&from, &req).unwrap();
 
         Ok(resp)
     }
     
+    pub(crate) fn is_dht_req(msg: &NetRequest) -> bool {
+        match msg.data {
+            RequestKind::Ping | 
+            RequestKind::Store(_, _) |
+            RequestKind::FindValue(_) |
+            RequestKind::FindNode(_) => true,
+            _ => false,
+        }
+    }
 
-    fn dht_to_net_request(&mut self, req: DhtRequest<Id, Data>) -> Result<Option<NetRequestKind>, anyhow::Error> {
+    pub(crate) fn is_dht_resp(msg: &NetResponse) -> bool {
+        match msg.data {
+            ResponseKind::NoResult | 
+            ResponseKind::NodesFound(_, _) |
+            ResponseKind::ValuesFound(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn dht_to_net_request(&mut self, req: DhtRequest<Id, Data>) -> NetRequestKind {
 
         match req {
             DhtRequest::Ping => RequestKind::Ping,
@@ -124,7 +143,7 @@ impl Dsf {
         }
     }
 
-    fn dht_to_net_response(&mut self, resp: DhtResponse<Id, Peer, Data>) -> Result<Option<NetResponseKind>, anyhow::Error> {
+    pub(crate) fn dht_to_net_response(&mut self, resp: DhtResponse<Id, Peer, Data>) -> NetResponseKind {
 
         match resp {
             DhtResponse::NodesFound(id, nodes) => {
@@ -156,7 +175,7 @@ impl Dsf {
 
     }
 
-    fn net_to_dht_request(&mut self, req: NetRequestKind) -> Result<Option<DhtRequest<Id, Data>>, anyhow::Error> {
+    pub(crate) fn net_to_dht_request(&mut self, req: &NetRequestKind) -> Option<DhtRequest<Id, Data>> {
         match req {
             RequestKind::Ping => Some(DhtRequest::Ping),
             RequestKind::FindNode(id) => Some(DhtRequest::FindNode(Id::into(id.clone()))),
@@ -168,7 +187,7 @@ impl Dsf {
         }
     }
 
-    fn net_to_dht_response(&mut self, resp: NetResponseKind) -> Result<Option<DhtResponse<Id, Peer, Data>>, anyhow::Error> {
+    pub(crate) fn net_to_dht_response(&mut self, resp: &NetResponseKind) -> Option<DhtResponse<Id, Peer, Data>> {
 
         // TODO: fix peers:new here peers:new
         match resp {

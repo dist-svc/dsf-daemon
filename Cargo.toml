@@ -52,6 +52,8 @@ base64 = { version = "0.12.3", features = [ "alloc", "std" ] }
 tokio = "0.3.0"
 no_deadlocks = { version = "1.1.1", optional = true }
 anyhow = "1.0.34"
+async-signals = "0.3.1"
+libc = "0.2.80"
 
 
 [dependencies.dsf-core]

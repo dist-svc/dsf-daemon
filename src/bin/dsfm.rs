@@ -1,20 +1,21 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
-extern crate futures;
+
+
+use futures::prelude::*;
 use futures::future::try_join_all;
+use futures::channel::mpsc;
 
-extern crate async_std;
 use async_std::task;
 
-extern crate structopt;
+use log::{info, error};
+
 use structopt::StructOpt;
 
-#[macro_use]
-extern crate tracing;
 use tracing_futures::Instrument;
 
-extern crate tracing_subscriber;
+use async_signals::Signals;
+
+
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::FmtSubscriber;
 
@@ -49,22 +50,14 @@ fn main() {
         .with_max_level(opts.level.clone())
         .try_init();
 
-    // Create running flag
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
     // Bind exit handler
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
+    let mut exit_rx = Signals::new(vec![libc::SIGINT]).expect("Error setting Ctrl-C handler");
 
     // Create async task
     let res = task::block_on(async move {
         let mut handles = vec![];
 
         for i in opts.offset..opts.count + opts.offset {
-            let r = running.clone();
             let o = opts.daemon_opts.with_suffix(i + 1);
 
             // Initialise daemon
@@ -76,15 +69,17 @@ fn main() {
                 }
             };
 
-            let handle = task::spawn(async move {
-                // Run daemon
-                d.run(r).instrument(tracing::debug_span!("engine", i)).await
-            });
+            let handle = d.start().instrument(tracing::debug_span!("engine", i)).await?;
 
             handles.push(handle);
         }
 
-        if let Err(e) = try_join_all(handles).await {
+        // Await exit signal
+        // Again, this means no exiting on failure :-/
+        let _ = exit_rx.next().await;
+
+        let mut exits: Vec<_> = handles.drain(..).map(|v| async move { v.exit().await }).collect();
+        if let Err(e) = try_join_all(exits).await {
             error!("Daemon runtime error: {:?}", e);
             return Err(e);
         }

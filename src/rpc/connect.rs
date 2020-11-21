@@ -107,7 +107,13 @@ impl Dsf {
         trace!("Starting DHT connect");
 
         // Pass response to DHT to finish connecting
-        let mut data = resp.data.try_to((our_id.clone(), self.peers())).await.unwrap();
+        let mut data = match self.net_to_dht_response(&resp.data) {
+            Some(v) => v,
+            None => {
+                error!("Expected DHT response, received: {:?}", resp.data);                
+                return Err(DsfError::Unknown)
+            }
+        };
 
         // Drop any entries referring to us
         if let kad::common::Response::NodesFound(_id, nodes) = &mut data {
