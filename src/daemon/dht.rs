@@ -5,9 +5,9 @@ use kad::prelude::*;
 use futures::prelude::*;
 use futures::channel::mpsc;
 
-use dsf_core::net::{Request, RequestKind, ResponseKind};
+use dsf_core::net::{RequestKind, ResponseKind};
 use dsf_core::prelude::*;
-use dsf_core::types::{Data, Flags, Id, RequestId};
+use dsf_core::types::{Data, Id, RequestId};
 
 use super::Dsf;
 
@@ -68,7 +68,10 @@ impl DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor {
         };
 
         // Send request
-        self.dht_sink.send(m).await;
+        if let Err(e) = self.dht_sink.send(m).await {
+            error!("error sending to dht sink: {:?}", e);
+            return Err(DhtError::Connector);
+        }
 
         // Await response
         let resp = resp_source.next().await;

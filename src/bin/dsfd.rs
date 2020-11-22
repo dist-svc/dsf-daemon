@@ -2,8 +2,6 @@
 use async_std::task;
 
 use futures::prelude::*;
-use futures::select;
-use futures::channel::oneshot;
 
 use log::{info, error};
 
@@ -40,13 +38,14 @@ fn main() {
         .with_max_level(opts.level.clone())
         .try_init();
 
-    // Bind exit handler
-    let mut exit_rx = Signals::new(vec![libc::SIGINT]).expect("Error setting Ctrl-C handler");
 
     // Create async task
     let res = task::block_on(async move {
+        // Bind exit handler
+        let mut exit_rx = Signals::new(vec![libc::SIGINT]).expect("Error setting Ctrl-C handler");
+
         // Initialise daemon
-        let mut d = match Engine::new(opts.daemon_opts).await {
+        let d = match Engine::new(opts.daemon_opts).await {
             Ok(d) => d,
             Err(e) => {
                 error!("Daemon creation error: {:?}", e);
@@ -54,7 +53,7 @@ fn main() {
             }
         };
 
-        // Run daemon
+        // Spawn daemon instance
         let h = match d.start().await {
             Ok(i) => i,
             Err(e) => {
@@ -63,12 +62,15 @@ fn main() {
             }
         };
 
-        // Await exit signal
-        // TODO: this means we can't _currently_ abort on internal daemon errors?!
-        let _ = exit_rx.next().await;
+        // Setup exit task
+        let mut exit_tx = h.exit_tx();
+        task::spawn(async move {
+            let _ = exit_rx.next().await;
+            let _ = exit_tx.send(()).await;
+        });
 
-        // Block and return exit code
-        if let Err(e) = h.exit().await {
+        // Execute daemon / await completion
+        if let Err(e) = h.join().await {
             error!("Daemon error: {:?}", e);
         }
 

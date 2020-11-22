@@ -11,7 +11,6 @@ use dsf_rpc::{DataInfo, PublishInfo, PublishOptions};
 use crate::daemon::Dsf;
 use crate::error::Error;
 
-use crate::core::subscribers::SubscriptionKind;
 
 impl Dsf {
     /// Register a locally known service
@@ -103,9 +102,9 @@ impl Dsf {
 
         // Push updates to all subscribers
         info!("Sending data push messages");
-        self.request_all(&addresses, req).await;
+        self.request_all(&addresses, req).await?;
 
-        // TODO: update info
+        // TODO: update info with results
 
         Ok(info)
     }

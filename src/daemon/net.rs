@@ -3,9 +3,6 @@ use std::net::SocketAddr;
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
-use std::pin::Pin;
-use std::task::{Context, Poll};
-
 use bytes::Bytes;
 
 use async_std::future::timeout;
@@ -13,7 +10,6 @@ use async_std::future::timeout;
 use futures::prelude::*;
 use futures::channel::mpsc;
 use futures::stream::StreamExt;
-use futures::{select, Stream};
 
 use tracing::{span, Level};
 

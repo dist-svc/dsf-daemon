@@ -3,11 +3,10 @@
 
 use futures::prelude::*;
 use futures::future::try_join_all;
-use futures::channel::mpsc;
 
 use async_std::task;
 
-use log::{info, error};
+use log::{error};
 
 use structopt::StructOpt;
 
@@ -61,7 +60,7 @@ fn main() {
             let o = opts.daemon_opts.with_suffix(i + 1);
 
             // Initialise daemon
-            let mut d = match Engine::new(o).await {
+            let d = match Engine::new(o).await {
                 Ok(d) => d,
                 Err(e) => {
                     error!("Error running daemon: {:?}", e);
@@ -78,7 +77,12 @@ fn main() {
         // Again, this means no exiting on failure :-/
         let _ = exit_rx.next().await;
 
-        let mut exits: Vec<_> = handles.drain(..).map(|v| async move { v.exit().await }).collect();
+        let exits: Vec<_> = handles.drain(..).map(|v| async move { 
+            // Send exit signal
+            v.exit_tx().send(()).await.unwrap();
+            // Await engine completion
+            v.join().await
+         }).collect();
         if let Err(e) = try_join_all(exits).await {
             error!("Daemon runtime error: {:?}", e);
             return Err(e);

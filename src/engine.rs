@@ -1,6 +1,4 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::pin::Pin;
-use std::task::{Poll, Context};
 
 use std::time::Duration;
 
@@ -10,14 +8,13 @@ use async_std::stream;
 use async_std::task::{self, JoinHandle};
 
 use futures::prelude::*;
-use futures::channel::{mpsc, oneshot};
+use futures::channel::{mpsc};
 use futures::select;
 
 use tracing::{span, Level};
 
 use bytes::Bytes;
 
-use dsf_core::net::Message as DsfMessage;
 use dsf_core::service::{Publisher, ServiceBuilder};
 use dsf_core::types::{Address, Id};
 
@@ -181,7 +178,7 @@ impl Engine {
             }
         };
 
-        let (net_sink, mut net_source) = mpsc::channel(1000);
+        let (net_sink, net_source) = mpsc::channel(1000);
 
         // Create new DSF instance
         let dsf = Dsf::new(
@@ -240,8 +237,8 @@ impl Engine {
             exit_rx.next().await;
 
             // Send othert exists
-            net_exit_tx.send(());
-            dsf_exit_tx.send(());
+            net_exit_tx.send(()).await.unwrap();
+            dsf_exit_tx.send(()).await.unwrap();
        });
 
 
@@ -270,15 +267,11 @@ impl Engine {
                         }
                     },
                     _exit = net_exit_rx.next().fuse() => {
-                        debug!("Received net exit signal");
+                        debug!("Exiting network handler");
                         return Ok(())
                     }
                 }
             }
-
-            error!("Exiting network handler");
-
-            Ok(())
         });
 
         // Setup DSF main task
@@ -312,7 +305,9 @@ impl Engine {
                                 }
                             };
 
-                            net_out_tx.send((addr.into(), enc)).await;
+                            if let Err(e) = net_out_tx.send((addr.into(), enc)).await {
+                                error!("error forwarding outgoing network message: {:?}", e);
+                            }
                         }
                     },
                     // Incoming RPC messages, response is inline
@@ -342,13 +337,11 @@ impl Engine {
                     tick = tick_timer.next().fuse() => {},
                     // Exit signal
                     _exit = dsf_exit_rx.next().fuse() => {
-                        debug!("Received dsf exit signal");
+                        debug!("Exiting DSF handler");
                         return Ok(())
                     }
                 }
             }
-
-            Ok(())
         });
 
         Ok(Instance {
@@ -410,27 +403,9 @@ impl Instance {
     }
 
     /// Exit the running engine instance
-    pub async fn exit(mut self) -> Result<(), Error> {
-        self.exit_tx.send(());
-
+    pub async fn join(self) -> Result<(), Error> {
         futures::try_join!(self.dsf_handle, self.net_handle)?;
 
         Ok(())
-    }
-}
-
-impl Future for Instance {
-    type Output = Result<(), Error>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Poll::Ready(v) = Pin::new(&mut self.dsf_handle).poll(cx) {
-            return Poll::Ready(v);
-        }
-
-        if let Poll::Ready(v) = Pin::new(&mut self.net_handle).poll(cx) {
-            return Poll::Ready(v);
-        }
-
-        Poll::Pending
     }
 }

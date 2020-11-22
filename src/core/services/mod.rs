@@ -233,7 +233,7 @@ impl ServiceManager {
     }
 
     /// Sync a service instance to disk
-    pub(crate) async fn sync_inst(&mut self, inst: &ServiceInst) {
+    pub(crate) fn sync_inst(&mut self, inst: &ServiceInst) {
         trace!("service sync inst");
 
         let store = self.store.lock().unwrap();

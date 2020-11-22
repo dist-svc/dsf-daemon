@@ -175,7 +175,7 @@ impl PeerManager {
     }
 
     // Load all peers from store
-    async fn load(&mut self) {
+    fn load(&mut self) {
 
         trace!("load peers lock");
         let mut peers = self.peers.lock().unwrap();
