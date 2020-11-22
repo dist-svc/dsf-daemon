@@ -52,7 +52,7 @@ impl DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor {
     // Send a request and receive a response or error at some time in the future
     async fn request(
         &mut self,
-        ctx: Ctx,
+        _ctx: Ctx,
         _req_id: RequestId,
         target: DhtEntry<Id, Peer>,
         req: DhtRequest<Id, Data>,

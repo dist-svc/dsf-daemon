@@ -1,38 +1,25 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::{atomic::AtomicBool, Arc};
 use std::time::Duration;
 
-extern crate futures;
+use log::{info};
 
-extern crate async_std;
+use futures::prelude::*;
 use async_std::task;
 
-extern crate tracing_subscriber;
 use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
-
-extern crate tracing_futures;
 use tracing_futures::Instrument;
 
-extern crate indicatif;
 use indicatif::ProgressBar;
-
-extern crate tempdir;
 use tempdir::TempDir;
 
-extern crate dsf_core;
 
-extern crate dsf_daemon;
 use dsf_daemon::engine::{Engine, Options as EngineOptions};
 use dsf_daemon::error::Error;
 
-extern crate dsf_client;
 use dsf_client::{Client, Options as ClientOptions};
 
-extern crate dsf_rpc;
 use dsf_rpc::{self as rpc};
 
-#[macro_use]
-extern crate log;
 
 const NUM_DAEMONS: usize = 3;
 
@@ -48,6 +35,7 @@ fn end_to_end() {
     let mut daemons = vec![];
 
     let res: Result<(), Error> = task::block_on(async move {
+
         let mut config = EngineOptions::default();
         config.database_file = format!("{}/dsf-e2e.db", d);
         config.bind_addresses = vec![SocketAddr::new(
@@ -56,26 +44,18 @@ fn end_to_end() {
         )];
         config.daemon_socket = format!("{}/dsf.sock", d);
 
-        let running = Arc::new(AtomicBool::new(true));
-
         // Create daemons
         info!("Creating daemons");
         let bar = ProgressBar::new(NUM_DAEMONS as u64);
         for i in 0..NUM_DAEMONS {
             let c = config.with_suffix(i);
             let c1 = c.clone();
-
             let addr = c.daemon_socket.clone();
-            let mut e = Engine::new(c1).await.expect("Error creating engine");
 
-            // Build and run daemon
-            let r = running.clone();
-            let handle = task::spawn(
-                async move {
-                    e.run(r).await.unwrap();
-                }
-                .instrument(tracing::debug_span!("instance", "{}", addr)),
-            );
+            let e = Engine::new(c1).await.expect("Error creating engine");
+
+            // Launch daemon
+            let handle = e.start().await.expect("Error launching engine");
 
             // Create client
             let mut client = Client::new(&ClientOptions::new(&addr, Duration::from_secs(1)))
@@ -149,6 +129,8 @@ fn end_to_end() {
         info!("searching for services");
 
         info!("test complete, exiting");
+
+        // TODO: shutdown daemon instances
 
         Ok(())
     });

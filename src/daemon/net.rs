@@ -331,7 +331,7 @@ impl Dsf {
                     "Subscribe request from: {} for service: {}",
                     from, service_id
                 );
-                let service = match self.services().find(&service_id) {
+                let _service = match self.services().find(&service_id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -375,7 +375,7 @@ impl Dsf {
             }
             net::RequestKind::Query(id) => {
                 info!("Query request from: {} for service: {}", from, id);
-                let service = match self.services().find(&id) {
+                let _service = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -386,7 +386,6 @@ impl Dsf {
 
                 // TODO: fetch and return data
 
-
                 info!("Query request complete");
 
                 Err(DaemonError::Unimplemented)
@@ -395,7 +394,7 @@ impl Dsf {
                 info!("Register request from: {} for service: {}", from, id);
                 // TODO: determine whether we should allow this service to be registered
 
-                //self.service_register(&id, pages)?;
+                self.service_register(&id, pages)?;
 
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             }
@@ -408,7 +407,8 @@ impl Dsf {
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
 
-                let service = match self.services().find(&id) {
+                // TODO: why find _then_ validate_pages, duplicated ops?!
+                let _service = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -419,7 +419,7 @@ impl Dsf {
 
                 // Validate incoming data prior to processing
                 if let Err(e) = self.services().validate_pages(&id, &data) {
-                    error!("Invalid data for service: {}", id);
+                    error!("Invalid data for service: {} ({:?})", id, e);
                     return Ok(net::ResponseKind::Status(net::Status::InvalidRequest));
                 }
 
@@ -464,10 +464,7 @@ impl Dsf {
 
                 // TODO: this is, not ideal...
                 // DEADLOCK MAYBE?
-                //let mut dsf = self.clone();
-                //async_std::task::spawn(async move {
-                //    dsf.request_all(&addresses, req).await;
-                //});
+                self.request_all(&addresses, req).await?;
 
                 info!("Data push complete");
 

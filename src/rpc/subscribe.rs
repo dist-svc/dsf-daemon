@@ -34,7 +34,7 @@ impl Dsf {
         let own_id = self.id();
 
         // Fetch the known service from the service list
-        let service_info = match self.services().find(&id) {
+        let _service_info = match self.services().find(&id) {
             Some(s) => s,
             None => {
                 // Only known services can be registered

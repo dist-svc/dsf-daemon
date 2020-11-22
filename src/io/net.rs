@@ -330,21 +330,21 @@ mod test {
             // Send some messages
             let data = Bytes::copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
 
-            net.send(NetMessage::new(0, addr_b, data.clone()))
+            net.send(addr_b, Some(0), data.clone())
                 .await
                 .expect("Error sending net message");
 
             let res = net.next().await.expect("Error awaiting net message");
 
-            assert_eq!(res, NetMessage::new(1, addr_a, data.clone()));
+            assert_eq!(res, NetMessage::new(Some(1), addr_a, data.clone()));
 
-            net.send(NetMessage::new(1, addr_a, data.clone()))
+            net.send(addr_a, Some(1), data.clone())
                 .await
                 .expect("Error sending net message");
 
             let res = net.next().await.expect("Error awaiting net message");
 
-            assert_eq!(res, NetMessage::new(0, addr_b, data.clone()));
+            assert_eq!(res, NetMessage::new(Some(0), addr_b, data.clone()));
 
             // Unbind from UDP port
             net.unbind(0).await.unwrap();

@@ -33,13 +33,10 @@ impl Dsf {
         // Generate pages
 
         // Fetch the known service from the service list
-        let service_info = match services.find(&id) {
-            Some(s) => s,
-            None => {
-                // Only known services can be registered
-                error!("unknown service (id: {})", id);
-                return Err(Error::UnknownService.into());
-            }
+        if services.find(&id).is_none() {
+            // Only known services can be registered
+            error!("unknown service (id: {})", id);
+            return Err(Error::UnknownService.into());
         };
 
         let mut pages = vec![];
@@ -47,7 +44,7 @@ impl Dsf {
         let mut replica_version = None;
 
         // Update service instance
-        let service_info = services.update_inst(&id, |s| {
+        let _service_info = services.update_inst(&id, |s| {
 
             debug!("Generating service page");
             let primary_page = match s.publish(false) {

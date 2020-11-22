@@ -67,13 +67,13 @@ impl DataManager {
 
         trace!("store data lock");
         // DEADLOCK DISABLED
-        //let store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap();
 
         // Store data object
-        //store.save_data(info)?;
+        store.save_data(info)?;
 
         // Store backing raw object
-        //store.save_page(page)?;
+        store.save_page(page)?;
 
         Ok(())
     }

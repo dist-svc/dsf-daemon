@@ -95,7 +95,7 @@ impl Dsf {
         let mut addresses = Vec::<Address>::with_capacity(peer_subs.len());
 
         for peer_id in peer_subs {
-            if let Some(p) = peers.find(&id) {
+            if let Some(p) = peers.find(&peer_id) {
                 addresses.push(p.address());
             }
         }

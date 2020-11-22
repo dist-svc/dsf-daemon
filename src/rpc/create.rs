@@ -20,8 +20,6 @@ impl Dsf {
         let span = span!(Level::DEBUG, "create");
         let _enter = span.enter();
 
-        let services = self.services();
-
         info!("Creating service: {:?}", options);
         let mut sb = ServiceBuilder::generic();
 
