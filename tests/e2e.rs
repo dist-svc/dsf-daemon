@@ -29,7 +29,7 @@ fn end_to_end() {
     let d = d.path().to_str().unwrap().to_string();
 
     let _ = FmtSubscriber::builder()
-        .with_max_level(LevelFilter::INFO)
+        .with_max_level(LevelFilter::DEBUG)
         .try_init();
 
     let mut daemons = vec![];

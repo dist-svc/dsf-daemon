@@ -333,6 +333,10 @@ impl Engine {
                             // TODO: do something
                         }
                     },
+                    // Poll on DSF internal state
+                    _ = dsf => {
+
+                    },
                     // Tick timer for process reactivity
                     tick = tick_timer.next().fuse() => {},
                     // Exit signal

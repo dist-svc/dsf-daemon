@@ -2,6 +2,11 @@ use crate::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 use std::collections::HashMap;
 
+use std::pin::Pin;
+use std::task::{Poll, Context};
+use std::future::Future;
+
+
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
 
@@ -443,5 +448,20 @@ impl Dsf {
         }
 
         Ok(())
+    }
+}
+
+impl futures::future::FusedFuture for Dsf {
+    fn is_terminated(&self) -> bool { 
+        false
+    }
+}
+
+impl Future for Dsf {
+    type Output = Result<(), DsfError>;
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // TODO: poll on internal state / messages
+        unimplemented!()
     }
 }
