@@ -21,9 +21,9 @@ pub struct DhtAdaptor {
 }
 
 pub struct DsfDhtMessage {
-    target: DhtEntry<Id, Peer>,
-    req: DhtRequest<Id, Data>,
-    resp_sink: mpsc::Sender<DhtResponse<Id, Peer, Data>>,
+    pub(crate) target: DhtEntry<Id, Peer>,
+    pub(crate) req: DhtRequest<Id, Data>,
+    pub(crate) resp_sink: mpsc::Sender<DhtResponse<Id, Peer, Data>>,
 }
 
 bitflags!(

@@ -99,7 +99,7 @@ impl Dsf {
         let req_id = req.id;
 
         // Add message to internal tracking
-        let (tx, rx) = mpsc::channel(10);
+        let (tx, rx) = mpsc::channel(1);
         { self.net_requests.lock().unwrap().insert((addr.into(), req_id), tx) };
 
         // Pass message to sink for transmission

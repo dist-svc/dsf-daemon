@@ -457,11 +457,38 @@ impl futures::future::FusedFuture for Dsf {
     }
 }
 
+use futures::prelude::*;
+
 impl Future for Dsf {
     type Output = Result<(), DsfError>;
 
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+
+        // Poll for outgoing DHT messages
+        // TODO: this could be a `try_recv`, but then it'd be impossible to pass through a context for the waker..?
+        let req = self.dht_source.lock().unwrap().poll_next_unpin(ctx);
+
+
+        if let Poll::Ready(Some(DsfDhtMessage{ target, req, resp_sink })) = req {
+
+            let req_id = rand::random();
+            let addr = target.info().address();
+            let body = self.dht_to_net_request(req);
+            let req = NetRequest::new(self.id(), req_id, body, Flags::empty());
+
+            // Add message to internal tracking
+            let (tx, rx) = mpsc::channel(1);
+            { self.net_requests.lock().unwrap().insert((addr.clone().into(), req_id), tx) };
+
+            // Encode and enqueue them
+            if let Err(e) = self.net_sink.try_send((addr, NetMessage::Request(req))) {
+                error!("Error sending outgoing DHT message: {:?}", e);
+                return Poll::Ready(Err(DsfError::Unknown));
+            }
+            
+        }
+
         // TODO: poll on internal state / messages
-        unimplemented!()
+        Poll::Pending
     }
 }
