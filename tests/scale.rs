@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use log::info;
+use log::{info};
 use rand::random;
 
 use async_std::task;

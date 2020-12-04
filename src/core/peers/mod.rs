@@ -6,6 +6,8 @@ use crate::sync::{Arc, Mutex};
 
 use std::collections::HashMap;
 
+use log::{trace, debug, info, warn, error};
+
 use dsf_core::prelude::*;
 
 use crate::store::Store;

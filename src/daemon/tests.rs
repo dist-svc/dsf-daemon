@@ -1,6 +1,11 @@
+#![allow(unused_imports)]
+
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use crate::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use log::{trace, debug, info, warn, error};
+
 
 use async_std::task;
 

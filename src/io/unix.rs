@@ -3,6 +3,8 @@ use std::io;
 use std::pin::Pin;
 use crate::sync::{Arc, Mutex};
 
+use log::{trace, debug, error};
+
 use futures::channel::mpsc;
 use futures::prelude::*;
 use futures::select;

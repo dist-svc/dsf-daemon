@@ -6,6 +6,7 @@ use std::pin::Pin;
 use std::task::{Poll, Context};
 use std::future::Future;
 
+use log::{trace, debug, info, warn, error};
 
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
@@ -26,13 +27,12 @@ use crate::core::subscribers::SubscriberManager;
 use crate::error::Error;
 use crate::store::Store;
 
-use super::dht::{dht_reducer, Ctx, DhtAdaptor, DsfDhtMessage};
+use super::dht::{dht_reducer, DsfDhtMessage};
 use super::Options;
 
 /// Re-export of Dht type used for DSF
-pub type Dht = StandardDht<Id, Peer, Data, RequestId, DhtAdaptor, Ctx>;
+pub type DsfDht = Dht<Id, Peer, Data, RequestId>;
 
-#[derive(Clone)]
 pub struct Dsf {
     /// Inernal storage for daemon service
     service: Service,
@@ -53,12 +53,9 @@ pub struct Dsf {
     data: DataManager,
 
     /// Distributed Database
-    dht: StandardDht<Id, Peer, Data, RequestId, DhtAdaptor, Ctx>,
+    dht: Dht<Id, Peer, Data, RequestId>,
 
-    /// Backing store for DHT
-    dht_store: HashMapStore<Id, Data>,
-
-    dht_source: Arc<Mutex<mpsc::Receiver<DsfDhtMessage>>>,
+    dht_source: Arc<Mutex<mpsc::Receiver<(RequestId, DhtEntry<Id, Peer>, DhtRequest<Id, Page>)>>>,
 
     store: Arc<Mutex<Store>>,
 
@@ -89,21 +86,13 @@ impl Dsf {
         let subscribers = SubscriberManager::new();
 
         let id = service.id();
-
-        let (dht_sink, dht_source) = mpsc::channel(100);
-
-        // Create DHT components
-        let dht_conn = DhtAdaptor::new(dht_sink);
-        let table = KNodeTable::new(service.id(), config.dht.k, id.max_bits());
-        let dht_store = HashMapStore::new_with_reducer(Box::new(dht_reducer));
-
+        
         // Instantiate DHT
-        let dht = StandardDht::<Id, Peer, Data, RequestId, _, Ctx>::new(
+        let (dht_sink, dht_source) = mpsc::channel(100);
+        let dht = Dht::<Id, Peer, Data, RequestId>::standard(
             id,
             config.dht,
-            table,
-            dht_conn,
-            dht_store.clone(),
+            dht_sink
         );
 
         let net_requests = Arc::new(Mutex::new(HashMap::new()));
@@ -122,7 +111,6 @@ impl Dsf {
             dht,
             dht_source: Arc::new(Mutex::new(dht_source)),
 
-            dht_store,
             store,
 
             net_sink,
@@ -162,12 +150,8 @@ impl Dsf {
         self.data.clone()
     }
 
-    pub(crate) fn dht(&mut self) -> &mut Dht {
+    pub(crate) fn dht_mut(&mut self) -> &mut DsfDht {
         &mut self.dht
-    }
-
-    pub(crate) fn datastore(&mut self) -> &mut HashMapStore<Id, Data> {
-        &mut self.dht_store
     }
 
     pub(crate) fn pub_key(&self) -> PublicKey {
@@ -204,17 +188,19 @@ impl Dsf {
             p.set_signature(b.signature().clone().unwrap());
         }
 
-        match timeout(
-            Duration::from_secs(20),
-            self.dht
-                .store(id.clone().into(), pages, Ctx::PUB_KEY_REQUEST),
-        )
-        .await?
-        {
-            Ok(n) => {
-                debug!("Store complete ({} peers)", n);
-                // TODO: use search results
-                Ok(n)
+        let (store, _req_id) = match self.dht.store(id.clone().into(), pages) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Error starting DHT store: {:?}", e);
+                return Err(Error::Unknown);
+            }
+        };
+
+        match store.await {
+            Ok(peers) => {
+                debug!("Store complete ({} peers)", peers.len());
+                // TODO: use store results
+                Ok(peers.len())
             }
             Err(e) => {
                 error!("Store failed: {:?}", e);
@@ -228,12 +214,15 @@ impl Dsf {
         let span = span!(Level::DEBUG, "search", "{}", self.id());
         let _enter = span.enter();
 
-        match timeout(
-            Duration::from_secs(20),
-            self.dht.find(id.clone().into(), Ctx::PUB_KEY_REQUEST),
-        )
-        .await?
-        {
+        let (search, _req_id) = match self.dht.search(id.clone().into()) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Error starting DHT search: {:?}", e);
+                return Err(Error::Unknown);
+            }
+        };
+
+        match search.await {
             Ok(d) => {
                 let data = dht_reducer(&d);
 
@@ -257,12 +246,17 @@ impl Dsf {
         let span = span!(Level::DEBUG, "lookup", "{}", self.id());
         let _enter = span.enter();
 
-        match timeout(
-            Duration::from_secs(20),
-            self.dht.lookup(id.clone().into(), Ctx::empty()),
-        )
-        .await?
-        {
+        let (locate, _req_id) = match self.dht.locate(id.clone().into()) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Error starting DHT locate: {:?}", e);
+                return Err(Error::Unknown);
+            }
+        };
+
+        // TODO: re-add timeout here? or maybe we don't need it
+        // because the DHT operation will timeout internally?
+        match locate.await {
             Ok(n) => {
                 debug!("Lookup complete: {:?}", n.info());
                 // TODO: use search results
@@ -469,12 +463,18 @@ impl Future for Dsf {
         let req = self.dht_source.lock().unwrap().poll_next_unpin(ctx);
 
 
-        if let Poll::Ready(Some(DsfDhtMessage{ target, req, resp_sink })) = req {
+        if let Poll::Ready(Some((req_id, target, body))) = req {
 
-            let req_id = rand::random();
             let addr = target.info().address();
-            let body = self.dht_to_net_request(req);
-            let req = NetRequest::new(self.id(), req_id, body, Flags::empty());
+            let body = self.dht_to_net_request(body);
+            let mut flags = Flags::default();
+
+            // Attach public key if required
+            if target.info().pub_key().is_none() {
+                flags |= Flags::PUB_KEY_REQUEST;
+            }
+
+            let req = NetRequest::new(self.id(), req_id, body, flags);
 
             // Add message to internal tracking
             let (tx, rx) = mpsc::channel(1);

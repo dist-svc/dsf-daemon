@@ -3,6 +3,9 @@ use std::net::SocketAddr;
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
+use log::{trace, debug, info, warn, error};
+
+
 use bytes::Bytes;
 
 use async_std::future::timeout;
@@ -28,7 +31,13 @@ impl Dsf {
     pub async fn handle_net_raw(&mut self, msg: crate::io::NetMessage) -> Result<(), DaemonError> {
 
         // Decode message
-        let decoded = self.net_decode(&msg.data).await?;
+        let decoded = match self.net_decode(&msg.data).await {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("error decoding message from {:?}: {:?}", msg.address, e);
+                return Ok(())
+            }
+        };
 
         // Route responses as required internally
         let resp = match decoded {
@@ -165,7 +174,7 @@ impl Dsf {
         // Handle specific DSF and DHT messages
         let mut resp = if let Some(dht_req) = self.net_to_dht_request(&req.data) {
 
-            let dht_resp = self.handle_dht(from, peer, dht_req)?;
+            let dht_resp = self.handle_dht(from, peer, req.id, dht_req)?;
 
             let net_resp = self.dht_to_net_response(dht_resp);
 

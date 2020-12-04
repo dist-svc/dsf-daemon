@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use kad::prelude::*;
 
-use futures::prelude::*;
 use futures::channel::mpsc;
 
 use dsf_core::net::{RequestKind, ResponseKind};
@@ -26,80 +25,13 @@ pub struct DsfDhtMessage {
     pub(crate) resp_sink: mpsc::Sender<DhtResponse<Id, Peer, Data>>,
 }
 
-bitflags!(
-    /// Contex object for managing outgoing messages
-    pub struct Ctx: u32 {
-        /// Include public key with outgoing message
-        const INCLUDE_PUBLIC_KEY = (1 << 0);
-        const ADDRESS_REQUEST    = (1 << 1);
-        const PUB_KEY_REQUEST    = (1 << 2);
-    }
-);
-
-
-impl DhtAdaptor {
-    pub fn new(dht_sink: mpsc::Sender<DsfDhtMessage>) -> Self {
-        DhtAdaptor {
-            dht_sink
-        }
-    }
-}
-
-
-
-#[async_trait]
-impl DhtConnector<Id, Peer, Data, RequestId, Ctx> for DhtAdaptor {
-    // Send a request and receive a response or error at some time in the future
-    async fn request(
-        &mut self,
-        _ctx: Ctx,
-        _req_id: RequestId,
-        target: DhtEntry<Id, Peer>,
-        req: DhtRequest<Id, Data>,
-    ) -> Result<DhtResponse<Id, Peer, Data>, DhtError> {
-
-        // Create new response channel
-        let (resp_sink, mut resp_source) = mpsc::channel(1);
-
-        let m = DsfDhtMessage{
-            target,
-            req,
-            resp_sink,
-        };
-
-        // Send request
-        if let Err(e) = self.dht_sink.send(m).await {
-            error!("error sending to dht sink: {:?}", e);
-            return Err(DhtError::Connector);
-        }
-
-        // Await response
-        let resp = resp_source.next().await;
-
-        match resp {
-            Some(v) => Ok(v),
-            None => Err(DhtError::Timeout),
-        }
-    }
-
-    // Send a response message
-    async fn respond(
-        &mut self,
-        _ctx: Ctx,
-        _req_id: RequestId,
-        _target: DhtEntry<Id, Peer>,
-        _resp: DhtResponse<Id, Peer, Data>,
-    ) -> Result<(), DhtError> {
-        unimplemented!()
-    }
-}
-
 impl Dsf {
     /// Handle a DHT request message
     pub(crate) fn handle_dht(
         &mut self,
         from: Id,
         peer: Peer,
+        req_id: RequestId,
         req: DhtRequest<Id, Data>,
     ) -> Result<DhtResponse<Id, Peer, Data>, Error> {
 
@@ -110,7 +42,7 @@ impl Dsf {
 
         // Pass to DHT
         // TODO: actuall pass here
-        let resp = self.dht().handle(&from, &req).unwrap();
+        let resp = self.dht_mut().handle_req(req_id, &from, &req).unwrap();
 
         Ok(resp)
     }

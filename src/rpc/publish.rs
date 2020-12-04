@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 
 use tracing::{span, Level};
+use log::{debug, info, error};
 
 use dsf_core::prelude::*;
 

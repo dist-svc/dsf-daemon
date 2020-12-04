@@ -1,6 +1,6 @@
 use std::net::{IpAddr, SocketAddr, SocketAddrV4};
 
-extern crate igd;
+use log::{info, warn};
 
 use igd::aio::search_gateway;
 use igd::{PortMappingProtocol, SearchOptions};

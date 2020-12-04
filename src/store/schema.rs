@@ -1,4 +1,5 @@
-use diesel::table;
+use diesel::prelude::*;
+use diesel::*;
 
 table! {
     services (service_id) {

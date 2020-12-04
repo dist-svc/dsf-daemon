@@ -1,8 +1,8 @@
 use std::time::SystemTime;
 
 use tracing::{span, Level};
+use log::{debug, info, warn, error};
 
-use kad::store::Datastore;
 
 use dsf_core::options::Options;
 use dsf_core::prelude::*;
@@ -70,8 +70,8 @@ impl Dsf {
         // Register service in distributed database
         if !options.register {
             info!("Registering service locally");
-            // Write the service to the database
-            self.datastore().store(&id, &pages);
+            // TODO: Write the service to the _local_ database
+            //self.datastore().store(&id, &pages);
 
         } else {
             info!("Registering and replicating service");

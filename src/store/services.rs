@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use log::{trace, debug, info, warn, error};
+
 use diesel::prelude::*;
 
 use chrono::NaiveDateTime;

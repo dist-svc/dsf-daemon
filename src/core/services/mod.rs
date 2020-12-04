@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use crate::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
+use log::{trace, debug, info, error};
+
 use dsf_core::prelude::*;
 use dsf_core::service::Subscriber;
 

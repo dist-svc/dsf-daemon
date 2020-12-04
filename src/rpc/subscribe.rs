@@ -3,6 +3,7 @@ use std::time::SystemTime;
 use futures::future::join_all;
 
 use tracing::{span, Level};
+use log::{debug, info, warn, error};
 
 use dsf_core::error::Error as CoreError;
 use dsf_core::net;
@@ -45,20 +46,25 @@ impl Dsf {
 
         debug!("Service: {:?}", id);
 
-        // TODO: lookup replicas in distributed database?
+        // TODO: query for replicas from the distributed database?
 
         // Fetch known replicas
         let replicas = self.replicas().find(&id);
 
-        // Build peer search across known replicas
-        // DEADLOCK MAYBE?
+        // Search for peer information for viable replicas
         let mut searches = Vec::with_capacity(replicas.len());
         for inst in replicas.iter() {
-            let mut s = self.clone();
-            let peer_id = inst.info.peer_id.clone();
 
-            searches.push(async move { s.lookup(&peer_id).await });
-        }
+            let (locate, _req_id) = match self.dht_mut().locate(inst.info.peer_id.clone()) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("Error starting DHT locate: {:?}", e);
+                    return Err(Error::Unknown);
+                }
+            };
+
+            searches.push(locate);
+        };
 
         info!("Searching for viable replicas");
 
@@ -66,12 +72,12 @@ impl Dsf {
         let mut search_responses = join_all(searches).await;
 
         // Filter successful responses
-        let ok: Vec<_> = search_responses.drain(..).filter_map(|r| r.ok()).collect();
+        let ok: Vec<_> = search_responses.drain(..).filter_map(|r| r.ok() ).collect();
         info!("Searches complete, found {} viable replicas", ok.len());
 
         // Fetch addresses from viable replicas
         // TODO: limited subset of replicas
-        let addrs: Vec<_> = ok.iter().filter(|_v| true).map(|v| v.address()).collect();
+        let addrs: Vec<_> = ok.iter().filter(|_v| true).map(|v| v.info().address()).collect();
 
         // Issue subscription requests
         let req = net::Request::new(

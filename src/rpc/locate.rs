@@ -1,4 +1,5 @@
 use tracing::{span, Level};
+use log::{debug, info, warn, error};
 
 use dsf_rpc::{LocateInfo, LocateOptions};
 
@@ -22,12 +23,14 @@ impl Dsf {
             }
         }
 
+        debug!("Starting locate for id: {:?}", &options.id);
+
         // Search for associated service pages
         let pages = self.search(&options.id).await?;
 
         //let services = services.clone();
 
-        debug!("locate, found {} pages", pages.len());
+        info!("locate, found {} pages", pages.len());
 
         // Register new service
         self.service_register(&options.id, pages)?;

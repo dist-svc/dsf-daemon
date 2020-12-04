@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
+
 pub mod net;
 pub use net::{Net, NetError, NetKind, NetMessage};
 

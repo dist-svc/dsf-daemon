@@ -1,6 +1,7 @@
 use std::time::SystemTime;
 
 use tracing::{span, Level};
+use log::{trace, debug, info, error};
 
 use dsf_core::prelude::*;
 use dsf_rpc::{RegisterInfo, RegisterOptions};

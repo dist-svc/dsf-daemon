@@ -8,16 +8,13 @@ use std::str::FromStr;
 use crate::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
+use log::{debug};
 use futures::prelude::*;
-
 use async_std::task::{self, JoinHandle};
-
-extern crate libmdns;
-extern crate mdns;
+use mdns::RecordKind;
 
 use dsf_core::types::Id;
 
-use mdns::RecordKind;
 
 const SERVICE_NAME: &str = "_dsf._udp.local";
 

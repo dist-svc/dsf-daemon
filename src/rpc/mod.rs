@@ -1,4 +1,5 @@
 use tracing::{span, Level};
+use log::{debug, info, error};
 
 use dsf_core::prelude::*;
 
@@ -82,7 +83,7 @@ impl Dsf {
 
         let res = match req {
             DebugCommands::Datastore(_opts) => {
-                println!("{:?}", self.datastore());
+                //println!("{:?}", self.datastore());
                 ResponseKind::None
             }
             DebugCommands::Dht(DhtCommands::Data(service)) => {

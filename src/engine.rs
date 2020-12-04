@@ -1,6 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-
 use std::time::Duration;
+
+use log::{trace, debug, info, warn, error};
+
 
 use structopt::StructOpt;
 
@@ -254,6 +256,7 @@ impl Engine {
                             // Forward to DSF for execution
                             if let Err(e) = net_in_tx.send(m).await {
                                 error!("error forwarding incoming network message: {:?}", e);
+                                return Err(Error::Unknown);
                             }
                         }
                     },
@@ -307,13 +310,16 @@ impl Engine {
 
                             if let Err(e) = net_out_tx.send((addr.into(), enc)).await {
                                 error!("error forwarding outgoing network message: {:?}", e);
+                                return Err(Error::Unknown);
                             }
                         }
                     },
                     // Incoming RPC messages, response is inline
+
                     rpc_rx = unix.next().fuse() => {
                         trace!("engine::unix_rx");
 
+                        #[cfg(WIP)]
                         if let Some(m) = rpc_rx {
                             let mut dsf = dsf.clone();
                             //let mut unix = self.unix.clone();

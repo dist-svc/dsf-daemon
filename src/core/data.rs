@@ -1,6 +1,8 @@
 use std::convert::TryFrom;
 use crate::sync::{Arc, Mutex};
 
+use log::{trace, info, error};
+
 use dsf_core::{page::Page, types::Id};
 
 pub use dsf_rpc::data::DataInfo;
