@@ -6,9 +6,11 @@ use std::future::Future;
 use tracing::{span, Level};
 
 use log::{debug, info, warn, error};
-use futures::prelude::*;
 
-use kad::prelude::DhtEntry;
+use futures::prelude::*;
+use futures::channel::mpsc;
+
+use kad::prelude::*;
 
 use dsf_core::net;
 use dsf_core::prelude::*;
@@ -17,34 +19,60 @@ use dsf_rpc::{ConnectInfo, ConnectOptions};
 
 use crate::daemon::Dsf;
 
-use crate::core::peers::PeerAddress;
+use crate::core::peers::{Peer, PeerAddress};
 use crate::error::Error as DsfError;
 
 
 pub enum ConnectState {
+    Init,
+    Pending,
+    Done,
+}
 
+pub struct ConnectCtx {
+    opts: ConnectOptions,
+    state: ConnectState,
+    tx: mpsc::Sender<Result<ConnectInfo, DsfError>>,
 }
 
 pub struct ConnectFuture {
-
+    connect: kad::dht::ConnectFuture<Id, Peer>,
 }
 
 impl Future for ConnectFuture {
     type Output = Result<ConnectInfo, DsfError>;
 
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        unimplemented!()
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+
+        match self.connect.poll_unpin(ctx) {
+            Poll::Ready(Ok(r)) => {
+                info!("Connect complete! {:?}", r);
+
+                Poll::Ready(Ok(
+                    ConnectInfo {
+                        id: r[0].info().id().clone(),
+                        peers: r.len(),
+                    }
+                ))
+            },
+            Poll::Ready(Err(e)) => {
+                error!("DHT connect error: {:?}", e);
+                Poll::Ready(Err(DsfError::Unknown))
+            }
+            _ => Poll::Pending,
+        }
     }
 }
 
 
 impl Dsf {
-    pub async fn connect(&mut self, options: ConnectOptions) -> Result<ConnectInfo, DsfError> {
+    pub fn connect(&mut self, options: ConnectOptions) -> Result<ConnectFuture, DsfError> {
         let span = span!(Level::DEBUG, "connect");
         let _enter = span.enter();
 
         info!("Connect: {:?}", options.address);
 
+        // Check we're not connecting to ourself
         //        if self.bind_address() == options.address {
         //            warn!("[DSF ({:?})] Cannot connect to self", self.id);
         //        }
@@ -58,12 +86,11 @@ impl Dsf {
             }
         };
 
-        // Convert into DSF message
-        let mut net_req_body = self.dht_to_net_request(dht_req);
-
         // Set request flags for initial connection
         let flags = Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST;
 
+        // Convert into DSF message
+        let mut net_req_body = self.dht_to_net_request(dht_req);
         let mut net_req = NetRequest::new(self.id(), req_id, net_req_body, flags);
 
         // Attach public key for TOFU
@@ -72,27 +99,19 @@ impl Dsf {
 
         // Send message
         // This bypasses DSF state tracking as it is managed by the DHT
-        // TODO: not this precludes _retries_ and state tracking
-        // Find a better solution...
-        self.net_sink.send((options.address.clone().into(), NetMessage::Request(net_req))).await.unwrap();
+        // TODO: this precludes _retries_ and state tracking... find a better solution
+        self.net_sink.try_send((options.address.clone().into(), NetMessage::Request(net_req))).unwrap();
 
 
-        // Await DHT connect future
-        let peers = match connect.await {
-            Ok(n) => n,
-            Err(e) => {
-                error!("DHT connect error: {:?}", e);
-                return Err(DsfError::Unknown)
-            }
-        };
+        // Return connect future for polling
+        Ok(ConnectFuture{
+            connect
+        })
+    }
 
-        let info = ConnectInfo{
-            // TODO: placeholder / incorrect response
-            id: self.id(),
-            peers: peers.len(),
-        };
-        info!("Connect complete! {:?}", info);
+    async fn handle_connect(&mut self, _ctx: &mut ConnectCtx) {
+        //let ConnectCtx{opts, state, tx} = ctx;
 
-        Ok(info)
+        unimplemented!()
     }
 }

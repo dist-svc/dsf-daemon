@@ -321,14 +321,11 @@ impl Engine {
 
                         #[cfg(WIP)]
                         if let Some(m) = rpc_rx {
-                            let mut dsf = dsf.clone();
                             //let mut unix = self.unix.clone();
 
-                            // RPC tasks can take some time and thus must be independent threads
-                            // To avoid blocking network operations
-                            task::spawn(async move {
-                                Self::handle_rpc(&mut dsf, m).await.unwrap();
-                            });
+                            // TODO: re-work to non-blocking / internal state management
+                            Self::handle_rpc(&mut self.dsf, m).await.unwrap();
+
                         }
                     },
                     // TODO: periodic update

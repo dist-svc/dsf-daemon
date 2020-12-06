@@ -24,6 +24,8 @@ use crate::core::replicas::ReplicaManager;
 use crate::core::services::{ServiceManager, ServiceState};
 use crate::core::subscribers::SubscriberManager;
 
+use crate::rpc::ops::RpcOperation;
+
 use crate::error::Error;
 use crate::store::Store;
 
@@ -55,11 +57,13 @@ pub struct Dsf {
     /// Distributed Database
     dht: Dht<Id, Peer, Data, RequestId>,
 
-    dht_source: Arc<Mutex<mpsc::Receiver<(RequestId, DhtEntry<Id, Peer>, DhtRequest<Id, Page>)>>>,
+    dht_source: mpsc::Receiver<(RequestId, DhtEntry<Id, Peer>, DhtRequest<Id, Page>)>,
 
     store: Arc<Mutex<Store>>,
 
-    pub(crate) net_requests: Arc<Mutex<HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>>>,
+    pub(crate) rpc_ops: Option<HashMap<u64, RpcOperation>>,
+
+    pub(crate) net_requests: HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>,
 
     pub(crate) net_sink: mpsc::Sender<(Address, NetMessage)>,
 
@@ -95,8 +99,6 @@ impl Dsf {
             dht_sink
         );
 
-        let net_requests = Arc::new(Mutex::new(HashMap::new()));
-
         // Create DSF object
         let s = Self {
             service,
@@ -109,12 +111,14 @@ impl Dsf {
             data,
 
             dht,
-            dht_source: Arc::new(Mutex::new(dht_source)),
+            dht_source,
 
             store,
 
+            rpc_ops: Some(HashMap::new()),
+
             net_sink,
-            net_requests,
+            net_requests: HashMap::new(),
         };
 
         Ok(s)
@@ -167,7 +171,7 @@ impl Dsf {
     }
 
     /// Store pages in the database at the provided ID
-    pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<usize, Error> {
+    pub fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<kad::dht::StoreFuture<Id, Peer>, Error> {
         let span = span!(Level::DEBUG, "store", "{}", self.id());
         let _enter = span.enter();
 
@@ -196,17 +200,7 @@ impl Dsf {
             }
         };
 
-        match store.await {
-            Ok(peers) => {
-                debug!("Store complete ({} peers)", peers.len());
-                // TODO: use store results
-                Ok(peers.len())
-            }
-            Err(e) => {
-                error!("Store failed: {:?}", e);
-                Err(Error::NotFound)
-            }
-        }
+        Ok(store)
     }
 
     /// Search for pages in the database at the provided ID
@@ -327,7 +321,7 @@ impl Dsf {
                     address: p.address().into(),
                     id: Some(id.clone()),
                     timeout,
-                })
+                })?
                 .await
             {
                 success += 1;
@@ -460,7 +454,7 @@ impl Future for Dsf {
 
         // Poll for outgoing DHT messages
         // TODO: this could be a `try_recv`, but then it'd be impossible to pass through a context for the waker..?
-        let req = self.dht_source.lock().unwrap().poll_next_unpin(ctx);
+        let req = self.dht_source.poll_next_unpin(ctx);
 
 
         if let Poll::Ready(Some((req_id, target, body))) = req {
@@ -478,7 +472,7 @@ impl Future for Dsf {
 
             // Add message to internal tracking
             let (tx, rx) = mpsc::channel(1);
-            { self.net_requests.lock().unwrap().insert((addr.clone().into(), req_id), tx) };
+            { self.net_requests.insert((addr.clone().into(), req_id), tx) };
 
             // Encode and enqueue them
             if let Err(e) = self.net_sink.try_send((addr, NetMessage::Request(req))) {

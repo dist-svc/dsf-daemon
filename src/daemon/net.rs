@@ -109,7 +109,7 @@ impl Dsf {
 
         // Add message to internal tracking
         let (tx, rx) = mpsc::channel(1);
-        { self.net_requests.lock().unwrap().insert((addr.into(), req_id), tx) };
+        { self.net_requests.insert((addr.into(), req_id), tx) };
 
         // Pass message to sink for transmission
         self.net_sink.send((addr.into(), NetMessage::Request(req))).await.unwrap();
@@ -128,7 +128,7 @@ impl Dsf {
         let req_id = resp.id;
 
         // Look for matching requests
-        let mut a = match self.net_requests.lock().unwrap().remove(&(addr.into(), req_id)) {
+        let mut a = match self.net_requests.remove(&(addr.into(), req_id)) {
             Some(a) => a,
             None => {
                 error!("Received response id {} with no pending request", req_id);

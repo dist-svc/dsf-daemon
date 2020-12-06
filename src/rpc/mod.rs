@@ -1,12 +1,16 @@
 use tracing::{span, Level};
 use log::{debug, info, error};
 
-use dsf_core::prelude::*;
+use futures::prelude::*;
 
+use dsf_core::prelude::*;
 use dsf_rpc::{self as rpc, ServiceIdentifier};
 
 use crate::daemon::Dsf;
 use crate::error::{CoreError, Error};
+
+// Generic / shared operation types
+pub mod ops;
 
 // Connect to an existing peer
 pub mod connect;
@@ -29,7 +33,7 @@ pub mod query;
 // Subscribe to a service
 pub mod subscribe;
 
-//
+// Debug commands
 pub mod debug;
 
 impl Dsf {
@@ -44,7 +48,7 @@ impl Dsf {
         debug!("Handling request: {:?}", req);
 
         let res = match req {
-            RequestKind::Status => Ok(ResponseKind::Status(self.status().await)),
+            RequestKind::Status => Ok(ResponseKind::Status(self.status())),
 
             RequestKind::Peer(options) => self.exec_peer(options).await,
             RequestKind::Service(options) => self.exec_service(options).await,
@@ -70,7 +74,55 @@ impl Dsf {
         }
     }
 
-    pub(crate) async fn status(&mut self) -> rpc::StatusInfo {
+    // Add an RPC operation to internal tracking
+    pub fn start_rpc(&mut self, op: ops::RpcOperation) -> Result<(), Error> {
+        let req_id = op.req_id;
+        let rpc_ops = self.rpc_ops.as_mut().unwrap();
+
+        // TODO: check we're not overwriting anything here
+
+        debug!("Adding RPC op {} to tracking", req_id);
+        rpc_ops.insert(req_id, op);
+
+
+        Ok(())
+    }
+
+
+    pub async fn poll_rpc(&mut self) -> Result<(), Error> {
+
+        // Take RPC operations so we can continue using `&mut self`
+        let mut rpc_ops = self.rpc_ops.take().unwrap();
+        let mut done = vec![];
+        
+        // Iterate through and update each operation
+        for (req_id, op) in rpc_ops.iter_mut() {
+            
+            match &op.kind {
+                ops::RpcKind::Status(tx) => {
+                    tx.clone().send(self.status()).await.unwrap();
+                    done.push(req_id.clone());
+                },
+                // Connect only uses DHT
+                // TODO: how to track without undermining waker?
+                ops::RpcKind::Connect(_ctx) => (),
+                _ => unimplemented!(),
+            }
+            
+        }
+
+        // Remove completed operations
+        for d in done {
+            rpc_ops.remove(&d);
+        }
+
+        // Return updated RPC operations
+        self.rpc_ops = Some(rpc_ops);
+
+        Ok(())
+    }
+
+    pub(crate) fn status(&self) -> rpc::StatusInfo {
         rpc::StatusInfo {
             id: self.id(),
             peers: self.peers().count(),
@@ -113,7 +165,7 @@ impl Dsf {
         let res = match req {
             PeerCommands::List(_options) => ResponseKind::Peers(self.peer_info().await),
             PeerCommands::Connect(options) => {
-                self.connect(options).await.map(ResponseKind::Connected)?
+                self.connect(options)?.await.map(ResponseKind::Connected)?
             }
             PeerCommands::Search(options) => {
                 // TODO: pass timeout here
