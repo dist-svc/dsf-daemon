@@ -319,13 +319,8 @@ impl Engine {
                     rpc_rx = unix.next().fuse() => {
                         trace!("engine::unix_rx");
 
-                        #[cfg(WIP)]
                         if let Some(m) = rpc_rx {
-                            //let mut unix = self.unix.clone();
-
-                            // TODO: re-work to non-blocking / internal state management
-                            Self::handle_rpc(&mut self.dsf, m).await.unwrap();
-
+                            Self::handle_rpc(&mut dsf, m).await.unwrap();
                         }
                     },
                     // TODO: periodic update
@@ -365,25 +360,25 @@ impl Engine {
 
         debug!("engine, RPC req: {:?}", req);
 
-        let span = span!(Level::TRACE, "rpc", id = req.req_id());
-        let _enter = span.enter();
+        // Start RPC request
+        let (tx, mut rx) = mpsc::channel(1);
+        dsf.start_rpc(req, tx)?;
 
-        // Handle RPC request
-        let resp_kind = dsf.exec(req.kind()).await?;
+        // Spawn task to poll to RPC completion and forward result
+        task::spawn(async move {
+            let resp = rx.next().await;
 
-        // Generate response
-        let resp = RpcResponse::new(req.req_id(), resp_kind);
+            // Encode response
+            let enc = serde_json::to_vec(&resp).unwrap();
 
-        // Encode response
-        let enc = serde_json::to_vec(&resp).unwrap();
+            // Generate response with required socket info
+            let unix_resp = unix_req.response(Bytes::from(enc));
 
-        // Generate response with required socket info
-        let unix_resp = unix_req.response(Bytes::from(enc));
-
-        // Send response
-        if let Err(e) = unix_resp.send().await {
-            error!("Error sending RPC response: {:?}", e);
-        }
+            // Send response
+            if let Err(e) = unix_resp.send().await {
+                error!("Error sending RPC response: {:?}", e);
+            }
+        });
 
         Ok(())
     }

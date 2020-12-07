@@ -208,9 +208,6 @@ impl Connection {
             //let mut unix_rx = unix_rx.fuse();
 
             loop {
-                #[cfg(feature = "profile")]
-                let _fg = ::flame::start_guard("unix::tick");
-
                 select!{
                     // Send outgoing messages
                     tx = tx_stream.next() => {

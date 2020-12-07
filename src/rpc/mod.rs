@@ -1,3 +1,5 @@
+use std::task::{Poll, Context};
+
 use tracing::{span, Level};
 use log::{debug, info, error};
 
@@ -84,7 +86,10 @@ impl Dsf {
         let kind = match req.kind() {
             rpc::RequestKind::Status => RpcKind::Status,
             rpc::RequestKind::Peer(rpc::PeerCommands::Connect(opts)) => RpcKind::connect(opts),
-            _ => unimplemented!(),
+            _ => {
+                error!("RPC start {:?} unimplemented", req.kind());
+                return Ok(());
+            },
         };
 
         let op = RpcOperation {
@@ -101,8 +106,8 @@ impl Dsf {
         Ok(())
     }
 
-
-    pub fn poll_rpc(&mut self) -> Result<(), Error> {
+    // Poll on pending RPC operations
+    pub fn poll_rpc(&mut self, ctx: &mut Context) -> Result<(), Error> {
 
         // Take RPC operations so we can continue using `&mut self`
         let mut rpc_ops = self.rpc_ops.take().unwrap();
@@ -111,19 +116,22 @@ impl Dsf {
         // Iterate through and update each operation
         for (req_id, op) in rpc_ops.iter_mut() {
             
-            match &mut op.kind {
+            let complete = match &mut op.kind {
                 RpcKind::Status => {
                     let resp = rpc::Response::new(op.req_id,  rpc::ResponseKind::Status(self.status()));
 
                     op.resp.clone().try_send(resp).unwrap();
-                    done.push(req_id.clone());
+                    true
                 },
                 // Connect only uses DHT
                 // TODO: how to track without undermining waker?
-                RpcKind::Connect(ctx) => self.poll_rpc_connect(ctx),
+                RpcKind::Connect(connect) => self.poll_rpc_connect(connect, ctx)?,
                 _ => unimplemented!(),
+            };
+
+            if complete {
+                done.push(req_id.clone());
             }
-            
         }
 
         // Remove completed operations

@@ -13,6 +13,8 @@ use crate::daemon::Dsf;
 use crate::error::Error;
 
 
+
+
 impl Dsf {
     /// Register a locally known service
     pub async fn publish(&mut self, options: PublishOptions) -> Result<PublishInfo, Error> {
