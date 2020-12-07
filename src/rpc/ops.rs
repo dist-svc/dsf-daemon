@@ -2,41 +2,30 @@
 
 use futures::channel::mpsc;
 
-use dsf_rpc::StatusInfo;
-use super::connect::ConnectCtx;
-
+use dsf_rpc::*;
 
 use crate::error::Error;
+
+use super::connect::{ConnectCtx, ConnectState};
+
+pub type RpcSender = mpsc::Sender<Response>;
+
 
 /// RPC operation container object
 /// Used to track RPC operation kind / state / response etc.
 pub struct RpcOperation {
     pub req_id: u64,
-    pub state: RpcState,
     pub kind: RpcKind,
+    pub resp: RpcSender,
 }
 
-
-
-/// RPC operation kind enmeration
 pub enum RpcKind {
-    Status(mpsc::Sender<StatusInfo>),
+    Status,
     Connect(ConnectCtx),
 }
 
-impl std::fmt::Display for RpcKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RpcKind::Status(_) => write!(f, "Status"),
-            RpcKind::Connect(_) => write!(f, "Connect"),
-        }
+impl RpcKind {
+    pub fn connect(opts: ConnectOptions) -> Self {
+        RpcKind::Connect(ConnectCtx{opts, state: ConnectState::Init})
     }
 }
-
-
-pub enum RpcState {
-    /// Initialised state, nothing done yet
-    Init,
-
-}
-

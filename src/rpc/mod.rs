@@ -2,6 +2,7 @@ use tracing::{span, Level};
 use log::{debug, info, error};
 
 use futures::prelude::*;
+use futures::channel::mpsc;
 
 use dsf_core::prelude::*;
 use dsf_rpc::{self as rpc, ServiceIdentifier};
@@ -11,6 +12,7 @@ use crate::error::{CoreError, Error};
 
 // Generic / shared operation types
 pub mod ops;
+use ops::*;
 
 // Connect to an existing peer
 pub mod connect;
@@ -74,22 +76,33 @@ impl Dsf {
         }
     }
 
-    // Add an RPC operation to internal tracking
-    pub fn start_rpc(&mut self, op: ops::RpcOperation) -> Result<(), Error> {
-        let req_id = op.req_id;
-        let rpc_ops = self.rpc_ops.as_mut().unwrap();
+    // Create a new RPC operation
+    pub fn start_rpc(&mut self, req: rpc::Request, resp: RpcSender) -> Result<(), Error> {
+
+        let req_id = req.req_id();
+
+        let kind = match req.kind() {
+            rpc::RequestKind::Status => RpcKind::Status,
+            rpc::RequestKind::Peer(rpc::PeerCommands::Connect(opts)) => RpcKind::connect(opts),
+            _ => unimplemented!(),
+        };
+
+        let op = RpcOperation {
+            req_id,
+            kind,
+            resp,
+        };
 
         // TODO: check we're not overwriting anything here
 
         debug!("Adding RPC op {} to tracking", req_id);
-        rpc_ops.insert(req_id, op);
-
+        self.rpc_ops.as_mut().unwrap().insert(req_id, op);
 
         Ok(())
     }
 
 
-    pub async fn poll_rpc(&mut self) -> Result<(), Error> {
+    pub fn poll_rpc(&mut self) -> Result<(), Error> {
 
         // Take RPC operations so we can continue using `&mut self`
         let mut rpc_ops = self.rpc_ops.take().unwrap();
@@ -98,14 +111,16 @@ impl Dsf {
         // Iterate through and update each operation
         for (req_id, op) in rpc_ops.iter_mut() {
             
-            match &op.kind {
-                ops::RpcKind::Status(tx) => {
-                    tx.clone().send(self.status()).await.unwrap();
+            match &mut op.kind {
+                RpcKind::Status => {
+                    let resp = rpc::Response::new(op.req_id,  rpc::ResponseKind::Status(self.status()));
+
+                    op.resp.clone().try_send(resp).unwrap();
                     done.push(req_id.clone());
                 },
                 // Connect only uses DHT
                 // TODO: how to track without undermining waker?
-                ops::RpcKind::Connect(_ctx) => (),
+                RpcKind::Connect(ctx) => self.poll_rpc_connect(ctx),
                 _ => unimplemented!(),
             }
             
@@ -220,7 +235,7 @@ impl Dsf {
                 self.create(options).await.map(ResponseKind::Service)?
             }
             ServiceCommands::Register(options) => {
-                self.register(options).await.map(ResponseKind::Registered)?
+                self.register(options)?.await.map(ResponseKind::Registered)?
             }
             ServiceCommands::Locate(options) => {
                 self.locate(options).await.map(ResponseKind::Located)?

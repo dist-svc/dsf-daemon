@@ -126,7 +126,6 @@ impl Unix {
 
                     let conn = Connection::new(stream, index, rx_sink.clone());
 
-                    trace!("connections lock");
                     c.lock().unwrap().insert(index, conn);
 
                     index += 1;
@@ -153,7 +152,6 @@ impl Unix {
         let connection_id = msg.connection_id;
 
         let (mut tx_sink, mut exit_sink) = {
-            trace!("response lock");
             let mut connections = self.connections.lock().unwrap();
 
             let interface = match connections.get_mut(&connection_id) {
@@ -217,7 +215,7 @@ impl Connection {
                     // Send outgoing messages
                     tx = tx_stream.next() => {
                         if let Some(tx) = tx {
-                            trace!("unix tx: {:?}", tx.data);
+                            debug!("unix tx: {:?}", tx.data);
                             unix_tx.write(&tx.data).await?;
                         }
                     },
@@ -234,7 +232,7 @@ impl Connection {
                                 u.sink = tx.clone();
                                 u.exit = exit.clone();
 
-                                trace!("unix rx: {:?}", &u.data);
+                                debug!("unix rx: {:?}", &u.data);
                                 rx_sink.send(u).await?;
                             },
                             Err(e) => {

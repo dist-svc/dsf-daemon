@@ -83,7 +83,7 @@ impl Dsf {
                         index: None,
                     },
                     no_replica: false,
-                })
+                })?
                 .await?;
 
             // Update local service state

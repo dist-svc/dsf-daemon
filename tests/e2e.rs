@@ -29,7 +29,7 @@ fn end_to_end() {
     let d = d.path().to_str().unwrap().to_string();
 
     let _ = FmtSubscriber::builder()
-        .with_max_level(LevelFilter::DEBUG)
+        .with_max_level(LevelFilter::TRACE)
         .try_init();
 
     let mut daemons = vec![];
@@ -59,10 +59,10 @@ fn end_to_end() {
 
             // Create client
             let mut client = Client::new(&ClientOptions::new(&addr, Duration::from_secs(1)))
-                .expect("Error connecting to client");
+                .expect("Error creating client");
 
             // Fetch client status and ID
-            let status = client.status().await.expect("Error fetching client info");
+            let status = client.status().await.expect("Error fetching daemon status");
             let id = status.id;
 
             // Add the new daemon to the list

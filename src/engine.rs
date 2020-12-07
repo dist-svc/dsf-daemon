@@ -363,6 +363,8 @@ impl Engine {
         // Parse out message
         let req: RpcRequest = serde_json::from_slice(&unix_req.data).unwrap();
 
+        debug!("engine, RPC req: {:?}", req);
+
         let span = span!(Level::TRACE, "rpc", id = req.req_id());
         let _enter = span.enter();
 
