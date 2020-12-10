@@ -19,10 +19,9 @@ use dsf_core::prelude::*;
 use dsf_rpc::{self as rpc, ConnectInfo, ConnectOptions};
 
 use crate::daemon::Dsf;
-
+use super::ops::{RpcOperation, RpcKind};
 use crate::core::peers::{Peer, PeerAddress};
 use crate::error::Error as DsfError;
-
 
 pub enum ConnectState {
     Init,
@@ -64,7 +63,22 @@ impl Future for ConnectFuture {
 
 impl Dsf {
     pub fn connect(&mut self, options: ConnectOptions) -> Result<ConnectFuture, DsfError> {
-        unimplemented!()
+        let req_id = rand::random();
+
+        let (tx, rx) = mpsc::channel(1);
+
+        // Create connect object
+        let op = RpcOperation {
+            req_id,
+            kind: RpcKind::connect(options),
+            done: tx,
+        };
+
+        // Add to tracking
+        debug!("Adding RPC op {} to tracking", req_id);
+        self.rpc_ops.as_mut().unwrap().insert(req_id, op);
+
+        Ok(ConnectFuture{ rx })
     }
 
     pub fn poll_rpc_connect(&mut self, req_id: u64, connect_op: &mut ConnectOp, ctx: &mut Context, mut done: mpsc::Sender<rpc::Response>) -> Result<bool, DsfError> {
@@ -72,7 +86,7 @@ impl Dsf {
 
         match state {
             ConnectState::Init => {
-                // Check we're not connecting to ourself
+                // TODO: Check we're not connecting to ourself
                 //        if self.bind_address() == options.address {
                 //            warn!("[DSF ({:?})] Cannot connect to self", self.id);
                 //        }

@@ -7,6 +7,7 @@ use dsf_rpc::*;
 use crate::error::Error;
 
 use super::connect::{ConnectOp, ConnectState};
+use super::register::{RegisterOp, RegisterState};
 
 pub type RpcSender = mpsc::Sender<Response>;
 
@@ -22,10 +23,15 @@ pub struct RpcOperation {
 pub enum RpcKind {
     Status,
     Connect(ConnectOp),
+    Register(RegisterOp),
 }
 
 impl RpcKind {
     pub fn connect(opts: ConnectOptions) -> Self {
         RpcKind::Connect(ConnectOp{opts, state: ConnectState::Init})
+    }
+
+    pub fn register(opts: RegisterOptions) -> Self {
+        RpcKind::Register(RegisterOp{opts, state: RegisterState::Init})
     }
 }
