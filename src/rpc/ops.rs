@@ -16,7 +16,7 @@ pub type RpcSender = mpsc::Sender<Response>;
 pub struct RpcOperation {
     pub req_id: u64,
     pub kind: RpcKind,
-    pub resp: RpcSender,
+    pub done: RpcSender,
 }
 
 pub enum RpcKind {

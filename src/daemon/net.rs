@@ -70,12 +70,24 @@ impl Dsf {
 
         // Parse out base object
         // TODO: pass secret keys for encode / decode here
-        let (base, _n) = Base::parse(&data, |id| self.find_public_key(id), |_id| None)?;
+        let (base, _n) = match Base::parse(&data, |id| self.find_public_key(id), |_id| None) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Error decoding base message: {:?}", e);
+                return Err(e.into());
+            }
+        };
 
         // TODO: use n here?
 
         // Convert into message type
-        let message = net::Message::convert(base, |id| self.find_public_key(id) )?;
+        let message = match net::Message::convert(base, |id| self.find_public_key(id) ) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Error convertng network message: {:?}", e);
+                return Err(e.into());
+            }
+        };
 
         Ok(message)
     }
@@ -99,7 +111,7 @@ impl Dsf {
         addr: SocketAddr,
         req: net::Request,
     ) -> Result<mpsc::Receiver<NetResponse>, DaemonError> {
-        trace!(
+        debug!(
             "issuing request: {:?} to: {:?}",
             req,
             addr,
@@ -125,19 +137,31 @@ impl Dsf {
         resp: net::Response,
     ) -> Result<Option<net::Response>, DaemonError> {
 
+        let from = resp.from.clone();
         let req_id = resp.id;
+        
+        // Generic net message processing here
+        let peer = self.handle_base(&from, &addr.into(), &resp.common, Some(SystemTime::now())).await;
+
+        // Parse out DHT responses
+        if let Some(dht_resp) = self.net_to_dht_response(&resp.data) {
+            let _ = self.handle_dht_resp(from.clone(), peer, req_id, dht_resp);
+
+            return Ok(None);
+        }
 
         // Look for matching requests
-        let mut a = match self.net_requests.remove(&(addr.into(), req_id)) {
-            Some(a) => a,
+        match self.net_requests.remove(&(addr.into(), req_id)) {
+            Some(mut a) => {
+                trace!("Found pending request for id {} address: {}", req_id, addr);
+                a.send(resp).await?;
+            }
             None => {
                 error!("Received response id {} with no pending request", req_id);
                 return Ok(None);
             }
         };
 
-        trace!("Found pending request for id {} address: {}", req_id, addr);
-                a.send(resp).await?;
 
         // TODO: three-way-ack support?
 
@@ -159,7 +183,6 @@ impl Dsf {
         let flags = req.flags.clone();
         let our_pub_key = self.service().public_key();
         let from = req.from.clone();
-        let from2 = from.clone();
 
         trace!(
             "handling request (from: {:?} / {})\n {:?}",
@@ -168,19 +191,19 @@ impl Dsf {
             &req
         );
 
-        // Generic request processing here
+        // Generic net message processing here
         let peer = self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now())).await;
 
         // Handle specific DSF and DHT messages
         let mut resp = if let Some(dht_req) = self.net_to_dht_request(&req.data) {
 
-            let dht_resp = self.handle_dht(from, peer, req.id, dht_req)?;
+            let dht_resp = self.handle_dht_req(from.clone(), peer, req.id, dht_req)?;
 
             let net_resp = self.dht_to_net_response(dht_resp);
 
             net::Response::new(own_id, req_id, net_resp, Flags::default())
         } else {
-            let dsf_resp = self.handle_dsf(from, peer, req.data).await?;
+            let dsf_resp = self.handle_dsf(from.clone(), peer, req.data).await?;
 
             net::Response::new(own_id, req_id, dsf_resp, Flags::default())
         };
@@ -192,9 +215,9 @@ impl Dsf {
         }
 
         // Update peer info
-        self.peers().update(&from2, |p| p.info.sent += 1 );
+        self.peers().update(&from, |p| p.info.sent += 1 );
 
-        trace!("returning response (to: {:?})\n {:?}", from2, &resp);
+        trace!("returning response (to: {:?})\n {:?}", from, &resp);
 
 
         Ok(resp)

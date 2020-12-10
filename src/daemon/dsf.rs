@@ -453,11 +453,7 @@ impl Future for Dsf {
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
 
         // Poll for outgoing DHT messages
-        // TODO: this could be a `try_recv`, but then it'd be impossible to pass through a context for the waker..?
-        let req = self.dht_source.poll_next_unpin(ctx);
-
-
-        if let Poll::Ready(Some((req_id, target, body))) = req {
+        if let Poll::Ready(Some((req_id, target, body))) = self.dht_source.poll_next_unpin(ctx) {
 
             let addr = target.info().address();
             let body = self.dht_to_net_request(body);
@@ -468,7 +464,11 @@ impl Future for Dsf {
                 flags |= Flags::PUB_KEY_REQUEST;
             }
 
-            let req = NetRequest::new(self.id(), req_id, body, flags);
+            let mut req = NetRequest::new(self.id(), req_id, body, flags);
+            // Attach public key to DHT requests
+            req.common.public_key = Some(self.pub_key());
+
+            debug!("Issuing DHT request to {:?}: {:?}", target, req);
 
             // Add message to internal tracking
             let (tx, rx) = mpsc::channel(1);
@@ -479,10 +479,22 @@ impl Future for Dsf {
                 error!("Error sending outgoing DHT message: {:?}", e);
                 return Poll::Ready(Err(DsfError::Unknown));
             }
-            
         }
 
+        // Poll on internal RPC operations
+        // TODO: handle errors?
+        let _ = self.poll_rpc(ctx);
+
+        // Poll on internal DHT
+        // TODO: handle errors?
+        let _ = self.dht_mut().update();
+
         // TODO: poll on internal state / messages
+
+        // Always wake
+        // TODO: propagate this, in a better manner
+        ctx.waker().clone().wake();
+
         Poll::Pending
     }
 }

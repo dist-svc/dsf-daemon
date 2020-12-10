@@ -79,7 +79,7 @@ impl Dsf {
     }
 
     // Create a new RPC operation
-    pub fn start_rpc(&mut self, req: rpc::Request, resp: RpcSender) -> Result<(), Error> {
+    pub fn start_rpc(&mut self, req: rpc::Request, done: RpcSender) -> Result<(), Error> {
 
         let req_id = req.req_id();
 
@@ -95,7 +95,7 @@ impl Dsf {
         let op = RpcOperation {
             req_id,
             kind,
-            resp,
+            done,
         };
 
         // TODO: check we're not overwriting anything here
@@ -107,35 +107,36 @@ impl Dsf {
     }
 
     // Poll on pending RPC operations
+    // Context must be propagated through here to keep the waker happy
     pub fn poll_rpc(&mut self, ctx: &mut Context) -> Result<(), Error> {
 
         // Take RPC operations so we can continue using `&mut self`
         let mut rpc_ops = self.rpc_ops.take().unwrap();
-        let mut done = vec![];
+        let mut ops_done = vec![];
         
         // Iterate through and update each operation
-        for (req_id, op) in rpc_ops.iter_mut() {
-            
-            let complete = match &mut op.kind {
-                RpcKind::Status => {
-                    let resp = rpc::Response::new(op.req_id,  rpc::ResponseKind::Status(self.status()));
+        for (req_id, mut op) in rpc_ops.iter_mut() {
 
-                    op.resp.clone().try_send(resp).unwrap();
+            let RpcOperation{kind, done, req_id} = op;
+
+            let complete = match kind {
+                RpcKind::Status => {
+                    let resp = rpc::Response::new(*req_id,  rpc::ResponseKind::Status(self.status()));
+
+                    done.clone().try_send(resp).unwrap();
                     true
                 },
-                // Connect only uses DHT
-                // TODO: how to track without undermining waker?
-                RpcKind::Connect(connect) => self.poll_rpc_connect(connect, ctx)?,
+                RpcKind::Connect(connect) => self.poll_rpc_connect(*req_id, connect, ctx, done.clone())?,
                 _ => unimplemented!(),
             };
 
             if complete {
-                done.push(req_id.clone());
+                ops_done.push(req_id.clone());
             }
         }
 
         // Remove completed operations
-        for d in done {
+        for d in ops_done {
             rpc_ops.remove(&d);
         }
 

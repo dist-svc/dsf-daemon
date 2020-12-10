@@ -67,13 +67,11 @@ impl Dsf {
         unimplemented!()
     }
 
-    pub fn poll_rpc_connect(&mut self, connect_op: &mut ConnectOp, ctx: &mut Context) -> Result<bool, DsfError> {
+    pub fn poll_rpc_connect(&mut self, req_id: u64, connect_op: &mut ConnectOp, ctx: &mut Context, mut done: mpsc::Sender<rpc::Response>) -> Result<bool, DsfError> {
         let ConnectOp{opts, state} = connect_op;
 
         match state {
             ConnectState::Init => {
-                info!("Connect: {:?}", opts.address);
-
                 // Check we're not connecting to ourself
                 //        if self.bind_address() == options.address {
                 //            warn!("[DSF ({:?})] Cannot connect to self", self.id);
@@ -87,6 +85,8 @@ impl Dsf {
                         return Err(DsfError::Unknown);
                     }
                 };
+
+                debug!("DHT connect start to: {:?} (id: {:?})", opts.address, req_id);
 
                 // Set request flags for initial connection
                 let flags = Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST;
@@ -114,10 +114,34 @@ impl Dsf {
                     Poll::Ready(Ok(v)) => {
                         debug!("DHT connect complete! {:?}", v);
 
+                        // Update newly found peers
+                        for p in &v {
+                            let i = p.info();
+
+                            self.peers().find_or_create(
+                                i.id(),
+                                PeerAddress::Implicit(i.address()),
+                                i.pub_key(),
+                            );
+                        }
+
+                        // Build connect info
+                        let p = v.iter().find(|p| p.info().address() == opts.address.into()).unwrap();
+                        let i = ConnectInfo {
+                            id: p.info().id(),
+                            peers: v.len(),
+                        };
+
+                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Connected(i));
+
+                        done.try_send(resp).unwrap();
+
                         *state = ConnectState::Done;
                     },
                     Poll::Ready(Err(e)) => {
                         error!("DHT connect error: {:?}", e);
+
+                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Error(dsf_core::error::Error::Unknown));
 
                         *state = ConnectState::Error;
                     },

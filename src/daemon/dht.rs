@@ -27,7 +27,7 @@ pub struct DsfDhtMessage {
 
 impl Dsf {
     /// Handle a DHT request message
-    pub(crate) fn handle_dht(
+    pub(crate) fn handle_dht_req(
         &mut self,
         from: Id,
         peer: Peer,
@@ -38,11 +38,30 @@ impl Dsf {
         // Map peer to existing DHT entry
         // TODO: resolve this rather than creating a new instance
         // (or, use only the index and rely on external storage etc.?)
-        let from = DhtEntry::new(from.into(), peer);
+        let entry = DhtEntry::new(from.into(), peer);
 
         // Pass to DHT
-        // TODO: actuall pass here
-        let resp = self.dht_mut().handle_req(req_id, &from, &req).unwrap();
+        let resp = self.dht_mut().handle_req(req_id, &entry, &req).unwrap();
+
+        Ok(resp)
+    }
+
+    // Handle a DHT request message
+    pub(crate) fn handle_dht_resp(
+        &mut self,
+        from: Id,
+        peer: Peer,
+        req_id: RequestId,
+        resp: DhtResponse<Id, Peer, Data>,
+    ) -> Result<(), Error> {
+
+        // Map peer to existing DHT entry
+        // TODO: resolve this rather than creating a new instance
+        // (or, use only the index and rely on external storage etc.?)
+        let entry = DhtEntry::new(from.into(), peer);
+
+        // Pass to DHT
+        let resp = self.dht_mut().handle_resp(req_id, &entry, &resp).unwrap();
 
         Ok(resp)
     }
