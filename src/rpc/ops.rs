@@ -23,7 +23,6 @@ pub struct RpcOperation {
 }
 
 pub enum RpcKind {
-    Status,
     Connect(ConnectOp),
     Create(CreateOp),
     Register(RegisterOp),
