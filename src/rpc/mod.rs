@@ -88,6 +88,7 @@ impl Dsf {
             rpc::RequestKind::Peer(rpc::PeerCommands::Connect(opts)) => RpcKind::connect(opts),
             rpc::RequestKind::Service(rpc::ServiceCommands::Create(opts)) => RpcKind::create(opts),
             rpc::RequestKind::Service(rpc::ServiceCommands::Register(opts)) => RpcKind::register(opts),
+            rpc::RequestKind::Service(rpc::ServiceCommands::Locate(opts)) => RpcKind::locate(opts),
             _ => {
                 error!("RPC start {:?} unimplemented", req.kind());
                 return Ok(());
@@ -131,6 +132,7 @@ impl Dsf {
                 RpcKind::Connect(connect) => self.poll_rpc_connect(*req_id, connect, ctx, done.clone())?,
                 RpcKind::Register(register) => self.poll_rpc_register(*req_id, register, ctx, done.clone())?,
                 RpcKind::Create(create) => self.poll_rpc_create(*req_id, create, ctx, done.clone())?,
+                RpcKind::Locate(locate) => self.poll_rpc_locate(*req_id, locate, ctx, done.clone())?,
                 _ => unimplemented!(),
             };
 
@@ -251,7 +253,7 @@ impl Dsf {
                 self.register(options)?.await.map(ResponseKind::Registered)?
             }
             ServiceCommands::Locate(options) => {
-                self.locate(options).await.map(ResponseKind::Located)?
+                self.locate(options)?.await.map(ResponseKind::Located)?
             }
             ServiceCommands::Info(options) => {
                 let id = self.resolve_identifier(&options.service)?;

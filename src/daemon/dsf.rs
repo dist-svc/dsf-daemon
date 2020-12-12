@@ -21,7 +21,7 @@ use tracing::{span, Level};
 use crate::core::data::DataManager;
 use crate::core::peers::{Peer, PeerManager, PeerState};
 use crate::core::replicas::ReplicaManager;
-use crate::core::services::{ServiceManager, ServiceState};
+use crate::core::services::{ServiceManager, ServiceState, ServiceInfo};
 use crate::core::subscribers::SubscriberManager;
 
 use crate::rpc::ops::RpcOperation;
@@ -355,7 +355,7 @@ impl Dsf {
         None
     }
 
-    pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
+    pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<ServiceInfo, Error> {
         let mut services = self.services();
         let replica_manager = self.replicas();
 
@@ -396,7 +396,7 @@ impl Dsf {
         }
 
         // Fetch service instance
-        let _info = match services.known(id) {
+        let info = match services.known(id) {
             true => {
                 info!("updating existing service");
                 
@@ -435,7 +435,7 @@ impl Dsf {
             replica_manager.create_or_update(id, peer_id, page);
         }
 
-        Ok(())
+        Ok(info)
     }
 }
 

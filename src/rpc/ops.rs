@@ -9,7 +9,7 @@ use crate::error::Error;
 use super::connect::{ConnectOp, ConnectState};
 use super::create::{CreateOp, CreateState};
 use super::register::{RegisterOp, RegisterState};
-
+use super::locate::{LocateOp, LocateState};
 
 pub type RpcSender = mpsc::Sender<Response>;
 
@@ -27,6 +27,7 @@ pub enum RpcKind {
     Connect(ConnectOp),
     Create(CreateOp),
     Register(RegisterOp),
+    Locate(LocateOp),
 }
 
 impl RpcKind {
@@ -40,5 +41,9 @@ impl RpcKind {
 
     pub fn register(opts: RegisterOptions) -> Self {
         RpcKind::Register(RegisterOp{opts, state: RegisterState::Init})
+    }
+
+    pub fn locate(opts: LocateOptions) -> Self {
+        RpcKind::Locate(LocateOp{opts, state: LocateState::Init})
     }
 }

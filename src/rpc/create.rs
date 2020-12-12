@@ -16,13 +16,15 @@ use dsf_core::service::Publisher;
 
 use dsf_rpc::{self as rpc, CreateOptions, RegisterOptions, ServiceIdentifier};
 
+
+use crate::daemon::Dsf;
+use crate::error::Error;
+
+use crate::core::services::*;
 use crate::core::services::ServiceState;
 use crate::core::peers::Peer;
 
 
-use crate::core::services::*;
-use crate::daemon::Dsf;
-use crate::error::Error;
 use super::ops::*;
 
 
