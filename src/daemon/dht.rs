@@ -118,7 +118,7 @@ impl Dsf {
                     }
                 })
                 .collect();
-        
+       
                 ResponseKind::NodesFound(Id::from(id.clone()), nodes)
             },
             DhtResponse::ValuesFound(id, values) => {
@@ -149,6 +149,7 @@ impl Dsf {
                 let mut dht_nodes = Vec::with_capacity(nodes.len());
 
                 for (id, addr, key) in nodes {
+                    
                     let node = self.peers().find_or_create(
                         id.clone(),
                         PeerAddress::Implicit(addr.clone()),

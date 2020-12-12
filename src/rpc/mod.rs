@@ -86,6 +86,7 @@ impl Dsf {
         let kind = match req.kind() {
             rpc::RequestKind::Status => RpcKind::Status,
             rpc::RequestKind::Peer(rpc::PeerCommands::Connect(opts)) => RpcKind::connect(opts),
+            rpc::RequestKind::Service(rpc::ServiceCommands::Create(opts)) => RpcKind::create(opts),
             rpc::RequestKind::Service(rpc::ServiceCommands::Register(opts)) => RpcKind::register(opts),
             _ => {
                 error!("RPC start {:?} unimplemented", req.kind());
@@ -129,6 +130,7 @@ impl Dsf {
                 },
                 RpcKind::Connect(connect) => self.poll_rpc_connect(*req_id, connect, ctx, done.clone())?,
                 RpcKind::Register(register) => self.poll_rpc_register(*req_id, register, ctx, done.clone())?,
+                RpcKind::Create(create) => self.poll_rpc_create(*req_id, create, ctx, done.clone())?,
                 _ => unimplemented!(),
             };
 
@@ -243,7 +245,7 @@ impl Dsf {
         let res = match req {
             ServiceCommands::List(_options) => ResponseKind::Services(self.get_services()),
             ServiceCommands::Create(options) => {
-                self.create(options).await.map(ResponseKind::Service)?
+                self.create(options)?.await.map(ResponseKind::Service)?
             }
             ServiceCommands::Register(options) => {
                 self.register(options)?.await.map(ResponseKind::Registered)?
