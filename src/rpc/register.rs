@@ -164,7 +164,6 @@ impl Dsf {
                         };
 
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Registered(i));
-
                         done.try_send(resp).unwrap();
 
                         *state = RegisterState::Done;

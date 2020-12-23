@@ -301,6 +301,7 @@ impl Dsf {
     /// Initialise a DSF instance
     ///
     /// This bootstraps using known peers then updates all tracked services
+    #[cfg(nope)]
     pub async fn bootstrap(&mut self) -> Result<(), Error> {
         let peers = self.peers.list();
 

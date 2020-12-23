@@ -38,6 +38,9 @@ pub mod query;
 // Subscribe to a service
 pub mod subscribe;
 
+// Bootstrap daemon connectivity
+pub mod bootstrap;
+
 // Debug commands
 pub mod debug;
 
@@ -138,7 +141,7 @@ impl Dsf {
             //RequestKind::Data(DataCommands::Publish(options)) => unimplemented!(),
             //RequestKind::Data(DataCommands::Query(options)) => unimplemented!(),
             //RequestKind::Debug(DebugCommands::Update) => self.update(true).await.map(|_| ResponseKind::None)?,
-            //RequestKind::Debug(DebugCommands::Bootstrap) => self.bootstrap().await.map(|_| ResponseKind::None)?,RequestKind::Debug(
+            RequestKind::Debug(DebugCommands::Bootstrap) => RpcKind::bootstrap(()),
             _ => {
                 error!("RPC operation {:?} unimplemented", req.kind());
                 return Ok(());
@@ -177,7 +180,11 @@ impl Dsf {
                 RpcKind::Register(register) => self.poll_rpc_register(*req_id, register, ctx, done.clone())?,
                 RpcKind::Create(create) => self.poll_rpc_create(*req_id, create, ctx, done.clone())?,
                 RpcKind::Locate(locate) => self.poll_rpc_locate(*req_id, locate, ctx, done.clone())?,
-                _ => unimplemented!(),
+                RpcKind::Bootstrap(bootstrap) => self.poll_rpc_bootstrap(*req_id, bootstrap, ctx, done.clone())?,
+                _ => {
+                    error!("Unsuported async RPC: {}", kind);
+                    return Ok(())
+                },
             };
 
             if complete {

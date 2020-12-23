@@ -214,11 +214,12 @@ impl Engine {
         let _enter = span.enter();
 
         if !options.no_bootstrap {
+
+            let b = dsf.bootstrap().unwrap();
             // TODO: Create future bootstrap event
             task::spawn(async move {
                 task::sleep(Duration::from_secs(2)).await;
-                warn!("bootstrap not yet implemented")
-                //let _ = d.bootstrap().await;
+                let _ = b.await;
             });
         }
 

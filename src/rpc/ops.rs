@@ -10,6 +10,7 @@ use super::connect::{ConnectOp, ConnectState};
 use super::create::{CreateOp, CreateState};
 use super::register::{RegisterOp, RegisterState};
 use super::locate::{LocateOp, LocateState};
+use super::bootstrap::{BootstrapOp, BootstrapState};
 
 pub type RpcSender = mpsc::Sender<Response>;
 
@@ -22,11 +23,13 @@ pub struct RpcOperation {
     pub done: RpcSender,
 }
 
+#[derive(strum_macros::Display)]
 pub enum RpcKind {
     Connect(ConnectOp),
     Create(CreateOp),
     Register(RegisterOp),
     Locate(LocateOp),
+    Bootstrap(BootstrapOp),
 }
 
 impl RpcKind {
@@ -44,5 +47,9 @@ impl RpcKind {
 
     pub fn locate(opts: LocateOptions) -> Self {
         RpcKind::Locate(LocateOp{opts, state: LocateState::Init})
+    }
+
+    pub fn bootstrap(opts: ()) -> Self {
+        RpcKind::Bootstrap(BootstrapOp{opts, state: BootstrapState::Init})
     }
 }
