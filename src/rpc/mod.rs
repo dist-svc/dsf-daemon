@@ -32,6 +32,9 @@ pub mod register;
 // Publish data for a given service
 pub mod publish;
 
+// Push DSF data for a given service
+pub mod push;
+
 // Locate an existing service
 pub mod locate;
 
@@ -46,6 +49,7 @@ pub mod bootstrap;
 
 // Debug commands
 pub mod debug;
+
 
 impl Dsf {
 

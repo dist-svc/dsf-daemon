@@ -289,7 +289,7 @@ impl Engine {
                         if let Some(m) = net_rx {
 
                             // Handle request via DSF
-                            let resp = match dsf.handle_net_raw(m).await {
+                            match dsf.handle_net_raw(m).await {
                                 Ok(v) => v,
                                 Err(e) => {
                                     error!("error handling DSF message: {:?}", e);
@@ -315,8 +315,7 @@ impl Engine {
                             }
                         }
                     },
-                    // Incoming RPC messages, response is inline
-
+                    // Incoming RPC messages
                     rpc_rx = unix.next().fuse() => {
                         trace!("engine::unix_rx");
 

@@ -39,6 +39,8 @@ impl Dsf {
             }
         };
 
+        debug!("Net message: {:?}", decoded);
+
         // Route responses as required internally
         let resp = match decoded {
             NetMessage::Response(resp) => {
@@ -203,7 +205,7 @@ impl Dsf {
 
             net::Response::new(own_id, req_id, net_resp, Flags::default())
         } else {
-            let dsf_resp = self.handle_dsf(from.clone(), peer, req.data).await?;
+            let dsf_resp = self.handle_dsf(from.clone(), peer, req.data)?;
 
             net::Response::new(own_id, req_id, dsf_resp, Flags::default())
         };
@@ -350,7 +352,7 @@ impl Dsf {
     }
 
     /// Handle a DSF type message
-    async fn handle_dsf(
+    fn handle_dsf(
         &mut self,
         from: Id,
         peer: Peer,
@@ -496,7 +498,7 @@ impl Dsf {
 
                 // TODO: this is, not ideal...
                 // DEADLOCK MAYBE?
-                self.request_all(&addresses, req).await?;
+                //self.request_all(&addresses, req).await?;
 
                 info!("Data push complete");
 

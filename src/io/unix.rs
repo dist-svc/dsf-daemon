@@ -229,7 +229,7 @@ impl Connection {
                                 u.sink = tx.clone();
                                 u.exit = exit.clone();
 
-                                debug!("unix rx: {:?}", &u.data);
+                                trace!("unix rx: {:?}", &u.data);
                                 rx_sink.send(u).await?;
                             },
                             Err(e) => {
