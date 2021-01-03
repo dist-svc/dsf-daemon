@@ -3,11 +3,9 @@ use std::time::Duration;
 
 use log::{info};
 
-use futures::prelude::*;
 use async_std::task;
 
 use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
-use tracing_futures::Instrument;
 
 use indicatif::ProgressBar;
 use tempdir::TempDir;

@@ -235,34 +235,6 @@ impl Dsf {
         }
     }
 
-    /// Look up a peer in the database
-    pub async fn lookup(&mut self, id: &Id) -> Result<Peer, Error> {
-        let span = span!(Level::DEBUG, "lookup", "{}", self.id());
-        let _enter = span.enter();
-
-        let (locate, _req_id) = match self.dht.locate(id.clone().into()) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Error starting DHT locate: {:?}", e);
-                return Err(Error::Unknown);
-            }
-        };
-
-        // TODO: re-add timeout here? or maybe we don't need it
-        // because the DHT operation will timeout internally?
-        match locate.await {
-            Ok(n) => {
-                debug!("Lookup complete: {:?}", n.info());
-                // TODO: use search results
-                Ok(n.info().clone())
-            }
-            Err(e) => {
-                error!("Lookup failed: {:?}", e);
-                Err(Error::NotFound)
-            }
-        }
-    }
-
     /// Run an update of the daemom and all managed services
     pub async fn update(&mut self, force: bool) -> Result<(), Error> {
         info!("DSF update (forced: {:?})", force);

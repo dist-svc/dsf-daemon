@@ -7,10 +7,13 @@ use dsf_rpc::*;
 use crate::error::Error;
 
 use super::connect::{ConnectOp, ConnectState};
+use super::lookup::{LookupOp, LookupState};
+
 use super::create::{CreateOp, CreateState};
 use super::register::{RegisterOp, RegisterState};
 use super::locate::{LocateOp, LocateState};
 use super::bootstrap::{BootstrapOp, BootstrapState};
+
 
 pub type RpcSender = mpsc::Sender<Response>;
 
@@ -26,6 +29,7 @@ pub struct RpcOperation {
 #[derive(strum_macros::Display)]
 pub enum RpcKind {
     Connect(ConnectOp),
+    Lookup(LookupOp),
     Create(CreateOp),
     Register(RegisterOp),
     Locate(LocateOp),
@@ -35,6 +39,10 @@ pub enum RpcKind {
 impl RpcKind {
     pub fn connect(opts: ConnectOptions) -> Self {
         RpcKind::Connect(ConnectOp{opts, state: ConnectState::Init})
+    }
+
+    pub fn lookup(opts: peer::SearchOptions) -> Self {
+        RpcKind::Lookup(LookupOp{opts, state: LookupState::Init})
     }
 
     pub fn create(opts: CreateOptions) -> Self {

@@ -20,6 +20,9 @@ use ops::*;
 // Connect to an existing peer
 pub mod connect;
 
+// Lookup a peer in the database
+pub mod lookup;
+
 // Create and register new service
 pub mod create;
 
@@ -133,7 +136,7 @@ impl Dsf {
         // Otherwise queue up request for async execution
         let kind = match req.kind() {
             RequestKind::Peer(PeerCommands::Connect(opts)) => RpcKind::connect(opts),
-            //RequestKind::Peer(PeerCommands::Search(opts)) => unimplemented!(),
+            RequestKind::Peer(PeerCommands::Search(opts)) => RpcKind::lookup(opts),
             RequestKind::Service(ServiceCommands::Create(opts)) => RpcKind::create(opts),
             RequestKind::Service(ServiceCommands::Register(opts)) => RpcKind::register(opts),
             RequestKind::Service(ServiceCommands::Locate(opts)) => RpcKind::locate(opts),
@@ -177,9 +180,10 @@ impl Dsf {
 
             let complete = match kind {
                 RpcKind::Connect(connect) => self.poll_rpc_connect(*req_id, connect, ctx, done.clone())?,
+                RpcKind::Locate(locate) => self.poll_rpc_locate(*req_id, locate, ctx, done.clone())?,
                 RpcKind::Register(register) => self.poll_rpc_register(*req_id, register, ctx, done.clone())?,
                 RpcKind::Create(create) => self.poll_rpc_create(*req_id, create, ctx, done.clone())?,
-                RpcKind::Locate(locate) => self.poll_rpc_locate(*req_id, locate, ctx, done.clone())?,
+                RpcKind::Lookup(lookup) => self.poll_rpc_lookup(*req_id, lookup, ctx, done.clone())?,
                 RpcKind::Bootstrap(bootstrap) => self.poll_rpc_bootstrap(*req_id, bootstrap, ctx, done.clone())?,
                 _ => {
                     error!("Unsuported async RPC: {}", kind);
