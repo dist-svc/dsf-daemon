@@ -144,8 +144,8 @@ impl Dsf {
             RequestKind::Service(ServiceCommands::Create(opts)) => RpcKind::create(opts),
             RequestKind::Service(ServiceCommands::Register(opts)) => RpcKind::register(opts),
             RequestKind::Service(ServiceCommands::Locate(opts)) => RpcKind::locate(opts),
-            //RequestKind::Service(ServiceCommands::Subscribe(options)) => unimplemented!(),
-            //RequestKind::Data(DataCommands::Publish(options)) => unimplemented!(),
+            RequestKind::Service(ServiceCommands::Subscribe(opts)) => RpcKind::subscribe(opts),
+            RequestKind::Data(DataCommands::Publish(opts)) => RpcKind::publish(opts),
             //RequestKind::Data(DataCommands::Query(options)) => unimplemented!(),
             //RequestKind::Debug(DebugCommands::Update) => self.update(true).await.map(|_| ResponseKind::None)?,
             RequestKind::Debug(DebugCommands::Bootstrap) => RpcKind::bootstrap(()),
@@ -178,7 +178,7 @@ impl Dsf {
         let mut ops_done = vec![];
         
         // Iterate through and update each operation
-        for (req_id, mut op) in rpc_ops.iter_mut() {
+        for (_req_id, op) in rpc_ops.iter_mut() {
 
             let RpcOperation{kind, done, req_id} = op;
 
@@ -189,6 +189,8 @@ impl Dsf {
                 RpcKind::Create(create) => self.poll_rpc_create(*req_id, create, ctx, done.clone())?,
                 RpcKind::Lookup(lookup) => self.poll_rpc_lookup(*req_id, lookup, ctx, done.clone())?,
                 RpcKind::Bootstrap(bootstrap) => self.poll_rpc_bootstrap(*req_id, bootstrap, ctx, done.clone())?,
+                RpcKind::Publish(publish) => self.poll_rpc_publish(*req_id, publish, ctx, done.clone())?,
+                RpcKind::Subscribe(subscribe) => self.poll_rpc_subscribe(*req_id, subscribe, ctx, done.clone())?,
                 _ => {
                     error!("Unsuported async RPC: {}", kind);
                     return Ok(())

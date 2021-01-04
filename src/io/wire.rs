@@ -264,8 +264,8 @@ impl Connector for WireConnector {
         t: Duration,
     ) -> Result<NetResponse, Error> {
         trace!(
-            "issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)",
-            req,
+            "issuing {} request (id: {:?}) to: {:?} (expiry {}s)",
+            req.data,
             req_id,
             target,
             t.as_secs()

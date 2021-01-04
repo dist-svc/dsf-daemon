@@ -262,7 +262,7 @@ impl Net {
                         },
                         // Handle the exit signal
                         res = exit_stream.next() => {
-                            if let Some(r) = res {
+                            if let Some(_) = res {
                                 debug!("Received exit");
                                 break;
                             }

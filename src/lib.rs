@@ -1,5 +1,6 @@
 #![recursion_limit = "512"]
 #![allow(unused_imports)]
+#![allow(dead_code)]
 
 #[macro_use]
 extern crate diesel;

@@ -33,7 +33,6 @@ use crate::store::Store;
 
 #[test]
 fn test_manager() {
-    let mut buff = vec![0u8; 1024];
 
     // Initialise logging
     let _ = FmtSubscriber::builder()
@@ -46,7 +45,7 @@ fn test_manager() {
     let db_file = format!("{}/dsf-test.db", d.path().to_str().unwrap());
     let store = Arc::new(Mutex::new(Store::new(&db_file).unwrap()));
 
-    let (net_sink_tx, net_sink_rx) = mpsc::channel(10);
+    let (net_sink_tx, _net_sink_rx) = mpsc::channel(10);
 
     let service = Service::default();
     let mut dsf = Dsf::new(config, service, store, net_sink_tx).unwrap();
@@ -61,7 +60,7 @@ fn test_manager() {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 0, 3)), 8113),
         ServiceBuilder::default().build().unwrap(),
     );
-    let (a4, mut s4) = (
+    let (a4, s4) = (
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 0, 3)), 8114),
         ServiceBuilder::default().build().unwrap(),
     );
@@ -81,7 +80,6 @@ fn test_manager() {
                     Flags::ADDRESS_REQUEST
                 )
             )
-            .await
             .unwrap(),
             Response::new(
                 id1.clone(),

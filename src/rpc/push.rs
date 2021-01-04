@@ -15,16 +15,17 @@ use dsf_core::net;
 use dsf_core::service::publisher::{DataOptions};
 use dsf_rpc::{self as rpc, DataInfo, PublishInfo, PushOptions};
 
-use crate::daemon::Dsf;
+use crate::daemon::{Dsf, net::NetFuture};
 use crate::core::peers::Peer;
 use crate::error::Error;
 use super::ops::*;
 
+
 pub enum PushState {
     Init,
-    Pending(kad::dht::StoreFuture<Id, Peer>),
+    Pending(NetFuture),
     Done,
-    Error,
+    Error(DsfError),
 }
 
 pub struct PushOp {
@@ -76,6 +77,51 @@ impl Dsf {
     pub fn poll_rpc_push(&mut self, req_id: u64, register_op: &mut PushOp, ctx: &mut Context, mut done: mpsc::Sender<rpc::Response>) -> Result<bool, DsfError> {
         let PushOp{ opts, state } = register_op;
 
-        unimplemented!()
+        // Resolve ID from ID or Index options
+        let id = match self.resolve_identifier(&opts.service) {
+            Ok(id) => id,
+            Err(_e) => {
+                error!("no matching service for");
+                return Err(DsfError::UnknownService)
+            }
+        };
+
+        match state {
+            PushState::Init => {
+                debug!("Starting push operation");
+                
+                // Fetch the known service from the service list
+                let service_info = match self.services().find(&id) {
+                    Some(s) => s,
+                    None => {
+                        // Only known services can be registered
+                        error!("unknown service (id: {})", id);
+                        *state = PushState::Error(DsfError::UnknownService);
+                        return Err(DsfError::UnknownService)
+                    }
+                };
+
+                // Parse out / validate incoming data
+                let (base, _n) = match Base::parse(&opts.data, |id| self.find_public_key(id), |_id| None) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Invalid data for push");
+                        return Err(DsfError::Base(e))
+                    }
+                };
+
+                // TODO: check data validity (kind, index, etc.)
+
+                // TODO: Push data to subs
+                // (beware of the loop possibilities here)
+
+                Ok(false)
+            },
+            PushState::Pending(req) => {
+                
+                Ok(false)
+            },
+            _ => Ok(true),
+        }
     }
 }

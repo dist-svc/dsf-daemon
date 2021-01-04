@@ -86,6 +86,7 @@ impl Dsf {
                 if self.services().find(&id).is_none() {
                     // Only known services can be registered
                     error!("unknown service (id: {})", id);
+                    // TODO: this shouldn't be a return
                     return Err(DsfError::UnknownService.into());
                 };
         
@@ -154,6 +155,8 @@ impl Dsf {
                             s.state = ServiceState::Registered;
                             s.last_updated = Some(SystemTime::now());
                         });
+
+                        // TODO: push updated registration to known subscribers?
 
                         // Return info
                         let i = RegisterInfo {

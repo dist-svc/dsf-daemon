@@ -34,13 +34,13 @@ pub enum UpnpError {
 }
 
 pub struct UpnpPlugin {
-    id: Id,
+    _id: Id,
 }
 
 impl UpnpPlugin {
     /// Create a new uPnP plugin
     pub fn new(id: Id) -> Self {
-        Self { id }
+        Self { _id: id }
     }
 
     pub async fn register(

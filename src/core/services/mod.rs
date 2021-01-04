@@ -161,6 +161,24 @@ impl ServiceManager {
     }
 
     /// Update a service instance (if found)
+    pub fn with<F, R>(&mut self, id: &Id, mut f: F) -> Option<R>
+    where
+        F: FnMut(&mut ServiceInst) -> R,
+    {
+        trace!("services update inst");
+        let mut services = self.services.lock().unwrap();
+
+        match services.get_mut(id) {
+            Some(svc) => {
+                let r = (f)(svc);
+                svc.changed = true;
+                Some(r)
+            }
+            None => None,
+        }
+    }
+
+    /// Update a service instance (if found)
     pub fn update_inst<F>(&mut self, id: &Id, mut f: F) -> Option<ServiceInfo>
     where
         F: FnMut(&mut ServiceInst),

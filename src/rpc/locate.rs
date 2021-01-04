@@ -99,7 +99,7 @@ impl Dsf {
                 }
 
                 // Initiate search via DHT
-                let (search, req_id) = match self.dht_mut().search(opts.id.clone()) {
+                let (search, _) = match self.dht_mut().search(opts.id.clone()) {
                     Ok(r) => r,
                     Err(e) => {
                         error!("DHT store error: {:?}", e);
@@ -139,6 +139,7 @@ impl Dsf {
                         error!("DHT search error: {:?}", e);
 
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Error(dsf_core::error::Error::Unknown));
+                        done.try_send(resp).unwrap();
 
                         *state = LocateState::Error;
 

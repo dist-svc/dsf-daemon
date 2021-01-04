@@ -68,12 +68,14 @@ impl UnixMessage {
         }
     }
 
+    /// Send a response to this message
     pub(crate) async fn send(&self) -> Result<(), mpsc::SendError> {
         let mut ch = self.sink.as_ref().unwrap().clone();
         ch.send(self.clone()).await?;
         Ok(())
     }
 
+    /// Close the channel associated with this message
     pub(crate) async fn close(&self) -> Result<(), mpsc::SendError> {
         let mut ch = self.exit.as_ref().unwrap().clone();
         ch.send(()).await?;
@@ -172,6 +174,13 @@ impl Unix {
 
         Ok(())
     }
+
+    pub async fn close(self) -> Result<(), UnixError> {
+        // TODO: add listener exit channel, handle close
+        let _ = self.handle;
+
+        unimplemented!()
+    }
 }
 
 impl Stream for Unix {
@@ -184,7 +193,8 @@ impl Stream for Unix {
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        // TODO: how to stop tasks?
+        // TODO: ensure task closes happily
+        let _ = self.handle;
     }
 }
 
@@ -212,7 +222,6 @@ impl Connection {
                     // Send outgoing messages
                     tx = tx_stream.next() => {
                         if let Some(tx) = tx {
-                            debug!("unix tx: {:?}", tx.data);
                             unix_tx.write(&tx.data).await?;
                         }
                     },
@@ -229,7 +238,6 @@ impl Connection {
                                 u.sink = tx.clone();
                                 u.exit = exit.clone();
 
-                                trace!("unix rx: {:?}", &u.data);
                                 rx_sink.send(u).await?;
                             },
                             Err(e) => {
@@ -240,7 +248,7 @@ impl Connection {
                     },
                     // Handle the exit signal
                     res = exit_stream.next() => {
-                        if let Some(r) = res {
+                        if let Some(_) = res {
                             debug!("Received exit");
                             break;
                         }

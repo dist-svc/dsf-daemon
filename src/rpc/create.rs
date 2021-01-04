@@ -184,6 +184,8 @@ impl Dsf {
 
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Error(dsf_core::error::Error::Unknown));
 
+                        done.try_send(resp).unwrap();
+
                         *state = CreateState::Error;
 
                         Ok(false)

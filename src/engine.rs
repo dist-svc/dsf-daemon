@@ -331,12 +331,13 @@ impl Engine {
                             // TODO: do something
                         }
                     },
-                    // Poll on DSF internal state
+                    // Poll on DSF internal state (this actually runs DSF logic)
                     _ = dsf => {
 
                     },
                     // Tick timer for process reactivity
-                    tick = tick_timer.next().fuse() => {},
+                    _tick = tick_timer.next().fuse() => {},
+
                     // Exit signal
                     _exit = dsf_exit_rx.next().fuse() => {
                         debug!("Exiting DSF handler");

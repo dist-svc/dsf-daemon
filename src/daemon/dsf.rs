@@ -25,6 +25,7 @@ use crate::core::services::{ServiceManager, ServiceState, ServiceInfo};
 use crate::core::subscribers::SubscriberManager;
 
 use crate::rpc::ops::RpcOperation;
+use super::net::NetOp;
 
 use crate::error::Error;
 use crate::store::Store;
@@ -62,6 +63,8 @@ pub struct Dsf {
     store: Arc<Mutex<Store>>,
 
     pub(crate) rpc_ops: Option<HashMap<u64, RpcOperation>>,
+
+    pub(crate) net_ops: HashMap<u16, NetOp>,
 
     pub(crate) net_requests: HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>,
 
@@ -119,6 +122,7 @@ impl Dsf {
 
             net_sink,
             net_requests: HashMap::new(),
+            net_ops: HashMap::new(),
         };
 
         Ok(s)
@@ -444,7 +448,10 @@ impl Future for Dsf {
             debug!("Issuing DHT request to {:?}: {:?}", target, req);
 
             // Add message to internal tracking
-            let (tx, rx) = mpsc::channel(1);
+            // We drop the RX channel here because this gets intercepted
+            // by net::handle_dht, not sure this is a _great_
+            // approach but eh
+            let (tx, _rx) = mpsc::channel(1);
             { self.net_requests.insert((addr.clone().into(), req_id), tx) };
 
             // Encode and enqueue them
@@ -453,6 +460,10 @@ impl Future for Dsf {
                 return Poll::Ready(Err(DsfError::Unknown));
             }
         }
+
+
+        // Poll on internal network operations
+        self.poll_net_ops(ctx);
 
         // Poll on internal RPC operations
         // TODO: handle errors?

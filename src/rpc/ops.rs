@@ -14,6 +14,7 @@ use super::register::{RegisterOp, RegisterState};
 use super::locate::{LocateOp, LocateState};
 
 use super::publish::{PublishOp, PublishState};
+use super::subscribe::{SubscribeOp, SubscribeState};
 use super::push::{PushOp, PushState};
 
 use super::bootstrap::{BootstrapOp, BootstrapState};
@@ -37,6 +38,7 @@ pub enum RpcKind {
     Create(CreateOp),
     Register(RegisterOp),
     Locate(LocateOp),
+    Subscribe(SubscribeOp),
     Publish(PublishOp),
     Push(PushOp),
     Bootstrap(BootstrapOp),
@@ -65,6 +67,10 @@ impl RpcKind {
 
     pub fn publish(opts: PublishOptions) -> Self {
         RpcKind::Publish(PublishOp{opts, state: PublishState::Init})
+    }
+
+    pub fn subscribe(opts: SubscribeOptions) -> Self {
+        RpcKind::Subscribe(SubscribeOp{opts, state: SubscribeState::Init})
     }
 
     pub fn push(opts: PushOptions) -> Self {

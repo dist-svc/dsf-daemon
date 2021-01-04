@@ -106,7 +106,7 @@ impl Dsf {
                 let flags = Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST;
 
                 // Convert into DSF message
-                let mut net_req_body = self.dht_to_net_request(dht_req);
+                let net_req_body = self.dht_to_net_request(dht_req);
                 let mut net_req = NetRequest::new(self.id(), req_id, net_req_body, flags);
 
                 // Attach public key for TOFU
@@ -156,6 +156,8 @@ impl Dsf {
                         error!("DHT connect error: {:?}", e);
 
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Error(dsf_core::error::Error::Unknown));
+
+                        done.try_send(resp).unwrap();
 
                         *state = ConnectState::Error;
                     },

@@ -87,7 +87,7 @@ impl Dsf {
         match state {
             LookupState::Init => {
                 // Initiate lookup via DHT
-                let (lookup, req_id) = match self.dht_mut().locate(opts.id.clone()) {
+                let (lookup, _req_id) = match self.dht_mut().locate(opts.id.clone()) {
                     Ok(r) => r,
                     Err(e) => {
                         error!("DHT store error: {:?}", e);
@@ -117,6 +117,8 @@ impl Dsf {
                         error!("DHT lookup error: {:?}", e);
 
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Error(dsf_core::error::Error::Unknown));
+
+                        done.try_send(resp).unwrap();
 
                         *state = LookupState::Error;
 
