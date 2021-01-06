@@ -138,24 +138,24 @@ impl Dsf {
         &mut self.service
     }
 
-    pub(crate) fn peers(&self) -> PeerManager {
-        self.peers.clone()
+    pub(crate) fn peers(&mut self) -> &mut PeerManager {
+        &mut self.peers
     }
 
-    pub(crate) fn services(&self) -> ServiceManager {
-        self.services.clone()
+    pub(crate) fn services(&mut self) -> &mut ServiceManager {
+        &mut self.services
     }
 
-    pub(crate) fn replicas(&self) -> ReplicaManager {
-        self.replicas.clone()
+    pub(crate) fn replicas(&mut self) -> &mut ReplicaManager {
+        &mut self.replicas
     }
 
-    pub(crate) fn subscribers(&self) -> SubscriberManager {
-        self.subscribers.clone()
+    pub(crate) fn subscribers(&mut self) -> &mut SubscriberManager {
+        &mut self.subscribers
     }
 
-    pub(crate) fn data(&mut self) -> DataManager {
-        self.data.clone()
+    pub(crate) fn data(&mut self) -> &mut DataManager {
+        &mut self.data
     }
 
     pub(crate) fn dht_mut(&mut self) -> &mut DsfDht {
@@ -319,11 +319,11 @@ impl Dsf {
     }
 
     pub fn find_public_key(&self, id: &Id) -> Option<PublicKey> {
-        if let Some(s) = self.services().find(id) {
+        if let Some(s) = self.services.find(id) {
             return Some(s.public_key)
         }
 
-        if let Some(p) = self.peers().find(id) {
+        if let Some(p) = self.peers.find(id) {
             if let PeerState::Known(pk) = p.state() {
                 return Some(pk)
             }
@@ -333,8 +333,6 @@ impl Dsf {
     }
 
     pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<ServiceInfo, Error> {
-        let mut services = self.services();
-        let replica_manager = self.replicas();
 
         debug!("found {} pages", pages.len());
         // Fetch primary page
@@ -373,12 +371,12 @@ impl Dsf {
         }
 
         // Fetch service instance
-        let info = match services.known(id) {
+        let info = match self.services.known(id) {
             true => {
                 info!("updating existing service");
                 
                 // Apply update to known instance
-                services.update_inst(id, |s| {
+                self.services.update_inst(id, |s| {
                     // Apply primary page update
                     if s.apply_update(&primary_page).unwrap() {
                         s.primary_page = Some(primary_page.clone());
@@ -396,7 +394,7 @@ impl Dsf {
                 };
 
                 // Register in service tracking
-                services
+                self.services
                     .register(
                         service,
                         &primary_page,
@@ -409,7 +407,7 @@ impl Dsf {
 
         // Update listed replicas
         for (peer_id, page) in &replicas {
-            replica_manager.create_or_update(id, peer_id, page);
+            self.replicas.create_or_update(id, peer_id, page);
         }
 
         Ok(info)

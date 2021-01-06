@@ -90,7 +90,7 @@ impl Future for NetOp {
 
             let resps = self.resps.clone();
             if let Err(e) = self.done.try_send(resps) {
-                debug!("Error sending net done (rx channel may have been dropped): {:?}", e);
+                trace!("Error sending net done (rx channel may have been dropped): {:?}", e);
             }
             return Poll::Ready(Ok(()));
         }

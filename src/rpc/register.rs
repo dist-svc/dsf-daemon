@@ -9,6 +9,7 @@ use tracing::{span, Level};
 use log::{trace, debug, info, error};
 
 use dsf_core::prelude::*;
+use dsf_core::options::Options;
 use dsf_rpc::{self as rpc, RegisterInfo, RegisterOptions};
 
 use crate::core::services::ServiceState;
@@ -92,9 +93,10 @@ impl Dsf {
         
                 let mut pages = vec![];
                 let mut page_version = 0u16;
-                let mut replica_version = None;
+                //let mut _replica_version = None;
         
                 // Generate pages / update service instance
+                // TODO: should be viable to replicate _non hosted_ services, this logic may not support this
                 let _service_info = self.services().update_inst(&id, |s| {
         
                     debug!("Generating service page");
@@ -109,25 +111,54 @@ impl Dsf {
                     page_version = primary_page.header().index();
         
                     pages.push(primary_page);
-        
-                    // Generate replica page unless disabled
-                    if !opts.no_replica {
-                        debug!("Generating replica page");
-        
-                        // Generate a replica page
-                        let replica_page = match s.replicate(self.service(), false) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                error!("Error generating replica page: {:?}", e);
-                                return
-                            },
-                        };
-        
-                        replica_version = Some(replica_page.header().index());
-        
-                        pages.push(replica_page);
-                    }
                 });
+
+                // Generate replica page unless disabled
+                if !opts.no_replica {
+                    // Check if we have an existing replica
+                    let existing = self.services().with(&id, |s| {
+                        s.replica_page.clone()
+                    }).flatten();
+
+                    let last_version = existing.as_ref().map(|p| p.header().index())
+                        .unwrap_or(0);
+
+                    let replica_page = match existing {
+                        Some(p) if p.valid() => {
+                            debug!("Using existing replica page");
+                            p
+
+                        },
+                        _ => {
+                            debug!("Generating new replica page");
+
+                            // Setup replica options
+                            let opts = SecondaryOptions {
+                                page_kind: PageKind::Replica.into(),
+                                version: last_version + 1,
+                                public_options: vec![Options::public_key(self.service().public_key())],
+                                ..Default::default()
+                            };
+                    
+                            // Encode / sign page so this is valid for future propagation
+                            let mut buff = vec![0u8; 1024];
+                            let (n, mut replica_page) = self.service()
+                                .publish_secondary(&id, opts, &mut buff)
+                                .unwrap();
+                            replica_page.raw = Some(buff[..n].to_vec());
+                    
+                            // Update service instance
+                            self.services().update_inst(&id, |s| {
+                                s.replica_page = Some(replica_page.clone());
+                                s.changed = true;
+                            });
+
+                            replica_page
+                        }
+                    };
+    
+                    pages.push(replica_page);
+                }
         
         
                 debug!("Registering service");
