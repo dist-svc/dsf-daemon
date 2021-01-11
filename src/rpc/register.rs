@@ -1,107 +1,231 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::SystemTime;
 
+use futures::channel::mpsc;
+use futures::prelude::*;
+use log::{debug, error, info, trace};
 use tracing::{span, Level};
 
+use dsf_core::options::Options;
 use dsf_core::prelude::*;
-use dsf_rpc::{RegisterInfo, RegisterOptions};
+use dsf_rpc::{self as rpc, RegisterInfo, RegisterOptions};
 
+use crate::core::peers::Peer;
 use crate::core::services::ServiceState;
 
+use super::ops::*;
 use crate::daemon::Dsf;
-use crate::error::Error;
-use crate::io;
+use crate::error::Error as DsfError;
 
-#[derive(Debug, Clone)]
-pub enum RegisterError {
-    UnknownService,
-    NoPrivateKey,
-    Inner(DsfError),
+pub enum RegisterState {
+    Init,
+    Pending(kad::dht::StoreFuture<Id, Peer>),
+    Done,
+    Error,
 }
 
-impl<C> Dsf<C>
-where
-    C: io::Connector + Clone + Sync + Send + 'static,
-{
-    /// Register a locally known service
-    pub async fn register(&mut self, options: RegisterOptions) -> Result<RegisterInfo, Error> {
-        let span = span!(Level::DEBUG, "register");
-        let _enter = span.enter();
+pub struct RegisterOp {
+    pub(crate) opts: RegisterOptions,
+    pub(crate) state: RegisterState,
+}
 
-        info!("Register: {:?}", &options.service);
+pub struct RegisterFuture {
+    rx: mpsc::Receiver<rpc::Response>,
+}
 
-        let id = self.resolve_identifier(&options.service)?;
+impl Future for RegisterFuture {
+    type Output = Result<RegisterInfo, DsfError>;
 
-        let mut services = self.services();
-
-        // Generate pages
-        // This needs to be in a scope so the generator doesn't try moving the
-        // RwLockWriteGuart<'_, ServiceInst> over yeild points
-        let (mut info, pages) = {
-            // Fetch the known service from the service list
-            let service = match services.find(&id) {
-                Some(s) => s,
-                None => {
-                    // Only known services can be registered
-                    error!("unknown service (id: {})", id);
-                    return Err(Error::UnknownService.into());
-                }
-            };
-
-            let mut s = service.try_write().unwrap();
-
-            debug!("Generating service page");
-            let primary_page = match s.publish(false) {
-                Ok(v) => v,
-                Err(e) => return Err(e.into()),
-            };
-            drop(s);
-
-            let mut info = RegisterInfo {
-                page_version: primary_page.header().index(),
-                replica_version: None,
-                peers: 0,
-            };
-
-            let mut pages = vec![primary_page];
-
-            // Generate replica page unless disabled
-            if !options.no_replica {
-                debug!("Generating replica page");
-
-                // Generate a replica page
-                let mut s = service.try_write().unwrap();
-
-                let replica_page = match s.replicate(self.service(), false) {
-                    Ok(v) => v,
-                    Err(e) => return Err(e.into()),
-                };
-
-                info.replica_version = Some(replica_page.header().index());
-
-                pages.push(replica_page);
-
-                drop(s);
-            }
-
-            // Write back any changes to the instances
-            services.sync();
-
-            (info, pages)
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+        let resp = match self.rx.poll_next_unpin(ctx) {
+            Poll::Ready(Some(r)) => r,
+            _ => return Poll::Pending,
         };
 
-        debug!("Registering service");
-        trace!("Pages: {:?}", pages);
+        match resp.kind() {
+            rpc::ResponseKind::Registered(r) => Poll::Ready(Ok(r)),
+            rpc::ResponseKind::Error(e) => Poll::Ready(Err(e.into())),
+            _ => Poll::Pending,
+        }
+    }
+}
 
-        // Store pages
-        // TODO: get store info / number of peers storing
-        info.peers = self.store(&id, pages).await?;
+impl Dsf {
+    /// Register a locally known service
+    pub fn register(&mut self, options: RegisterOptions) -> Result<RegisterFuture, DsfError> {
+        let req_id = rand::random();
 
-        // Update local storage info
-        services.update_inst(&id, |s| {
-            s.state = ServiceState::Registered;
-            s.last_updated = Some(SystemTime::now());
-        });
+        let (tx, rx) = mpsc::channel(1);
 
-        Ok(info)
+        // Create connect object
+        let op = RpcOperation {
+            req_id,
+            kind: RpcKind::register(options),
+            done: tx,
+        };
+
+        // Add to tracking
+        debug!("Adding RPC op {} to tracking", req_id);
+        self.rpc_ops.as_mut().unwrap().insert(req_id, op);
+
+        Ok(RegisterFuture { rx })
+    }
+
+    pub fn poll_rpc_register(
+        &mut self,
+        req_id: u64,
+        register_op: &mut RegisterOp,
+        ctx: &mut Context,
+        mut done: mpsc::Sender<rpc::Response>,
+    ) -> Result<bool, DsfError> {
+        let RegisterOp { opts, state } = register_op;
+
+        let id = self.resolve_identifier(&opts.service)?;
+
+        match state {
+            RegisterState::Init => {
+                info!("Register: {:?}", &opts.service);
+
+                // Fetch the known service from the service list
+                if self.services().find(&id).is_none() {
+                    // Only known services can be registered
+                    error!("unknown service (id: {})", id);
+                    // TODO: this shouldn't be a return
+                    return Err(DsfError::UnknownService.into());
+                };
+
+                let mut pages = vec![];
+                let mut page_version = 0u16;
+                //let mut _replica_version = None;
+
+                // Generate pages / update service instance
+                // TODO: should be viable to replicate _non hosted_ services, this logic may not support this
+                let _service_info = self.services().update_inst(&id, |s| {
+                    debug!("Generating service page");
+                    let primary_page = match s.publish(false) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("Error generating primary page: {:?}", e);
+                            return;
+                        }
+                    };
+
+                    page_version = primary_page.header().index();
+
+                    pages.push(primary_page);
+                });
+
+                // Generate replica page unless disabled
+                if !opts.no_replica {
+                    // Check if we have an existing replica
+                    let existing = self
+                        .services()
+                        .with(&id, |s| s.replica_page.clone())
+                        .flatten();
+
+                    let last_version = existing.as_ref().map(|p| p.header().index()).unwrap_or(0);
+
+                    let replica_page = match existing {
+                        Some(p) if p.valid() => {
+                            debug!("Using existing replica page");
+                            p
+                        }
+                        _ => {
+                            debug!("Generating new replica page");
+
+                            // Setup replica options
+                            let opts = SecondaryOptions {
+                                page_kind: PageKind::Replica.into(),
+                                version: last_version + 1,
+                                public_options: vec![Options::public_key(
+                                    self.service().public_key(),
+                                )],
+                                ..Default::default()
+                            };
+
+                            // Encode / sign page so this is valid for future propagation
+                            let mut buff = vec![0u8; 1024];
+                            let (n, mut replica_page) = self
+                                .service()
+                                .publish_secondary(&id, opts, &mut buff)
+                                .unwrap();
+                            replica_page.raw = Some(buff[..n].to_vec());
+
+                            // Update service instance
+                            self.services().update_inst(&id, |s| {
+                                s.replica_page = Some(replica_page.clone());
+                                s.changed = true;
+                            });
+
+                            replica_page
+                        }
+                    };
+
+                    pages.push(replica_page);
+                }
+
+                debug!("Registering service");
+                trace!("Pages: {:?}", pages);
+
+                // Store pages
+                let (store, _req_id) = match self.dht_mut().store(id, pages) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        error!("DHT store error: {:?}", e);
+                        return Err(DsfError::Unknown);
+                    }
+                };
+
+                *state = RegisterState::Pending(store);
+                Ok(false)
+            }
+            RegisterState::Pending(store) => {
+                match store.poll_unpin(ctx) {
+                    Poll::Ready(Ok(v)) => {
+                        debug!("DHT store complete! {:?}", v);
+
+                        // Update service
+                        self.services().update_inst(&id, |s| {
+                            s.state = ServiceState::Registered;
+                            s.last_updated = Some(SystemTime::now());
+                        });
+
+                        // TODO: push updated registration to known subscribers?
+
+                        // Return info
+                        let i = RegisterInfo {
+                            // TODO: fix page and replica versions
+                            page_version: 0,
+                            replica_version: None,
+                            peers: v.len(),
+                        };
+
+                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Registered(i));
+                        done.try_send(resp).unwrap();
+
+                        *state = RegisterState::Done;
+
+                        Ok(true)
+                    }
+                    Poll::Ready(Err(e)) => {
+                        error!("DHT store error: {:?}", e);
+
+                        let resp = rpc::Response::new(
+                            req_id,
+                            rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
+                        );
+
+                        *state = RegisterState::Error;
+
+                        Ok(true)
+                    }
+                    _ => Ok(false),
+                }
+            }
+            RegisterState::Done => Ok(true),
+            RegisterState::Error => Ok(true),
+        }
     }
 }

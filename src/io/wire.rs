@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use std::pin::Pin;
@@ -25,7 +25,7 @@ use crate::io::net::NetMessage;
 
 use super::Connector;
 
-type RequestMap = Arc<Mutex<HashMap<RequestId, mpsc::Sender<NetResponse>>>>;
+type RequestMap = Arc<Mutex<HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>>>;
 
 /// Wire implements wire encoding/decoding and request/response muxing for DSF messages
 pub struct Wire {
@@ -119,7 +119,7 @@ impl Wire {
     /// Handle incoming messages
     pub async fn handle_incoming<PK>(
         &mut self,
-        msg: NetMessage,
+        msg: &NetMessage,
         find_pub_key: PK,
     ) -> Result<Option<DsfRequest>, Error>
     where
@@ -129,6 +129,7 @@ impl Wire {
 
         // Decode network message to DSF message
         // TODO: provide ID to Key query..?
+        // DEADLOCK YO
         let decoded = match self.decode(&msg.data, |id| find_pub_key(id)) {
             Ok(v) => v,
             Err(e) => {
@@ -180,14 +181,16 @@ impl Wire {
 
         // Find pending request
         trace!("pending request lock");
-        let mut a = match self.requests.lock().unwrap().remove(&req_id) {
-            Some(a) => {
-                trace!("Found pending request for id {}", req_id);
-                a
-            }
-            None => {
-                error!("Received response id {} with no pending request", req_id);
-                return Ok(None);
+        let mut a = {
+                match self.requests.lock().unwrap().remove(&(msg.address.into(), req_id)) {
+                Some(a) => {
+                    trace!("Found pending request for id {} address: {}", req_id, msg.address);
+                    a
+                }
+                None => {
+                    error!("Received response id {} with no pending request", req_id);
+                    return Ok(None);
+                }
             }
         };
 
@@ -261,8 +264,8 @@ impl Connector for WireConnector {
         t: Duration,
     ) -> Result<NetResponse, Error> {
         trace!(
-            "issuing request: {:?} (id: {:?}) to: {:?} (expiry {}s)",
-            req,
+            "issuing {} request (id: {:?}) to: {:?} (expiry {}s)",
+            req.data,
             req_id,
             target,
             t.as_secs()
@@ -272,9 +275,8 @@ impl Connector for WireConnector {
         let (tx, mut rx) = mpsc::channel(0);
 
         // Add response channel to map
-        trace!("new request lock");
-        self.requests.lock().unwrap().insert(req_id, tx);
-        trace!("got new request lock");
+        trace!("Adding request to tracking");
+        { self.requests.lock().unwrap().insert((target, req_id), tx) };
 
         // Pass message to internal sink
         let mut sink = self.sink.clone();
@@ -301,7 +303,8 @@ impl Connector for WireConnector {
         };
 
         // Remove request from tracking
-        self.requests.lock().unwrap().remove(&req_id);
+        trace!("Removing request from tracking");
+        self.requests.lock().unwrap().remove(&(target, req_id));
 
         res
     }

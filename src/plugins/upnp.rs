@@ -1,6 +1,6 @@
 use std::net::{IpAddr, SocketAddr, SocketAddrV4};
 
-extern crate igd;
+use log::{info, warn};
 
 use igd::aio::search_gateway;
 use igd::{PortMappingProtocol, SearchOptions};
@@ -34,13 +34,13 @@ pub enum UpnpError {
 }
 
 pub struct UpnpPlugin {
-    id: Id,
+    _id: Id,
 }
 
 impl UpnpPlugin {
     /// Create a new uPnP plugin
     pub fn new(id: Id) -> Self {
-        Self { id }
+        Self { _id: id }
     }
 
     pub async fn register(

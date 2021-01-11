@@ -1,5 +1,7 @@
+use crate::sync::{Arc, Mutex};
 use std::convert::TryFrom;
-use std::sync::{Arc, Mutex};
+
+use log::{error, info, trace};
 
 use dsf_core::{page::Page, types::Id};
 
@@ -33,6 +35,7 @@ impl DataManager {
     /// Fetch data for a given service
     // TODO: add paging?
     pub fn fetch_data(&self, service_id: &Id, _limit: usize) -> Result<Vec<DataInst>, Error> {
+        trace!("fetch data lock");
         let store = self.store.lock().unwrap();
 
         // Load service info
@@ -63,6 +66,8 @@ impl DataManager {
 
     /// Store data for a given service
     pub fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
+        trace!("store data lock");
+        // DEADLOCK DISABLED
         let store = self.store.lock().unwrap();
 
         // Store data object

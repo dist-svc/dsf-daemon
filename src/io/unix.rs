@@ -1,7 +1,9 @@
+use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::io;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+
+use log::{debug, error, trace};
 
 use futures::channel::mpsc;
 use futures::prelude::*;
@@ -66,12 +68,14 @@ impl UnixMessage {
         }
     }
 
+    /// Send a response to this message
     pub(crate) async fn send(&self) -> Result<(), mpsc::SendError> {
         let mut ch = self.sink.as_ref().unwrap().clone();
         ch.send(self.clone()).await?;
         Ok(())
     }
 
+    /// Close the channel associated with this message
     pub(crate) async fn close(&self) -> Result<(), mpsc::SendError> {
         let mut ch = self.exit.as_ref().unwrap().clone();
         ch.send(()).await?;
@@ -124,7 +128,6 @@ impl Unix {
 
                     let conn = Connection::new(stream, index, rx_sink.clone());
 
-                    trace!("connections lock");
                     c.lock().unwrap().insert(index, conn);
 
                     index += 1;
@@ -151,7 +154,6 @@ impl Unix {
         let connection_id = msg.connection_id;
 
         let (mut tx_sink, mut exit_sink) = {
-            trace!("response lock");
             let mut connections = self.connections.lock().unwrap();
 
             let interface = match connections.get_mut(&connection_id) {
@@ -172,6 +174,13 @@ impl Unix {
 
         Ok(())
     }
+
+    pub async fn close(self) -> Result<(), UnixError> {
+        // TODO: add listener exit channel, handle close
+        let _ = self.handle;
+
+        unimplemented!()
+    }
 }
 
 impl Stream for Unix {
@@ -184,7 +193,8 @@ impl Stream for Unix {
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        // TODO: how to stop tasks?
+        // TODO: ensure task closes happily
+        let _ = self.handle;
     }
 }
 
@@ -208,14 +218,10 @@ impl Connection {
             //let mut unix_rx = unix_rx.fuse();
 
             loop {
-                #[cfg(feature = "profile")]
-                let _fg = ::flame::start_guard("unix::tick");
-
                 select!{
                     // Send outgoing messages
                     tx = tx_stream.next() => {
                         if let Some(tx) = tx {
-                            trace!("unix tx: {:?}", tx.data);
                             unix_tx.write(&tx.data).await?;
                         }
                     },
@@ -232,7 +238,6 @@ impl Connection {
                                 u.sink = tx.clone();
                                 u.exit = exit.clone();
 
-                                trace!("unix rx: {:?}", &u.data);
                                 rx_sink.send(u).await?;
                             },
                             Err(e) => {
@@ -243,7 +248,7 @@ impl Connection {
                     },
                     // Handle the exit signal
                     res = exit_stream.next() => {
-                        if let Some(r) = res {
+                        if let Some(_) = res {
                             debug!("Received exit");
                             break;
                         }

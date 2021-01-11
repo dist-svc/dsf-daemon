@@ -1,6 +1,9 @@
+use crate::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use async_trait::async_trait;
+use log::debug;
 
 use dsf_core::prelude::*;
 
@@ -55,7 +58,7 @@ impl MockConnector {
     }
 
     /// Set expectations on the connector
-    pub fn expect<T>(&mut self, transactions: T) -> Self
+    pub async fn expect<T>(&mut self, transactions: T) -> Self
     where
         T: Into<VecDeque<MockTransaction>>,
     {
@@ -65,7 +68,7 @@ impl MockConnector {
     }
 
     /// Finalise expectations on the connector
-    pub fn finalise(&mut self) {
+    pub async fn finalise(&mut self) {
         debug!("Finalizing expectations");
 
         let transactions: Vec<_> = self.transactions.lock().unwrap().drain(..).collect();

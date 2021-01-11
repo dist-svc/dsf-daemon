@@ -3,7 +3,8 @@
 
 use std::net::IpAddr;
 
-extern crate get_if_addrs;
+use log::info;
+
 use get_if_addrs::get_if_addrs;
 
 /// Commands handled by the address helper plugin

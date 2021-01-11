@@ -1,122 +1,182 @@
 use std::time::Duration;
 
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
 use tracing::{span, Level};
 
-use kad::prelude::DhtEntry;
+use log::{debug, error, info, warn};
+
+use futures::channel::mpsc;
+use futures::prelude::*;
+
+use kad::prelude::*;
 
 use dsf_core::net;
 use dsf_core::prelude::*;
 
-use dsf_rpc::{ConnectInfo, ConnectOptions};
+use dsf_rpc::{self as rpc, ConnectInfo, ConnectOptions};
 
-use crate::daemon::dht::Ctx;
+use super::ops::{RpcKind, RpcOperation};
+use crate::core::peers::{Peer, PeerAddress};
 use crate::daemon::Dsf;
-use crate::io;
-
-use crate::core::peers::PeerAddress;
 use crate::error::Error as DsfError;
 
-use crate::daemon::dht::TryAdapt;
+pub enum ConnectState {
+    Init,
+    Pending(kad::dht::ConnectFuture<Id, Peer>),
+    Done,
+    Error,
+}
 
-impl<C> Dsf<C>
-where
-    C: io::Connector + Clone + Sync + Send + 'static,
-{
-    pub async fn connect(&mut self, options: ConnectOptions) -> Result<ConnectInfo, DsfError> {
-        let span = span!(Level::DEBUG, "connect");
-        let _enter = span.enter();
+pub struct ConnectOp {
+    pub(crate) opts: ConnectOptions,
+    pub(crate) state: ConnectState,
+}
 
-        info!("Connect: {:?}", options.address);
+pub struct ConnectFuture {
+    rx: mpsc::Receiver<rpc::Response>,
+}
 
-        //        if self.bind_address() == options.address {
-        //            warn!("[DSF ({:?})] Cannot connect to self", self.id);
-        //        }
+impl Future for ConnectFuture {
+    type Output = Result<ConnectInfo, DsfError>;
 
-        let req_id = rand::random::<u16>();
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+        let resp = match self.rx.poll_next_unpin(ctx) {
+            Poll::Ready(Some(r)) => r,
+            _ => return Poll::Pending,
+        };
 
-        // Generate connection request message
-        let flag = Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST;
-        let mut req = net::Request::new(
-            self.id(),
+        match resp.kind() {
+            rpc::ResponseKind::Connected(r) => Poll::Ready(Ok(r)),
+            rpc::ResponseKind::Error(e) => Poll::Ready(Err(e.into())),
+            _ => Poll::Pending,
+        }
+    }
+}
+
+impl Dsf {
+    pub fn connect(&mut self, options: ConnectOptions) -> Result<ConnectFuture, DsfError> {
+        let req_id = rand::random();
+
+        let (tx, rx) = mpsc::channel(1);
+
+        // Create connect object
+        let op = RpcOperation {
             req_id,
-            net::RequestKind::FindNode(self.id()),
-            flag,
-        );
-
-        let service = self.service();
-
-        //TODO: forward address here
-        //req.common.remote_address = Some(self.ext_address());
-
-        req.common.public_key = Some(service.public_key());
-
-        let our_id = self.id();
-        let _peers = self.peers();
-        let _dht = self.dht();
-
-        let address = options.address.clone();
-
-        // Attach public key for bootstrapping use
-        //req.public_key = Some(self.service.read().unwrap().public_key().clone());
-
-        // Execute request
-        // TODO: could this just be a DHT::connect?
-
-        trace!("Sending request");
-
-        let d = options.timeout.or(Some(Duration::from_secs(2))).unwrap();
-        let res = self.request(address.into(), req, d).await;
-
-        // Handle errors
-        let resp = match res {
-            Ok(r) => r,
-            Err(e) => {
-                warn!("Error connecting to {:?}: {:?}", address, e);
-                return Err(e);
-            }
+            kind: RpcKind::connect(options),
+            done: tx,
         };
 
-        trace!("response from peer: {:?}", &resp.from);
+        // Add to tracking
+        debug!("Adding RPC op {} to tracking", req_id);
+        self.rpc_ops.as_mut().unwrap().insert(req_id, op);
 
-        // Update peer information and prepare response
-        let peer = self.peers().find_or_create(
-            resp.from.clone(),
-            PeerAddress::Implicit(address.into()),
-            None,
-        );
-        let mut info = ConnectInfo {
-            id: resp.from.clone(),
-            peers: 0,
-        };
+        Ok(ConnectFuture { rx })
+    }
 
-        trace!("Starting DHT connect");
+    pub fn poll_rpc_connect(
+        &mut self,
+        req_id: u64,
+        connect_op: &mut ConnectOp,
+        ctx: &mut Context,
+        mut done: mpsc::Sender<rpc::Response>,
+    ) -> Result<bool, DsfError> {
+        let ConnectOp { opts, state } = connect_op;
 
-        // Pass response to DHT to finish connecting
-        let mut data = resp.data.try_to((our_id.clone(), self.peers())).unwrap();
+        match state {
+            ConnectState::Init => {
+                // TODO: Check we're not connecting to ourself
+                //        if self.bind_address() == options.address {
+                //            warn!("[DSF ({:?})] Cannot connect to self", self.id);
+                //        }
 
-        // Drop any entries referring to us
-        if let kad::common::Response::NodesFound(_id, nodes) = &mut data {
-            nodes.retain(|n| n.id() != &our_id);
-        }
+                // Generate DHT connect operation
+                let (connect, req_id, dht_req) = match self.dht_mut().connect_start() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Error starting DHT connect: {:?}", e);
+                        return Err(DsfError::Unknown);
+                    }
+                };
 
-        let ctx = Ctx::INCLUDE_PUBLIC_KEY | Ctx::PUB_KEY_REQUEST | Ctx::ADDRESS_REQUEST;
-        match self
-            .dht()
-            .handle_connect_response(DhtEntry::new(resp.from.clone(), peer), data, ctx)
-            .await
-        {
-            Ok(nodes) => {
-                // Nodes already added to PeerManager in WireAdaptor
-                info.peers = nodes.len();
+                debug!(
+                    "DHT connect start to: {:?} (id: {:?})",
+                    opts.address, req_id
+                );
+
+                // Set request flags for initial connection
+                let flags = Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST;
+
+                // Convert into DSF message
+                let net_req_body = self.dht_to_net_request(dht_req);
+                let mut net_req = NetRequest::new(self.id(), req_id, net_req_body, flags);
+
+                // Attach public key for TOFU
+                net_req.common.public_key = Some(self.service().public_key());
+
+                // Send message
+                // This bypasses DSF state tracking as it is managed by the DHT
+                // TODO: this precludes _retries_ and state tracking... find a better solution
+                self.net_sink
+                    .try_send((opts.address.clone().into(), NetMessage::Request(net_req)))
+                    .unwrap();
+
+                *state = ConnectState::Pending(connect);
+
+                Ok(false)
             }
-            Err(e) => {
-                error!("connect response error: {:?}", e);
-                return Err(DsfError::Unknown);
+            ConnectState::Pending(connect) => {
+                match connect.poll_unpin(ctx) {
+                    Poll::Ready(Ok(v)) => {
+                        debug!("DHT connect complete! {:?}", v);
+
+                        // Update newly found peers
+                        for p in &v {
+                            let i = p.info();
+
+                            self.peers().find_or_create(
+                                i.id(),
+                                PeerAddress::Implicit(i.address()),
+                                i.pub_key(),
+                            );
+                        }
+
+                        // Build connect info
+                        let p = v
+                            .iter()
+                            .find(|p| p.info().address() == opts.address.into())
+                            .unwrap();
+                        let i = ConnectInfo {
+                            id: p.info().id(),
+                            peers: v.len(),
+                        };
+
+                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Connected(i));
+
+                        done.try_send(resp).unwrap();
+
+                        *state = ConnectState::Done;
+                    }
+                    Poll::Ready(Err(e)) => {
+                        error!("DHT connect error: {:?}", e);
+
+                        let resp = rpc::Response::new(
+                            req_id,
+                            rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
+                        );
+
+                        done.try_send(resp).unwrap();
+
+                        *state = ConnectState::Error;
+                    }
+                    _ => (),
+                }
+                Ok(false)
             }
+            ConnectState::Done => Ok(true),
+            ConnectState::Error => Ok(true),
         }
-
-        info!("Connect complete! {:?}", info);
-
-        Ok(info)
     }
 }

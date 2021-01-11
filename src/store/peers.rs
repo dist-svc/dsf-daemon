@@ -1,6 +1,8 @@
 use std::net::SocketAddr;
 use std::str::FromStr;
 
+use log::error;
+
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 

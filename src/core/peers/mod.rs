@@ -1,9 +1,12 @@
 //! Peer model, information, and map
 //! This module is used to provide a single map of PeerManager peers for sharing between DSF components
 
-use std::sync::{Arc, Mutex, RwLock};
+use crate::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::collections::HashMap;
+
+use log::{debug, error, info, trace, warn};
 
 use dsf_core::prelude::*;
 
@@ -19,7 +22,7 @@ pub struct PeerManager {
     peers: Arc<Mutex<HashMap<Id, Peer>>>,
     store: Arc<Mutex<Store>>,
 
-    index: Arc<Mutex<usize>>,
+    index: Arc<AtomicUsize>,
 }
 
 impl PeerManager {
@@ -29,7 +32,7 @@ impl PeerManager {
         let mut s = Self {
             peers: Arc::new(Mutex::new(peers)),
             store,
-            index: Arc::new(Mutex::new(0)),
+            index: Arc::new(AtomicUsize::new(0)),
         };
 
         s.load();
@@ -39,16 +42,16 @@ impl PeerManager {
 
     pub fn find(&self, id: &Id) -> Option<Peer> {
         let peers = self.peers.lock().unwrap();
+
         peers.get(id).map(|p| p.clone())
     }
 
     pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
-        let mut peers = self.peers.lock().unwrap();
-        let mut index = self.index.lock().unwrap();
-
-        let store = self.store.lock().unwrap();
-
-        peers
+        // Create new peer
+        let peer = self
+            .peers
+            .lock()
+            .unwrap()
             .entry(id.clone())
             .or_insert_with(|| {
                 debug!(
@@ -61,39 +64,44 @@ impl PeerManager {
                     None => PeerState::Unknown,
                 };
 
-                let info = PeerInfo::new(id.clone(), address, state, *index, None);
+                let index = self.index.fetch_add(1, Ordering::SeqCst);
+                let info = PeerInfo::new(id.clone(), address, state, index, None);
 
-                if let Err(e) = store.save_peer(&info) {
-                    error!("Error writing peer {} to db: {:?}", id, e);
-                }
-
-                *index += 1;
-
-                Peer {
-                    info: Arc::new(RwLock::new(info)),
-                }
+                Peer { info }
             })
-            .clone()
+            .clone();
+
+        // Write to store
+        //        let store = self.store.lock().unwrap();
+        //        if let Err(e) = store.save_peer(&peer.info) {
+        //            error!("Error writing peer {} to db: {:?}", id, e);
+        //        }
+
+        peer
     }
 
     pub fn remove(&self, id: &Id) -> Option<PeerInfo> {
+        trace!("remove peer lock");
+
         let peer = { self.peers.lock().unwrap().remove(id) };
 
-        match peer {
-            Some(p) => {
-                let info = p.info();
+        if let Some(p) = peer {
+            let info = p.info();
 
-                if let Err(e) = self.store.lock().unwrap().delete_peer(&info) {
-                    error!("Error removing peer from db: {:?}", e);
-                }
-
-                Some(info)
+            trace!("update peer (store) lock");
+            if let Err(e) = self.store.lock().unwrap().delete_peer(&info) {
+                error!("Error removing peer from db: {:?}", e);
             }
-            None => None,
+
+            Some(info)
+        } else {
+            None
         }
     }
 
     pub fn count(&self) -> usize {
+        trace!("count peer lock");
+
         let peers = self.peers.lock().unwrap();
         peers.len()
     }
@@ -103,6 +111,8 @@ impl PeerManager {
     }
 
     pub fn list(&self) -> Vec<(Id, Peer)> {
+        trace!("list peer lock");
+
         let peers = self.peers.lock().unwrap();
         peers
             .iter()
@@ -111,22 +121,57 @@ impl PeerManager {
     }
 
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
+        trace!("index to id peer lock");
+
         let peers = self.peers.lock().unwrap();
 
         peers
             .iter()
-            .find(|(_id, p)| p.info.read().unwrap().index == index)
+            .find(|(_id, p)| p.info.index == index)
             .map(|(id, _s)| id.clone())
     }
 
-    pub fn sync(&self) {
+    /// Update a peer instance (if found)
+    pub fn update<F>(&mut self, id: &Id, mut f: F) -> Option<PeerInfo>
+    where
+        F: FnMut(&mut Peer),
+    {
+        let mut peers = self.peers.lock().unwrap();
+
+        trace!("peer update inst");
+
+        match peers.get_mut(id) {
+            Some(p) => {
+                (f)(p);
+                Some(p.info())
+            }
+            None => None,
+        }
+    }
+
+    /// Fetch a field from a service instance
+    pub fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R>
+    where
+        F: Fn(&Peer) -> R,
+    {
         let peers = self.peers.lock().unwrap();
-        let store = self.store.lock().unwrap();
+
+        trace!("peer fetch inst");
+
+        match peers.get(id) {
+            Some(p) => Some((f)(&p)),
+            None => None,
+        }
+    }
+
+    pub fn sync(&self) {
+        trace!("sync peer lock");
+        let peers = self.peers.lock().unwrap();
 
         for (id, inst) in peers.iter() {
             let info = inst.info();
 
-            if let Err(e) = store.save_peer(&info) {
+            if let Err(e) = self.store.lock().unwrap().save_peer(&info) {
                 error!("Error writing peer {} to db: {:?}", id, e);
             }
         }
@@ -134,9 +179,11 @@ impl PeerManager {
 
     // Load all peers from store
     fn load(&mut self) {
+        trace!("load peers lock");
         let mut peers = self.peers.lock().unwrap();
+
+        trace!("take store lock");
         let store = self.store.lock().unwrap();
-        let mut index = self.index.lock().unwrap();
 
         let peer_info: Vec<PeerInfo> = match store.load_peers() {
             Ok(v) => v,
@@ -146,14 +193,10 @@ impl PeerManager {
             }
         };
 
-        for mut p in peer_info {
-            p.index = *index;
+        for mut info in peer_info {
+            info.index = self.index.fetch_add(1, Ordering::SeqCst);
 
-            peers.entry(p.id.clone()).or_insert(Peer {
-                info: Arc::new(RwLock::new(p)),
-            });
-
-            *index += 1;
+            peers.entry(info.id.clone()).or_insert(Peer { info });
         }
     }
 }

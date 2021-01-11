@@ -2,10 +2,14 @@
 //!
 //!
 
+use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
+use log::{debug, error, info, trace};
+
+use dsf_core::options::Options;
 use dsf_core::prelude::*;
 use dsf_core::service::Subscriber;
 
@@ -20,9 +24,8 @@ pub mod data;
 pub use data::Data;
 
 /// ServiceManager keeps track of local and remote services
-#[derive(Clone)]
 pub struct ServiceManager {
-    pub(crate) services: Arc<Mutex<HashMap<Id, Arc<RwLock<ServiceInst>>>>>,
+    pub(crate) services: HashMap<Id, ServiceInst>,
     store: Arc<Mutex<Store>>,
 }
 
@@ -31,10 +34,7 @@ impl ServiceManager {
     pub fn new(store: Arc<Mutex<Store>>) -> Self {
         let services = HashMap::new();
 
-        let s = Self {
-            services: Arc::new(Mutex::new(services)),
-            store,
-        };
+        let mut s = Self { services, store };
 
         s.load();
 
@@ -48,87 +48,70 @@ impl ServiceManager {
         primary_page: &Page,
         state: ServiceState,
         updated: Option<SystemTime>,
-    ) -> Result<Arc<RwLock<ServiceInst>>, DsfError> {
-        let services = self.services.clone();
-        let mut services = services.lock().unwrap();
-
+    ) -> Result<ServiceInfo, DsfError> {
         let id = service.id();
 
         // Create a service instance wrapper
         let inst = ServiceInst {
             service,
             state,
-            index: services.len(),
+            index: self.services.len(),
             last_updated: updated,
             primary_page: Some(primary_page.clone()),
             replica_page: None,
             changed: true,
         };
 
+        let info = inst.info();
+
         // Write new instance to disk
         self.sync_inst(&inst);
 
-        let inst = Arc::new(RwLock::new(inst));
-        services.insert(id, inst.clone());
+        // Insert into storage
+        self.services.insert(id, inst);
 
-        Ok(inst)
+        Ok(info)
     }
 
     /// Determine whether a service is known in the database
     pub fn known(&self, id: &Id) -> bool {
-        let services = self.services.clone();
-        let services = services.lock().unwrap();
-        services.contains_key(id)
+        self.services.contains_key(id)
     }
 
     /// Fetch service information for a given service id from the manager
-    pub fn find(&self, id: &Id) -> Option<Arc<RwLock<ServiceInst>>> {
-        let services = self.services.clone();
-        let services = services.lock().unwrap();
-
-        let service = match services.get(id) {
+    pub fn find(&self, id: &Id) -> Option<ServiceInfo> {
+        let service = match self.services.get(id) {
             Some(v) => v,
             None => return None,
         };
 
-        Some(service.clone())
+        Some(service.info())
     }
 
     /// Fetch a service by local index
-    pub fn index(&self, index: usize) -> Option<Arc<RwLock<ServiceInst>>> {
-        let services = self.services.clone();
-        let services = services.lock().unwrap();
-        services
+    pub fn index(&self, index: usize) -> Option<ServiceInfo> {
+        self.services
             .iter()
-            .find(|(_id, s)| s.read().unwrap().index == index)
-            .map(|(_id, s)| s.clone())
+            .find(|(_id, s)| s.index == index)
+            .map(|(_id, s)| s.info())
     }
 
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
-        let services = self.services.clone();
-        let services = services.lock().unwrap();
-        services
+        self.services
             .iter()
-            .find(|(_id, s)| s.read().unwrap().index == index)
+            .find(|(_id, s)| s.index == index)
             .map(|(id, _s)| id.clone())
     }
 
-    /// Fetch info for a given service
-    pub fn info(&self, id: &Id) -> Option<ServiceInfo> {
-        match self.find(id) {
-            Some(s) => Some(s.read().unwrap().info()),
-            None => None,
-        }
-    }
-
-    pub fn remove(&self, id: &Id) -> Result<Option<ServiceInfo>, DsfError> {
+    pub fn remove(&mut self, id: &Id) -> Result<Option<ServiceInfo>, DsfError> {
         // Remove from memory
-        let service = { self.services.lock().unwrap().remove(id) };
+        let service = self.services.remove(id);
 
         // Remove from database
         if let Some(s) = service {
-            let info = s.read().unwrap().info();
-            let _ = self.store.lock().unwrap().delete_service(&info);
+            let info = s.info();
+            // TODO: DEADLOCK?
+            //let _ = self.store.lock().unwrap().delete_service(&info);
 
             return Ok(Some(info));
         };
@@ -144,7 +127,7 @@ impl ServiceManager {
             None => return Err(DsfError::UnknownService),
         };
 
-        let s = service.read().unwrap();
+        let s = service;
 
         let d = s.get_data(n).map(|d| DataInfo {
             service: id.clone(),
@@ -158,16 +141,57 @@ impl ServiceManager {
     }
 
     /// Update a service instance (if found)
-    pub fn update_inst<F>(&mut self, id: &Id, f: F) -> Option<ServiceInfo>
+    pub fn with<F, R>(&mut self, id: &Id, mut f: F) -> Option<R>
     where
-        F: Fn(&mut ServiceInst),
+        F: FnMut(&mut ServiceInst) -> R,
     {
-        match self.find(id) {
-            Some(s) => {
-                let mut svc = s.write().unwrap();
-                (f)(&mut svc);
+        match self.services.get_mut(id) {
+            Some(svc) => {
+                let r = (f)(svc);
+                svc.changed = true;
+                Some(r)
+            }
+            None => None,
+        }
+    }
+
+    /// Update a service instance (if found)
+    pub fn update_inst<F>(&mut self, id: &Id, mut f: F) -> Option<ServiceInfo>
+    where
+        F: FnMut(&mut ServiceInst),
+    {
+        match self.services.get_mut(id) {
+            Some(svc) => {
+                (f)(svc);
                 svc.changed = true;
                 Some(svc.info())
+            }
+            None => None,
+        }
+    }
+
+    pub fn validate_pages(&mut self, id: &Id, pages: &[Page]) -> Result<(), DsfError> {
+        let service_inst = match self.services.get_mut(id) {
+            Some(s) => s,
+            None => return Err(DsfError::UnknownService),
+        };
+
+        for p in pages {
+            service_inst.service().validate_page(p)?;
+        }
+
+        Ok(())
+    }
+
+    /// Fetch a field from a service instance
+    pub fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R>
+    where
+        F: Fn(&ServiceInst) -> R,
+    {
+        match self.services.get(id) {
+            Some(s) => {
+                let svc = s;
+                Some((f)(&svc))
             }
             None => None,
         }
@@ -180,12 +204,11 @@ impl ServiceManager {
         interval: Duration,
         force: bool,
     ) -> Vec<ServiceInfo> {
-        let services = self.services.lock().unwrap();
-
-        let updates: Vec<_> = services
+        let updates: Vec<_> = self
+            .services
             .iter()
             .filter_map(|(_id, svc)| {
-                let i = svc.read().unwrap();
+                let i = svc;
                 match i.update_required(state, interval, force) {
                     true => Some(i.info()),
                     false => None,
@@ -200,6 +223,8 @@ impl ServiceManager {
 
     /// Sync a service instance to disk
     pub(crate) fn sync_inst(&mut self, inst: &ServiceInst) {
+        trace!("service sync inst");
+
         let store = self.store.lock().unwrap();
 
         if let Err(e) = store.save_service(&inst.info()) {
@@ -217,53 +242,46 @@ impl ServiceManager {
 
     /// Fetch a list of information for known services
     pub fn list(&self) -> Vec<ServiceInfo> {
-        let services = self.services.lock().unwrap();
-
-        services
-            .iter()
-            .map(|(_k, v)| v.read().unwrap().info())
-            .collect()
+        self.services.iter().map(|(_k, v)| v.info()).collect()
     }
 
     /// Fetch the number of known services
     pub fn count(&self) -> usize {
-        let services = self.services.lock().unwrap();
-        services.len()
+        self.services.len()
     }
 
     /// Sync the service database to disk
-    pub fn sync(&self) {
-        let services = self.services.lock().unwrap();
+    pub fn sync(&mut self) {
+        trace!("services sync");
         let store = self.store.lock().unwrap();
 
-        for (id, inst) in services.iter() {
-            let mut inst = inst.write().unwrap();
-            let i: &mut ServiceInst = &mut inst;
+        for (id, inst) in self.services.iter_mut() {
             // Skip unchanged instances
-            if !i.changed {
+            if !inst.changed {
                 continue;
             }
 
-            if let Err(e) = store.save_service(&i.info()) {
+            if let Err(e) = store.save_service(&inst.info()) {
                 error!("Error writing service instance {}: {:?}", id, e);
             }
 
-            if let Some(p) = &i.primary_page {
+            if let Some(p) = &inst.primary_page {
                 store.save_page(p).unwrap();
             }
 
-            if let Some(p) = &i.replica_page {
+            if let Some(p) = &inst.replica_page {
                 store.save_page(p).unwrap();
             }
 
-            i.changed = false;
+            inst.changed = false;
         }
     }
 
     /// Load the service database from disk
-    pub fn load(&self) {
+    pub fn load(&mut self) {
+        trace!("services load");
+
         let store = self.store.lock().unwrap();
-        let mut services = self.services.lock().unwrap();
 
         let service_info = store.load_services().unwrap();
 
@@ -278,7 +296,7 @@ impl ServiceManager {
                     .unwrap()
                     .unwrap(),
                 None => {
-                    warn!("No primary page for service: {:?}", i);
+                    trace!("No primary page for service: {:?}", i);
                     continue;
                 }
             };
@@ -307,7 +325,7 @@ impl ServiceManager {
                 changed: false,
             };
 
-            services.entry(i.id).or_insert(Arc::new(RwLock::new(s)));
+            self.services.entry(i.id).or_insert(s);
         }
     }
 }

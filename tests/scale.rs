@@ -1,36 +1,19 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::{atomic::AtomicBool, Arc};
 use std::time::Duration;
 
+use log::info;
 use rand::random;
 
-extern crate futures;
-
-extern crate async_std;
 use async_std::task;
 
-#[macro_use]
-extern crate tracing;
-
-extern crate tracing_subscriber;
 use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 
-extern crate tracing_futures;
-use tracing_futures::Instrument;
-
-extern crate indicatif;
 use indicatif::ProgressBar;
-extern crate tempdir;
 use tempdir::TempDir;
 
-extern crate dsf_rpc;
-use dsf_rpc::{self as rpc};
-
-extern crate dsf_daemon;
-use dsf_daemon::engine::{Engine, Options as EngineOptions};
-
-extern crate dsf_client;
 use dsf_client::{Client, Options as ClientOptions};
+use dsf_daemon::engine::{Engine, Options as EngineOptions};
+use dsf_rpc::{self as rpc};
 
 #[test]
 fn smol_scale() {
@@ -62,8 +45,6 @@ fn scale(n: usize, level: LevelFilter) {
             11200,
         )];
 
-        let running = Arc::new(AtomicBool::new(true));
-
         // Create instances
         info!("Creating {} virtual daemon instances", n);
         let bar = ProgressBar::new(n as u64);
@@ -76,16 +57,10 @@ fn scale(n: usize, level: LevelFilter) {
 
             let addr = c.daemon_socket.clone();
             let net_addr = c.bind_addresses[0].clone();
-            let mut e = Engine::new(c1).await.expect("Error creating engine");
+            let e = Engine::new(c1).await.expect("Error creating engine");
 
             // Build and run daemon
-            let r = running.clone();
-            let handle = task::spawn(
-                async move {
-                    e.run(r).await.unwrap();
-                }
-                .instrument(tracing::debug_span!("instance", "{}", addr)),
-            );
+            let handle = e.start().await.unwrap();
 
             // Create client
             let mut client = Client::new(&ClientOptions::new(&addr, Duration::from_secs(3)))

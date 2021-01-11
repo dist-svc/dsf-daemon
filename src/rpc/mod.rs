@@ -1,15 +1,26 @@
+use std::task::{Context, Poll};
+
+use log::{debug, error, info};
 use tracing::{span, Level};
 
-use dsf_core::prelude::*;
+use futures::channel::mpsc;
+use futures::prelude::*;
 
-use dsf_rpc::{self as rpc, ServiceIdentifier};
+use dsf_core::prelude::*;
+use dsf_rpc::*;
 
 use crate::daemon::Dsf;
 use crate::error::{CoreError, Error};
-use crate::io::Connector;
+
+// Generic / shared operation types
+pub mod ops;
+use ops::*;
 
 // Connect to an existing peer
 pub mod connect;
+
+// Lookup a peer in the database
+pub mod lookup;
 
 // Create and register new service
 pub mod create;
@@ -20,6 +31,9 @@ pub mod register;
 // Publish data for a given service
 pub mod publish;
 
+// Push DSF data for a given service
+pub mod push;
+
 // Locate an existing service
 pub mod locate;
 
@@ -29,167 +43,61 @@ pub mod query;
 // Subscribe to a service
 pub mod subscribe;
 
-//
+// Bootstrap daemon connectivity
+pub mod bootstrap;
+
+// Debug commands
 pub mod debug;
 
-impl<C> Dsf<C>
-where
-    C: Connector + Clone + Sync + Send + 'static,
-{
-    /// Execute an RPC command
-    // TODO: Actually execute RPC commands
-    pub async fn exec(&mut self, req: rpc::RequestKind) -> Result<rpc::ResponseKind, Error> {
-        let span = span!(Level::DEBUG, "rpc", "{}", self.id());
-        let _enter = span.enter();
+impl Dsf {
+    // Create a new RPC operation
+    pub fn start_rpc(&mut self, req: Request, done: RpcSender) -> Result<(), Error> {
+        let req_id = req.req_id();
 
-        use rpc::*;
+        // Respond to non-async RPC requests immediately
+        let resp = match req.kind() {
+            RequestKind::Status => {
+                let i = StatusInfo {
+                    id: self.id(),
+                    peers: self.peers().count(),
+                    services: self.services().count(),
+                };
 
-        debug!("Handling request: {:?}", req);
-
-        let res = match req {
-            RequestKind::Status => Ok(ResponseKind::Status(self.status())),
-
-            RequestKind::Peer(options) => self.exec_peer(options).await,
-            RequestKind::Service(options) => self.exec_service(options).await,
-            RequestKind::Data(options) => self.exec_data(options).await,
-            RequestKind::Debug(options) => self.exec_debug(options).await,
-
-            _ => {
-                error!("Unrecognized RPC request: {:?}", req);
-                Ok(ResponseKind::Unrecognised)
+                Some(ResponseKind::Status(i))
             }
-        };
+            RequestKind::Peer(PeerCommands::List(_options)) => {
+                let peers = self
+                    .peers()
+                    .list()
+                    .drain(..)
+                    .map(|(id, p)| (id, p.info()))
+                    .collect();
 
-        debug!("Result: {:?}", res);
-
-        match res {
-            Ok(v) => Ok(v),
-            Err(Error::Core(e)) => Ok(ResponseKind::Error(e)),
-            Err(Error::Timeout) => Ok(ResponseKind::Error(CoreError::Timeout)),
-            Err(e) => {
-                error!("Unsupported RPC error: {:?}", e);
-                Ok(ResponseKind::Error(CoreError::Unknown))
+                Some(ResponseKind::Peers(peers))
             }
-        }
-    }
-
-    pub(crate) fn status(&mut self) -> rpc::StatusInfo {
-        rpc::StatusInfo {
-            id: self.id(),
-            peers: self.peers().count(),
-            services: self.services().count(),
-        }
-    }
-
-    async fn exec_debug(&mut self, req: rpc::DebugCommands) -> Result<rpc::ResponseKind, Error> {
-        use rpc::*;
-
-        let res = match req {
-            DebugCommands::Datastore(_opts) => {
-                println!("{:?}", self.datastore());
-                ResponseKind::None
-            }
-            DebugCommands::Dht(DhtCommands::Data(service)) => {
-                let id = self.resolve_identifier(&service)?;
-
-                let pages = self.search(&id).await?;
-
-                ResponseKind::Pages(pages)
-            }
-            DebugCommands::Dht(DhtCommands::Peer(id)) => {
-                let id = self.resolve_peer_identifier(&id)?;
-
-                let peer = self.lookup(&id).await?;
-
-                ResponseKind::Peers(vec![(id, peer.info())])
-            }
-            DebugCommands::Update => self.update(true).await.map(|_| ResponseKind::None)?,
-            DebugCommands::Bootstrap => self.bootstrap().await.map(|_| ResponseKind::None)?,
-        };
-
-        Ok(res)
-    }
-
-    async fn exec_peer(&mut self, req: rpc::PeerCommands) -> Result<rpc::ResponseKind, Error> {
-        use rpc::*;
-
-        let mut s = self.clone();
-
-        let res = match req {
-            PeerCommands::List(_options) => ResponseKind::Peers(self.peer_info()),
-            PeerCommands::Connect(options) => {
-                s.connect(options).await.map(ResponseKind::Connected)?
-            }
-            PeerCommands::Search(options) => {
-                // TODO: pass timeout here
-                s.lookup(&options.id)
-                    .await
-                    .map(|p| ResponseKind::Peers(vec![(p.id(), p.info())]))?
-            }
-            PeerCommands::Remove(options) => {
+            RequestKind::Peer(PeerCommands::Remove(options)) => {
                 let id = self.resolve_peer_identifier(&options)?;
-
                 let p = self.peers().remove(&id);
-
                 match p {
-                    Some(p) => ResponseKind::Peer(p),
-                    None => ResponseKind::None,
+                    Some(p) => Some(ResponseKind::Peer(p)),
+                    None => Some(ResponseKind::None),
                 }
             }
-            _ => ResponseKind::Unrecognised,
-        };
-
-        Ok(res)
-    }
-
-    async fn exec_data(&mut self, req: rpc::DataCommands) -> Result<rpc::ResponseKind, Error> {
-        use rpc::*;
-
-        let res = match req {
-            DataCommands::List(data::ListOptions { service, bounds }) => {
-                let id = self.resolve_identifier(&service)?;
-                self.get_data(&id, bounds.count.unwrap_or(100))
-                    .map(ResponseKind::Data)?
+            RequestKind::Service(ServiceCommands::List(_options)) => {
+                let s = self.services().list();
+                Some(ResponseKind::Services(s))
             }
-            DataCommands::Publish(options) => {
-                self.publish(options).await.map(ResponseKind::Published)?
-            }
-            _ => ResponseKind::Unrecognised,
-        };
-
-        Ok(res)
-    }
-
-    async fn exec_service(
-        &mut self,
-        req: rpc::ServiceCommands,
-    ) -> Result<rpc::ResponseKind, Error> {
-        use rpc::*;
-
-        let res = match req {
-            ServiceCommands::List(_options) => ResponseKind::Services(self.get_services()),
-            ServiceCommands::Create(options) => {
-                self.create(options).await.map(ResponseKind::Service)?
-            }
-            ServiceCommands::Register(options) => {
-                self.register(options).await.map(ResponseKind::Registered)?
-            }
-            ServiceCommands::Locate(options) => {
-                self.locate(options).await.map(ResponseKind::Located)?
-            }
-            ServiceCommands::Info(options) => {
+            RequestKind::Service(ServiceCommands::Info(options)) => {
                 let id = self.resolve_identifier(&options.service)?;
 
-                self.services()
-                    .find(&id)
-                    .map(|i| ResponseKind::Service(i.read().unwrap().info()))
-                    .unwrap_or(ResponseKind::None)
+                Some(
+                    self.services()
+                        .find(&id)
+                        .map(|i| ResponseKind::Service(i))
+                        .unwrap_or(ResponseKind::None),
+                )
             }
-            ServiceCommands::Subscribe(options) => self
-                .subscribe(options)
-                .await
-                .map(ResponseKind::Subscribed)?,
-            ServiceCommands::SetKey(options) => {
+            RequestKind::Service(ServiceCommands::SetKey(options)) => {
                 let id = self.resolve_identifier(&options.service)?;
 
                 // TODO: Ehh?
@@ -198,45 +106,122 @@ where
                 });
 
                 match s {
-                    Some(s) => ResponseKind::Services(vec![s]),
-                    None => ResponseKind::None,
+                    Some(s) => Some(ResponseKind::Services(vec![s])),
+                    None => Some(ResponseKind::None),
                 }
             }
-            ServiceCommands::Remove(options) => {
+            RequestKind::Service(ServiceCommands::Remove(options)) => {
                 let id = self.resolve_identifier(&options.service)?;
 
                 let s = self.services().remove(&id)?;
 
                 match s {
-                    Some(s) => ResponseKind::Service(s),
-                    None => ResponseKind::None,
+                    Some(s) => Some(ResponseKind::Service(s)),
+                    None => Some(ResponseKind::None),
                 }
             }
-            _ => ResponseKind::Unrecognised,
+            RequestKind::Data(DataCommands::List(data::ListOptions { service, bounds })) => {
+                let id = self.resolve_identifier(&service)?;
+
+                let d = self.data().fetch_data(&id, bounds.count.unwrap_or(100))?;
+                let i = d.iter().map(|i| i.info.clone()).collect();
+
+                Some(ResponseKind::Data(i))
+            }
+
+            _ => None,
         };
 
-        Ok(res)
+        if let Some(k) = resp {
+            let r = Response::new(req_id, k);
+            done.clone().try_send(r).unwrap();
+            return Ok(());
+        }
+
+        // Otherwise queue up request for async execution
+        let kind = match req.kind() {
+            RequestKind::Peer(PeerCommands::Connect(opts)) => RpcKind::connect(opts),
+            RequestKind::Peer(PeerCommands::Search(opts)) => RpcKind::lookup(opts),
+            RequestKind::Service(ServiceCommands::Create(opts)) => RpcKind::create(opts),
+            RequestKind::Service(ServiceCommands::Register(opts)) => RpcKind::register(opts),
+            RequestKind::Service(ServiceCommands::Locate(opts)) => RpcKind::locate(opts),
+            RequestKind::Service(ServiceCommands::Subscribe(opts)) => RpcKind::subscribe(opts),
+            RequestKind::Data(DataCommands::Publish(opts)) => RpcKind::publish(opts),
+            //RequestKind::Data(DataCommands::Query(options)) => unimplemented!(),
+            //RequestKind::Debug(DebugCommands::Update) => self.update(true).await.map(|_| ResponseKind::None)?,
+            RequestKind::Debug(DebugCommands::Bootstrap) => RpcKind::bootstrap(()),
+            _ => {
+                error!("RPC operation {:?} unimplemented", req.kind());
+                return Ok(());
+            }
+        };
+
+        let op = RpcOperation { req_id, kind, done };
+
+        // TODO: check we're not overwriting anything here
+
+        debug!("Adding RPC op {} to tracking", req_id);
+        self.rpc_ops.as_mut().unwrap().insert(req_id, op);
+
+        Ok(())
     }
 
-    pub(super) fn peer_info(&mut self) -> Vec<(Id, rpc::PeerInfo)> {
-        self.peers()
-            .list()
-            .drain(..)
-            .map(|(id, p)| (id, p.info()))
-            .collect()
-    }
+    // Poll on pending RPC operations
+    // Context must be propagated through here to keep the waker happy
+    pub fn poll_rpc(&mut self, ctx: &mut Context) -> Result<(), Error> {
+        // Take RPC operations so we can continue using `&mut self`
+        let mut rpc_ops = self.rpc_ops.take().unwrap();
+        let mut ops_done = vec![];
 
-    pub(super) fn get_data(
-        &mut self,
-        id: &Id,
-        count: usize,
-    ) -> Result<Vec<dsf_rpc::DataInfo>, Error> {
-        let d = self.data().fetch_data(id, count)?;
-        Ok(d.iter().map(|i| i.info.clone()).collect())
-    }
+        // Iterate through and update each operation
+        for (_req_id, op) in rpc_ops.iter_mut() {
+            let RpcOperation { kind, done, req_id } = op;
 
-    pub(super) fn get_services(&mut self) -> Vec<dsf_rpc::ServiceInfo> {
-        self.services().list()
+            let complete = match kind {
+                RpcKind::Connect(connect) => {
+                    self.poll_rpc_connect(*req_id, connect, ctx, done.clone())?
+                }
+                RpcKind::Locate(locate) => {
+                    self.poll_rpc_locate(*req_id, locate, ctx, done.clone())?
+                }
+                RpcKind::Register(register) => {
+                    self.poll_rpc_register(*req_id, register, ctx, done.clone())?
+                }
+                RpcKind::Create(create) => {
+                    self.poll_rpc_create(*req_id, create, ctx, done.clone())?
+                }
+                RpcKind::Lookup(lookup) => {
+                    self.poll_rpc_lookup(*req_id, lookup, ctx, done.clone())?
+                }
+                RpcKind::Bootstrap(bootstrap) => {
+                    self.poll_rpc_bootstrap(*req_id, bootstrap, ctx, done.clone())?
+                }
+                RpcKind::Publish(publish) => {
+                    self.poll_rpc_publish(*req_id, publish, ctx, done.clone())?
+                }
+                RpcKind::Subscribe(subscribe) => {
+                    self.poll_rpc_subscribe(*req_id, subscribe, ctx, done.clone())?
+                }
+                _ => {
+                    error!("Unsuported async RPC: {}", kind);
+                    return Ok(());
+                }
+            };
+
+            if complete {
+                ops_done.push(req_id.clone());
+            }
+        }
+
+        // Remove completed operations
+        for d in ops_done {
+            rpc_ops.remove(&d);
+        }
+
+        // Return updated RPC operations
+        self.rpc_ops = Some(rpc_ops);
+
+        Ok(())
     }
 
     pub(super) fn resolve_identifier(

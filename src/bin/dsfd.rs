@@ -1,25 +1,15 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
-extern crate async_std;
 use async_std::task;
 
-extern crate futures;
+use futures::prelude::*;
 
-extern crate ctrlc;
+use log::{error, info};
 
-extern crate structopt;
 use structopt::StructOpt;
 
-#[macro_use]
-extern crate tracing;
-
-#[cfg(feature = "profile")]
-extern crate flame;
-
-extern crate tracing_subscriber;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::FmtSubscriber;
+
+use async_signals::Signals;
 
 use dsf_daemon::engine::{Engine, Options};
 
@@ -47,31 +37,39 @@ fn main() {
         .with_max_level(opts.level.clone())
         .try_init();
 
-    // Create running flag
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    // Bind exit handler
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
-
     // Create async task
     let res = task::block_on(async move {
+        // Bind exit handler
+        let mut exit_rx = Signals::new(vec![libc::SIGINT]).expect("Error setting Ctrl-C handler");
+
         // Initialise daemon
-        let mut d = match Engine::new(opts.daemon_opts).await {
+        let d = match Engine::new(opts.daemon_opts).await {
             Ok(d) => d,
             Err(e) => {
-                error!("Error running daemon: {:?}", e);
+                error!("Daemon creation error: {:?}", e);
                 return Err(e);
             }
         };
 
-        // Run daemon
-        if let Err(e) = d.run(running).await {
-            error!("Daemon runtime error: {:?}", e);
-            return Err(e);
+        // Spawn daemon instance
+        let h = match d.start().await {
+            Ok(i) => i,
+            Err(e) => {
+                error!("Daemon launch error: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        // Setup exit task
+        let mut exit_tx = h.exit_tx();
+        task::spawn(async move {
+            let _ = exit_rx.next().await;
+            let _ = exit_tx.send(()).await;
+        });
+
+        // Execute daemon / await completion
+        if let Err(e) = h.join().await {
+            error!("Daemon error: {:?}", e);
         }
 
         Ok(())

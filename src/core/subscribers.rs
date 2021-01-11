@@ -1,6 +1,8 @@
+use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
+
+use log::{debug, error, trace};
 
 use futures::channel::mpsc;
 
@@ -40,12 +42,31 @@ impl SubscriberManager {
 
     /// Fetch subscribers for a given service
     pub fn find(&self, service_id: &Id) -> Result<Vec<SubscriberInst>, Error> {
-        let s = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap();
 
-        match s.get(service_id) {
+        match store.get(service_id) {
             Some(v) => Ok(v.clone()),
             None => Ok(vec![]),
         }
+    }
+
+    pub fn find_peers(&self, service_id: &Id) -> Result<Vec<Id>, Error> {
+        let store = self.store.lock().unwrap();
+
+        let subs = match store.get(service_id) {
+            Some(v) => v,
+            None => return Ok(vec![]),
+        };
+
+        let subs = subs.iter().filter_map(|s| {
+            if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
+                Some(peer_id.clone())
+            } else {
+                None
+            }
+        });
+
+        Ok(subs.collect())
     }
 
     /// Update a specified peer subscription (for remote clients)
@@ -55,6 +76,7 @@ impl SubscriberManager {
         peer_id: &Id,
         f: F,
     ) -> Result<(), Error> {
+        trace!("update sub net lock");
         let mut store = self.store.lock().unwrap();
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
@@ -100,6 +122,8 @@ impl SubscriberManager {
         socket_id: u32,
         f: F,
     ) -> Result<(), Error> {
+        trace!("update sub socket lock");
+
         let mut store = self.store.lock().unwrap();
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
@@ -138,6 +162,8 @@ impl SubscriberManager {
 
     /// Remove a subscription
     pub fn remove(&mut self, service_id: &Id, peer_id: &Id) -> Result<(), Error> {
+        trace!("remove sub lock");
+
         let mut store = self.store.lock().unwrap();
 
         let subscribers = store.entry(service_id.clone()).or_insert(vec![]);

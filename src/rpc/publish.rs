@@ -1,118 +1,222 @@
 use std::convert::TryFrom;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
+use futures::channel::mpsc;
+use futures::prelude::*;
+
+use log::{debug, error, info};
 use tracing::{span, Level};
 
 use dsf_core::prelude::*;
 
 use dsf_core::net;
 use dsf_core::service::publisher::{DataOptions, Publisher};
-use dsf_rpc::{DataInfo, PublishInfo, PublishOptions};
+use dsf_rpc::{self as rpc, DataInfo, PublishInfo, PublishOptions};
 
+use crate::core::peers::Peer;
+use crate::daemon::net::NetFuture;
 use crate::daemon::Dsf;
 use crate::error::Error;
-use crate::io;
 
-use crate::core::subscribers::SubscriptionKind;
+use super::ops::*;
 
-impl<C> Dsf<C>
-where
-    C: io::Connector + Clone + Sync + Send + 'static,
-{
-    /// Register a locally known service
-    pub async fn publish(&mut self, options: PublishOptions) -> Result<PublishInfo, Error> {
+pub enum PublishState {
+    Init,
+    Pending(NetFuture),
+    Done,
+    Error(Error),
+}
+
+pub struct PublishOp {
+    pub(crate) opts: PublishOptions,
+    pub(crate) state: PublishState,
+}
+
+pub struct PublishFuture {
+    rx: mpsc::Receiver<rpc::Response>,
+}
+
+impl Future for PublishFuture {
+    type Output = Result<PublishInfo, DsfError>;
+
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+        let resp = match self.rx.poll_next_unpin(ctx) {
+            Poll::Ready(Some(r)) => r,
+            _ => return Poll::Pending,
+        };
+
+        match resp.kind() {
+            rpc::ResponseKind::Published(r) => Poll::Ready(Ok(r)),
+            rpc::ResponseKind::Error(e) => Poll::Ready(Err(e.into())),
+            _ => Poll::Pending,
+        }
+    }
+}
+
+impl Dsf {
+    /// Publish a locally known service
+    pub async fn publish(&mut self, options: PublishOptions) -> Result<PublishFuture, Error> {
+        let req_id = rand::random();
+        let (tx, rx) = mpsc::channel(1);
+
+        // Create connect object
+        let op = RpcOperation {
+            req_id,
+            kind: RpcKind::publish(options),
+            done: tx,
+        };
+
+        // Add to tracking
+        debug!("Adding RPC op {} to tracking", req_id);
+        self.rpc_ops.as_mut().unwrap().insert(req_id, op);
+
+        Ok(PublishFuture { rx })
+    }
+
+    pub fn poll_rpc_publish(
+        &mut self,
+        req_id: u64,
+        register_op: &mut PublishOp,
+        ctx: &mut Context,
+        mut done: mpsc::Sender<rpc::Response>,
+    ) -> Result<bool, DsfError> {
+        let PublishOp { opts, state } = register_op;
+
         let span = span!(Level::DEBUG, "publish");
         let _enter = span.enter();
 
-        // Resolve ID from ID or Index options
-        let id = self.resolve_identifier(&options.service)?;
+        match state {
+            PublishState::Init => {
+                debug!("Starting publish operation");
 
-        let mut services = self.services();
-
-        let (info, addresses, req) = {
-            // Fetch the known service from the service list
-            let service_arc = match services.find(&id) {
-                Some(s) => s,
-                None => {
-                    // Only known services can be registered
-                    error!("unknown service (id: {})", id);
-                    return Err(Error::UnknownService);
-                }
-            };
-
-            let mut service_inst = service_arc.write().unwrap();
-            let service = &mut service_inst.service;
-
-            // Fetch the private key for signing service pages
-            let _private_key = match service.private_key() {
-                Some(s) => s,
-                None => {
-                    // Only known services can be registered
-                    error!("no service private key (id: {})", id);
-                    return Err(Error::NoPrivateKey);
-                }
-            };
-
-            let body = match options.data {
-                Some(d) => Body::Cleartext(d),
-                None => Body::None,
-            };
-
-            let data_options = DataOptions {
-                data_kind: options.kind.into(),
-                body,
-                ..Default::default()
-            };
-
-            info!("Generating data page");
-            let mut buff = vec![0u8; 1024];
-            let (n, mut page) = service.publish_data(data_options, &mut buff).unwrap();
-            page.raw = Some(buff[..n].to_vec());
-
-            let info = PublishInfo {
-                index: page.header().index(),
-            };
-
-            let service_id = service.id();
-
-            info!("Storing data page");
-
-            let data_info = DataInfo::try_from(&page).unwrap();
-
-            self.data().store_data(&data_info, &page)?;
-
-            // Store data against service
-            //service_inst.add_data(&page)?;
-            services.sync_inst(&service_inst);
-
-            // TODO: send data to subscribers
-            let req = net::Request::new(
-                self.id(),
-                rand::random(),
-                net::RequestKind::PushData(service_id.clone(), vec![page]),
-                Flags::default(),
-            );
-
-            let subscriptions = self.subscribers().find(&service_id)?;
-
-            let addresses: Vec<_> = subscriptions
-                .iter()
-                .filter_map(|s| {
-                    if let SubscriptionKind::Peer(peer_id) = &s.info.kind {
-                        self.peers().find(peer_id).map(|p| p.address())
-                    } else {
-                        None
+                // Resolve ID from ID or Index options
+                let id = match self.resolve_identifier(&opts.service) {
+                    Ok(id) => id,
+                    Err(_e) => {
+                        error!("no matching service for");
+                        return Err(DsfError::UnknownService);
                     }
-                })
-                .collect();
+                };
 
-            (info, addresses, req)
-        };
+                let mut services = self.services();
+                // Fetch the known service from the service list
+                let service_info = match services.find(&id) {
+                    Some(s) => s,
+                    None => {
+                        // Only known services can be registered
+                        error!("unknown service (id: {})", id);
+                        *state = PublishState::Error(Error::UnknownService);
+                        return Err(DsfError::UnknownService);
+                    }
+                };
 
-        info!("Sending data push messages");
-        self.request_all(&addresses, req).await;
+                // Fetch the private key for signing service pages
+                let _private_key = match service_info.private_key {
+                    Some(s) => s,
+                    None => {
+                        // Only known services can be registered
+                        error!("no service private key (id: {})", id);
+                        *state = PublishState::Error(Error::NoPrivateKey);
+                        return Err(DsfError::NoPrivateKey);
+                    }
+                };
 
-        // TODO: update info
+                // Setup publishing object
+                let body = match &opts.data {
+                    Some(d) => Body::Cleartext(d.clone()),
+                    None => Body::None,
+                };
+                let data_options = DataOptions {
+                    data_kind: opts.kind.into(),
+                    body,
+                    ..Default::default()
+                };
 
-        Ok(info)
+                let mut page: Option<Page> = None;
+
+                services.update_inst(&id, |s| {
+                    let mut buff = vec![0u8; 1024];
+                    let opts = data_options.clone();
+
+                    info!("Generating data page");
+                    let mut r = s.service.publish_data(opts, &mut buff).unwrap();
+
+                    r.1.raw = Some(buff[..r.0].to_vec());
+                    page = Some(r.1);
+                });
+
+                let page = page.unwrap();
+
+                let info = PublishInfo {
+                    index: page.header().index(),
+                };
+
+                debug!("Storing data page");
+
+                // Store new service data
+                let data_info = DataInfo::try_from(&page).unwrap();
+                match self.data().store_data(&data_info, &page) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        error!("Error storing service data: {:?}", e);
+                        *state = PublishState::Error(e);
+                        return Err(DsfError::Unknown);
+                    }
+                }
+
+                // Generate requests
+                // Generate push data message
+                let req = net::Request::new(
+                    self.id(),
+                    rand::random(),
+                    net::RequestKind::PushData(id.clone(), vec![page]),
+                    Flags::default(),
+                );
+
+                // Fetch subscribers for the specified service
+                let subscribers = match self.subscribers().find_peers(&id) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Error finding peers for matching subscribers");
+                        *state = PublishState::Error(e);
+                        return Err(DsfError::Unknown);
+                    }
+                };
+
+                // Resolve subscriber IDs to peer instances
+                let peers: Vec<_> = subscribers
+                    .iter()
+                    .filter_map(|peer_id| self.peers().find(peer_id))
+                    .collect();
+
+                // Issue request to peers
+                let op = self.net_op(peers, req);
+
+                *state = PublishState::Pending(op);
+                Ok(false)
+            }
+            PublishState::Pending(op) => {
+                // Poll on network operation completion
+                match op.poll_unpin(ctx) {
+                    Poll::Ready(d) => {
+                        debug!("Publish requests complete");
+
+                        // TODO: fix this to be real publish info
+                        let i = PublishInfo { index: 0 };
+
+                        // TODO: send completion
+                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Published(i));
+
+                        done.try_send(resp).unwrap();
+                    }
+                    _ => (),
+                };
+
+                Ok(false)
+            }
+            _ => Ok(true),
+        }
     }
 }

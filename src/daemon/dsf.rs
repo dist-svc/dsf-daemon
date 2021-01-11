@@ -1,5 +1,12 @@
-use std::sync::{Arc, Mutex};
+use crate::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
+
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use log::{debug, error, info, trace, warn};
 
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
@@ -7,27 +14,29 @@ use dsf_core::service::Publisher;
 use kad::prelude::*;
 
 use async_std::future::timeout;
+use futures::channel::mpsc;
 
 use tracing::{span, Level};
 
 use crate::core::data::DataManager;
 use crate::core::peers::{Peer, PeerManager, PeerState};
 use crate::core::replicas::ReplicaManager;
-use crate::core::services::{ServiceManager, ServiceState};
+use crate::core::services::{ServiceInfo, ServiceManager, ServiceState};
 use crate::core::subscribers::SubscriberManager;
 
+use super::net::NetOp;
+use crate::rpc::ops::RpcOperation;
+
 use crate::error::Error;
-use crate::io::Connector;
 use crate::store::Store;
 
-use super::dht::{dht_reducer, Ctx, DhtAdaptor};
+use super::dht::{dht_reducer, DsfDhtMessage};
 use super::Options;
 
 /// Re-export of Dht type used for DSF
-pub type Dht<C> = StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, Ctx>;
+pub type DsfDht = Dht<Id, Peer, Data, RequestId>;
 
-#[derive(Clone)]
-pub struct Dsf<C> {
+pub struct Dsf {
     /// Inernal storage for daemon service
     service: Service,
 
@@ -47,27 +56,29 @@ pub struct Dsf<C> {
     data: DataManager,
 
     /// Distributed Database
-    dht: StandardDht<Id, Peer, Data, RequestId, DhtAdaptor<C>, Ctx>,
+    dht: Dht<Id, Peer, Data, RequestId>,
 
-    /// Backing store for DHT
-    dht_store: HashMapStore<Id, Data>,
+    dht_source: mpsc::Receiver<(RequestId, DhtEntry<Id, Peer>, DhtRequest<Id, Page>)>,
 
     store: Arc<Mutex<Store>>,
 
-    /// Connector for external communication
-    connector: C,
+    pub(crate) rpc_ops: Option<HashMap<u64, RpcOperation>>,
+
+    pub(crate) net_ops: HashMap<u16, NetOp>,
+
+    pub(crate) net_requests: HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>,
+
+    pub(crate) net_sink: mpsc::Sender<(Address, NetMessage)>,
+    //pub(crate) net_source: Arc<Mutex<mpsc::Receiver<(Address, NetMessage)>>>,
 }
 
-impl<C> Dsf<C>
-where
-    C: Connector + Clone + Sync + Send + 'static,
-{
+impl Dsf {
     /// Create a new daemon
     pub fn new(
         config: Options,
         service: Service,
         store: Arc<Mutex<Store>>,
-        connector: C,
+        net_sink: mpsc::Sender<(Address, NetMessage)>,
     ) -> Result<Self, Error> {
         debug!("Creating new DSF instance");
 
@@ -82,24 +93,9 @@ where
 
         let id = service.id();
 
-        // Create DHT components
-        let dht_conn = DhtAdaptor::new(
-            service.id(),
-            service.public_key(),
-            peers.clone(),
-            connector.clone(),
-        );
-        let table = KNodeTable::new(service.id(), config.dht.k, id.max_bits());
-        let dht_store = HashMapStore::new_with_reducer(Box::new(dht_reducer));
-
         // Instantiate DHT
-        let dht = StandardDht::<Id, Peer, Data, RequestId, _, Ctx>::new(
-            id,
-            config.dht,
-            table,
-            dht_conn,
-            dht_store.clone(),
-        );
+        let (dht_sink, dht_source) = mpsc::channel(100);
+        let dht = Dht::<Id, Peer, Data, RequestId>::standard(id, config.dht, dht_sink);
 
         // Create DSF object
         let s = Self {
@@ -113,9 +109,15 @@ where
             data,
 
             dht,
-            dht_store,
+            dht_source,
+
             store,
-            connector,
+
+            rpc_ops: Some(HashMap::new()),
+
+            net_sink,
+            net_requests: HashMap::new(),
+            net_ops: HashMap::new(),
         };
 
         Ok(s)
@@ -131,36 +133,28 @@ where
         &mut self.service
     }
 
-    pub(crate) fn peers(&self) -> PeerManager {
-        self.peers.clone()
+    pub(crate) fn peers(&mut self) -> &mut PeerManager {
+        &mut self.peers
     }
 
-    pub(crate) fn services(&mut self) -> ServiceManager {
-        self.services.clone()
+    pub(crate) fn services(&mut self) -> &mut ServiceManager {
+        &mut self.services
     }
 
-    pub(crate) fn replicas(&mut self) -> ReplicaManager {
-        self.replicas.clone()
+    pub(crate) fn replicas(&mut self) -> &mut ReplicaManager {
+        &mut self.replicas
     }
 
-    pub(crate) fn subscribers(&mut self) -> SubscriberManager {
-        self.subscribers.clone()
+    pub(crate) fn subscribers(&mut self) -> &mut SubscriberManager {
+        &mut self.subscribers
     }
 
-    pub(crate) fn data(&mut self) -> DataManager {
-        self.data.clone()
+    pub(crate) fn data(&mut self) -> &mut DataManager {
+        &mut self.data
     }
 
-    pub(crate) fn connector(&mut self) -> &mut C {
-        &mut self.connector
-    }
-
-    pub(crate) fn dht(&mut self) -> &mut Dht<C> {
+    pub(crate) fn dht_mut(&mut self) -> &mut DsfDht {
         &mut self.dht
-    }
-
-    pub(crate) fn datastore(&mut self) -> &mut HashMapStore<Id, Data> {
-        &mut self.dht_store
     }
 
     pub(crate) fn pub_key(&self) -> PublicKey {
@@ -176,7 +170,11 @@ where
     }
 
     /// Store pages in the database at the provided ID
-    pub async fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<usize, Error> {
+    pub fn store(
+        &mut self,
+        id: &Id,
+        pages: Vec<Page>,
+    ) -> Result<kad::dht::StoreFuture<Id, Peer>, Error> {
         let span = span!(Level::DEBUG, "store", "{}", self.id());
         let _enter = span.enter();
 
@@ -197,23 +195,15 @@ where
             p.set_signature(b.signature().clone().unwrap());
         }
 
-        match timeout(
-            Duration::from_secs(20),
-            self.dht
-                .store(id.clone().into(), pages, Ctx::PUB_KEY_REQUEST),
-        )
-        .await?
-        {
-            Ok(n) => {
-                debug!("Store complete ({} peers)", n);
-                // TODO: use search results
-                Ok(n)
-            }
+        let (store, _req_id) = match self.dht.store(id.clone().into(), pages) {
+            Ok(v) => v,
             Err(e) => {
-                error!("Store failed: {:?}", e);
-                Err(Error::NotFound)
+                error!("Error starting DHT store: {:?}", e);
+                return Err(Error::Unknown);
             }
-        }
+        };
+
+        Ok(store)
     }
 
     /// Search for pages in the database at the provided ID
@@ -221,12 +211,15 @@ where
         let span = span!(Level::DEBUG, "search", "{}", self.id());
         let _enter = span.enter();
 
-        match timeout(
-            Duration::from_secs(20),
-            self.dht.find(id.clone().into(), Ctx::PUB_KEY_REQUEST),
-        )
-        .await?
-        {
+        let (search, _req_id) = match self.dht.search(id.clone().into()) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Error starting DHT search: {:?}", e);
+                return Err(Error::Unknown);
+            }
+        };
+
+        match search.await {
             Ok(d) => {
                 let data = dht_reducer(&d);
 
@@ -240,29 +233,6 @@ where
             }
             Err(e) => {
                 error!("Search failed: {:?}", e);
-                Err(Error::NotFound)
-            }
-        }
-    }
-
-    /// Look up a peer in the database
-    pub async fn lookup(&mut self, id: &Id) -> Result<Peer, Error> {
-        let span = span!(Level::DEBUG, "lookup", "{}", self.id());
-        let _enter = span.enter();
-
-        match timeout(
-            Duration::from_secs(20),
-            self.dht.lookup(id.clone().into(), Ctx::empty()),
-        )
-        .await?
-        {
-            Ok(n) => {
-                debug!("Lookup complete: {:?}", n.info());
-                // TODO: use search results
-                Ok(n.info().clone())
-            }
-            Err(e) => {
-                error!("Lookup failed: {:?}", e);
                 Err(Error::NotFound)
             }
         }
@@ -306,6 +276,7 @@ where
     /// Initialise a DSF instance
     ///
     /// This bootstraps using known peers then updates all tracked services
+    #[cfg(nope)]
     pub async fn bootstrap(&mut self) -> Result<(), Error> {
         let peers = self.peers.list();
 
@@ -320,14 +291,13 @@ where
 
         for (id, p) in peers {
             let timeout = Duration::from_millis(200).into();
-            let mut _s = self.clone();
 
             if let Ok(_) = self
                 .connect(dsf_rpc::ConnectOptions {
                     address: p.address().into(),
                     id: Some(id.clone()),
                     timeout,
-                })
+                })?
                 .await
             {
                 success += 1;
@@ -348,23 +318,20 @@ where
     }
 
     pub fn find_public_key(&self, id: &Id) -> Option<PublicKey> {
-        match (self.peers().find(id), self.services.info(id)) {
-            (_, Some(s)) => Some(s.public_key),
-            (Some(p), _) => {
-                if let PeerState::Known(pk) = p.state() {
-                    Some(pk)
-                } else {
-                    None
-                }
-            }
-            _ => None,
+        if let Some(s) = self.services.find(id) {
+            return Some(s.public_key);
         }
+
+        if let Some(p) = self.peers.find(id) {
+            if let PeerState::Known(pk) = p.state() {
+                return Some(pk);
+            }
+        }
+
+        None
     }
 
-    pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<(), Error> {
-        let mut services = self.services();
-        let replica_manager = self.replicas();
-
+    pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<ServiceInfo, Error> {
         debug!("found {} pages", pages.len());
         // Fetch primary page
         let primary_page = match pages.iter().find(|p| {
@@ -397,20 +364,37 @@ where
 
         debug!("found {} replicas", replicas.len());
 
+        if primary_page.id() == id {
+            debug!("Registering service for matching peer");
+        }
+
         // Fetch service instance
-        let service_inst = match services.find(id) {
-            Some(s) => {
+        let info = match self.services.known(id) {
+            true => {
                 info!("updating existing service");
-                s
+
+                // Apply update to known instance
+                self.services
+                    .update_inst(id, |s| {
+                        // Apply primary page update
+                        if s.apply_update(&primary_page).unwrap() {
+                            s.primary_page = Some(primary_page.clone());
+                            s.last_updated = Some(SystemTime::now());
+                        }
+                    })
+                    .unwrap()
             }
-            None => {
+            false => {
                 info!("creating new service entry");
+
+                // Create instance from page
                 let service = match Service::load(&primary_page) {
                     Ok(s) => s,
                     Err(e) => return Err(e.into()),
                 };
 
-                services
+                // Register in service tracking
+                self.services
                     .register(
                         service,
                         &primary_page,
@@ -421,29 +405,77 @@ where
             }
         };
 
-        // Update service
-        let mut inst = service_inst.write().unwrap();
-
-        // Apply page update
-        let updated = match inst.service().apply_primary(&primary_page) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("error updating service: {:?}", e);
-                return Err(e.into());
-            }
-        };
-
-        // Add updated instance information
-        if updated {
-            inst.primary_page = Some(primary_page.clone());
-            inst.last_updated = Some(SystemTime::now());
-        }
-
-        // Update replicas
+        // Update listed replicas
         for (peer_id, page) in &replicas {
-            replica_manager.create_or_update(id, peer_id, page);
+            self.replicas.create_or_update(id, peer_id, page);
         }
 
-        Ok(())
+        Ok(info)
+    }
+}
+
+impl futures::future::FusedFuture for Dsf {
+    fn is_terminated(&self) -> bool {
+        false
+    }
+}
+
+use futures::prelude::*;
+
+impl Future for Dsf {
+    type Output = Result<(), DsfError>;
+
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Poll for outgoing DHT messages
+        if let Poll::Ready(Some((req_id, target, body))) = self.dht_source.poll_next_unpin(ctx) {
+            let addr = target.info().address();
+            let body = self.dht_to_net_request(body);
+            let mut flags = Flags::default();
+
+            // Attach public key if required
+            if target.info().pub_key().is_none() {
+                flags |= Flags::PUB_KEY_REQUEST;
+            }
+
+            let mut req = NetRequest::new(self.id(), req_id, body, flags);
+            // Attach public key to DHT requests
+            req.common.public_key = Some(self.pub_key());
+
+            debug!("Issuing DHT request to {:?}: {:?}", target, req);
+
+            // Add message to internal tracking
+            // We drop the RX channel here because this gets intercepted
+            // by net::handle_dht, not sure this is a _great_
+            // approach but eh
+            let (tx, _rx) = mpsc::channel(1);
+            {
+                self.net_requests.insert((addr.clone().into(), req_id), tx)
+            };
+
+            // Encode and enqueue them
+            if let Err(e) = self.net_sink.try_send((addr, NetMessage::Request(req))) {
+                error!("Error sending outgoing DHT message: {:?}", e);
+                return Poll::Ready(Err(DsfError::Unknown));
+            }
+        }
+
+        // Poll on internal network operations
+        self.poll_net_ops(ctx);
+
+        // Poll on internal RPC operations
+        // TODO: handle errors?
+        let _ = self.poll_rpc(ctx);
+
+        // Poll on internal DHT
+        // TODO: handle errors?
+        let _ = self.dht_mut().update();
+
+        // TODO: poll on internal state / messages
+
+        // Always wake
+        // TODO: propagate this, in a better manner
+        ctx.waker().clone().wake();
+
+        Poll::Pending
     }
 }

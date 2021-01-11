@@ -1,13 +1,12 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
+
 pub mod net;
 pub use net::{Net, NetError, NetKind, NetMessage};
 
 pub mod unix;
 pub use unix::{Unix, UnixError, UnixMessage};
-
-pub mod wire;
-pub use wire::{Wire, WireConnector};
 
 pub mod mock;
 

@@ -1,23 +1,19 @@
 //! mDNS plugin, provides mDNS support to the DSF daemon
 //!
 
+use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-use futures::prelude::*;
-
 use async_std::task::{self, JoinHandle};
-
-extern crate libmdns;
-extern crate mdns;
+use futures::prelude::*;
+use log::debug;
+use mdns::RecordKind;
 
 use dsf_core::types::Id;
-
-use mdns::RecordKind;
 
 const SERVICE_NAME: &str = "_dsf._udp.local";
 
@@ -76,7 +72,7 @@ impl MdnsPlugin {
     }
 
     /// Attempt to register a service on the provided port
-    async fn register(&mut self, port: u16) -> Result<(), MdnsError> {
+    pub async fn register(&mut self, port: u16) -> Result<(), MdnsError> {
         debug!("registering service");
 
         // Register service
@@ -93,13 +89,13 @@ impl MdnsPlugin {
     }
 
     /// Remove all registered services
-    fn deregister(&mut self) {
+    pub fn deregister(&mut self) {
         self.registered_services.clear();
     }
 
     /// Enable mDNS discovery
     /// TODO: update the mdns library to work with modern futures
-    fn start_discovery(&mut self) -> Result<(), mdns::Error> {
+    pub fn start_discovery(&mut self) -> Result<(), mdns::Error> {
         debug!("starting discovery");
 
         // Create discovery object
