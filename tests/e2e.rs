@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use log::{info};
+use log::info;
 
 use async_std::task;
 
@@ -10,14 +10,12 @@ use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 use indicatif::ProgressBar;
 use tempdir::TempDir;
 
-
 use dsf_daemon::engine::{Engine, Options as EngineOptions};
 use dsf_daemon::error::Error;
 
 use dsf_client::{Client, Options as ClientOptions};
 
 use dsf_rpc::{self as rpc};
-
 
 const NUM_DAEMONS: usize = 3;
 
@@ -33,7 +31,6 @@ fn end_to_end() {
     let mut daemons = vec![];
 
     let res: Result<(), Error> = task::block_on(async move {
-
         let mut config = EngineOptions::default();
         config.database_file = format!("{}/dsf-e2e.db", d);
         config.bind_addresses = vec![SocketAddr::new(

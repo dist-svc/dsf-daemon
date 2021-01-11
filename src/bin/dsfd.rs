@@ -1,9 +1,8 @@
-
 use async_std::task;
 
 use futures::prelude::*;
 
-use log::{info, error};
+use log::{error, info};
 
 use structopt::StructOpt;
 
@@ -37,7 +36,6 @@ fn main() {
     let _ = FmtSubscriber::builder()
         .with_max_level(opts.level.clone())
         .try_init();
-
 
     // Create async task
     let res = task::block_on(async move {

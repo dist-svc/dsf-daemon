@@ -1,9 +1,9 @@
+use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::io;
 use std::pin::Pin;
-use crate::sync::{Arc, Mutex};
 
-use log::{trace, debug, error};
+use log::{debug, error, trace};
 
 use futures::channel::mpsc;
 use futures::prelude::*;

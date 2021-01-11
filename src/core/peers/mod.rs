@@ -1,12 +1,12 @@
 //! Peer model, information, and map
 //! This module is used to provide a single map of PeerManager peers for sharing between DSF components
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::collections::HashMap;
 
-use log::{trace, debug, info, warn, error};
+use log::{debug, error, info, trace, warn};
 
 use dsf_core::prelude::*;
 
@@ -48,7 +48,10 @@ impl PeerManager {
 
     pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
         // Create new peer
-        let peer = self.peers.lock().unwrap()
+        let peer = self
+            .peers
+            .lock()
+            .unwrap()
             .entry(id.clone())
             .or_insert_with(|| {
                 debug!(
@@ -64,17 +67,15 @@ impl PeerManager {
                 let index = self.index.fetch_add(1, Ordering::SeqCst);
                 let info = PeerInfo::new(id.clone(), address, state, index, None);
 
-                Peer {
-                    info,
-                }
+                Peer { info }
             })
             .clone();
 
         // Write to store
-//        let store = self.store.lock().unwrap();
-//        if let Err(e) = store.save_peer(&peer.info) {
-//            error!("Error writing peer {} to db: {:?}", id, e);
-//        }
+        //        let store = self.store.lock().unwrap();
+        //        if let Err(e) = store.save_peer(&peer.info) {
+        //            error!("Error writing peer {} to db: {:?}", id, e);
+        //        }
 
         peer
     }
@@ -149,7 +150,7 @@ impl PeerManager {
     }
 
     /// Fetch a field from a service instance
-    pub fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
+    pub fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R>
     where
         F: Fn(&Peer) -> R,
     {
@@ -178,7 +179,6 @@ impl PeerManager {
 
     // Load all peers from store
     fn load(&mut self) {
-
         trace!("load peers lock");
         let mut peers = self.peers.lock().unwrap();
 
@@ -196,9 +196,7 @@ impl PeerManager {
         for mut info in peer_info {
             info.index = self.index.fetch_add(1, Ordering::SeqCst);
 
-            peers.entry(info.id.clone()).or_insert(Peer {
-                info,
-            });
+            peers.entry(info.id.clone()).or_insert(Peer { info });
         }
     }
 }

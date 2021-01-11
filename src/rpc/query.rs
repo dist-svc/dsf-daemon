@@ -1,6 +1,3 @@
 use crate::daemon::Dsf;
 
-impl Dsf {
-
-    
-}
+impl Dsf {}

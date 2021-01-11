@@ -11,7 +11,6 @@ pub(crate) mod sync {
     pub(crate) type Mutex<T> = std::sync::Mutex<T>;
 }
 
-
 pub mod core;
 
 pub mod error;

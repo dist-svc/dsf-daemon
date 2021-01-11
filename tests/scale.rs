@@ -1,20 +1,19 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use log::{info};
+use log::info;
 use rand::random;
 
 use async_std::task;
 
 use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 
-
 use indicatif::ProgressBar;
 use tempdir::TempDir;
 
-use dsf_rpc::{self as rpc};
-use dsf_daemon::engine::{Engine, Options as EngineOptions};
 use dsf_client::{Client, Options as ClientOptions};
+use dsf_daemon::engine::{Engine, Options as EngineOptions};
+use dsf_rpc::{self as rpc};
 
 #[test]
 fn smol_scale() {

@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use crate::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use std::time::SystemTime;
 
-use log::{trace, debug, error};
-
+use log::{debug, error, trace};
 
 use futures::channel::mpsc;
 

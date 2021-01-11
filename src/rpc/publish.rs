@@ -1,13 +1,13 @@
 use std::convert::TryFrom;
-use std::pin::Pin;
-use std::task::{Poll, Context};
 use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use futures::prelude::*;
 use futures::channel::mpsc;
+use futures::prelude::*;
 
+use log::{debug, error, info};
 use tracing::{span, Level};
-use log::{debug, info, error};
 
 use dsf_core::prelude::*;
 
@@ -15,9 +15,9 @@ use dsf_core::net;
 use dsf_core::service::publisher::{DataOptions, Publisher};
 use dsf_rpc::{self as rpc, DataInfo, PublishInfo, PublishOptions};
 
-use crate::daemon::Dsf;
-use crate::daemon::net::NetFuture;
 use crate::core::peers::Peer;
+use crate::daemon::net::NetFuture;
+use crate::daemon::Dsf;
 use crate::error::Error;
 
 use super::ops::*;
@@ -38,7 +38,6 @@ pub struct PublishFuture {
     rx: mpsc::Receiver<rpc::Response>,
 }
 
-
 impl Future for PublishFuture {
     type Output = Result<PublishInfo, DsfError>;
 
@@ -56,11 +55,9 @@ impl Future for PublishFuture {
     }
 }
 
-
 impl Dsf {
     /// Publish a locally known service
     pub async fn publish(&mut self, options: PublishOptions) -> Result<PublishFuture, Error> {
-
         let req_id = rand::random();
         let (tx, rx) = mpsc::channel(1);
 
@@ -75,11 +72,17 @@ impl Dsf {
         debug!("Adding RPC op {} to tracking", req_id);
         self.rpc_ops.as_mut().unwrap().insert(req_id, op);
 
-        Ok(PublishFuture{ rx })
+        Ok(PublishFuture { rx })
     }
 
-    pub fn poll_rpc_publish(&mut self, req_id: u64, register_op: &mut PublishOp, ctx: &mut Context, mut done: mpsc::Sender<rpc::Response>) -> Result<bool, DsfError> {
-        let PublishOp{ opts, state } = register_op;
+    pub fn poll_rpc_publish(
+        &mut self,
+        req_id: u64,
+        register_op: &mut PublishOp,
+        ctx: &mut Context,
+        mut done: mpsc::Sender<rpc::Response>,
+    ) -> Result<bool, DsfError> {
+        let PublishOp { opts, state } = register_op;
 
         let span = span!(Level::DEBUG, "publish");
         let _enter = span.enter();
@@ -87,13 +90,13 @@ impl Dsf {
         match state {
             PublishState::Init => {
                 debug!("Starting publish operation");
-                
+
                 // Resolve ID from ID or Index options
                 let id = match self.resolve_identifier(&opts.service) {
                     Ok(id) => id,
                     Err(_e) => {
                         error!("no matching service for");
-                        return Err(DsfError::UnknownService)
+                        return Err(DsfError::UnknownService);
                     }
                 };
 
@@ -105,7 +108,7 @@ impl Dsf {
                         // Only known services can be registered
                         error!("unknown service (id: {})", id);
                         *state = PublishState::Error(Error::UnknownService);
-                        return Err(DsfError::UnknownService)
+                        return Err(DsfError::UnknownService);
                     }
                 };
 
@@ -116,7 +119,7 @@ impl Dsf {
                         // Only known services can be registered
                         error!("no service private key (id: {})", id);
                         *state = PublishState::Error(Error::NoPrivateKey);
-                        return Err(DsfError::NoPrivateKey)
+                        return Err(DsfError::NoPrivateKey);
                     }
                 };
 
@@ -159,7 +162,7 @@ impl Dsf {
                     Err(e) => {
                         error!("Error storing service data: {:?}", e);
                         *state = PublishState::Error(e);
-                        return Err(DsfError::Unknown)
+                        return Err(DsfError::Unknown);
                     }
                 }
 
@@ -178,43 +181,41 @@ impl Dsf {
                     Err(e) => {
                         error!("Error finding peers for matching subscribers");
                         *state = PublishState::Error(e);
-                        return Err(DsfError::Unknown)
+                        return Err(DsfError::Unknown);
                     }
                 };
 
                 // Resolve subscriber IDs to peer instances
-                let peers: Vec<_> = subscribers.iter().filter_map(|peer_id| {
-                    self.peers().find(peer_id)
-                }).collect();
+                let peers: Vec<_> = subscribers
+                    .iter()
+                    .filter_map(|peer_id| self.peers().find(peer_id))
+                    .collect();
 
                 // Issue request to peers
                 let op = self.net_op(peers, req);
 
                 *state = PublishState::Pending(op);
                 Ok(false)
-            },
+            }
             PublishState::Pending(op) => {
-
                 // Poll on network operation completion
                 match op.poll_unpin(ctx) {
                     Poll::Ready(d) => {
                         debug!("Publish requests complete");
 
                         // TODO: fix this to be real publish info
-                        let i = PublishInfo {
-                            index: 0,
-                        };
+                        let i = PublishInfo { index: 0 };
 
                         // TODO: send completion
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Published(i));
-                        
+
                         done.try_send(resp).unwrap();
-                    },
+                    }
                     _ => (),
                 };
 
                 Ok(false)
-            },
+            }
             _ => Ok(true),
         }
     }

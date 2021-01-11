@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use crate::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use std::time::SystemTime;
 
-use log::{trace, debug, error};
-
+use log::{debug, error, trace};
 
 use dsf_core::prelude::*;
 use dsf_rpc::replica::ReplicaInfo;

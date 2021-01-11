@@ -1,16 +1,16 @@
 use std::str::FromStr;
 use std::time::SystemTime;
 
-use log::{debug, warn, error};
+use log::{debug, error, warn};
 
-use diesel::prelude::*;
 use diesel::dsl::sql_query;
+use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 
-use dsf_core::service::Subscriber;
 use dsf_core::prelude::*;
+use dsf_core::service::Subscriber;
 
 pub mod data;
 pub mod error;

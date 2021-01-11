@@ -1,15 +1,15 @@
 use std::time::Duration;
 
-use std::pin::Pin;
-use std::task::{Poll, Context};
 use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 use tracing::{span, Level};
 
-use log::{debug, info, warn, error};
+use log::{debug, error, info, warn};
 
-use futures::prelude::*;
 use futures::channel::mpsc;
+use futures::prelude::*;
 
 use kad::prelude::*;
 
@@ -18,13 +18,12 @@ use dsf_core::prelude::*;
 
 use dsf_rpc::{self as rpc}; //, BootstrapInfo, BootstrapOptions};
 
-use crate::daemon::Dsf;
 use crate::core::peers::{Peer, PeerAddress};
+use crate::daemon::Dsf;
 use crate::error::Error as DsfError;
 
-use super::ops::{RpcOperation, RpcKind};
 use super::connect::ConnectFuture;
-
+use super::ops::{RpcKind, RpcOperation};
 
 pub enum BootstrapState {
     Init,
@@ -40,17 +39,14 @@ pub struct BootstrapOp {
     pub(crate) state: BootstrapState,
 }
 
-
 pub struct BootstrapFuture {
     rx: mpsc::Receiver<rpc::Response>,
 }
-
 
 impl Future for BootstrapFuture {
     type Output = Result<BootstrapInfo, DsfError>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        
         let resp = match self.rx.poll_next_unpin(ctx) {
             Poll::Ready(Some(r)) => r,
             _ => return Poll::Pending,
@@ -62,11 +58,10 @@ impl Future for BootstrapFuture {
             _ => {
                 error!("Unexpected response: {:?}", resp);
                 Poll::Ready(Err(DsfError::Unknown))
-            },
+            }
         }
     }
 }
-
 
 impl Dsf {
     /// Perform bootstrapping operation.
@@ -88,11 +83,17 @@ impl Dsf {
         debug!("Adding RPC op {} to tracking", req_id);
         self.rpc_ops.as_mut().unwrap().insert(req_id, op);
 
-        Ok(BootstrapFuture{ rx })
+        Ok(BootstrapFuture { rx })
     }
 
-    pub fn poll_rpc_bootstrap(&mut self, req_id: u64, bootstrap_op: &mut BootstrapOp, ctx: &mut Context, mut done: mpsc::Sender<rpc::Response>) -> Result<bool, DsfError> {
-        let BootstrapOp{opts, state} = bootstrap_op;
+    pub fn poll_rpc_bootstrap(
+        &mut self,
+        req_id: u64,
+        bootstrap_op: &mut BootstrapOp,
+        ctx: &mut Context,
+        mut done: mpsc::Sender<rpc::Response>,
+    ) -> Result<bool, DsfError> {
+        let BootstrapOp { opts, state } = bootstrap_op;
 
         match state {
             BootstrapState::Init => {
@@ -104,63 +105,70 @@ impl Dsf {
                 info!("Bootstrap start ({} peers)", peers.len());
                 let timeout = Duration::from_millis(200).into();
 
-                let connects: Vec<_> = peers.iter().map(|(id, p)|
-                    self.connect(dsf_rpc::ConnectOptions{
-                        address: p.address().into(),
-                        id: Some(id.clone()),
-                        timeout,
-                    }).unwrap()
-                ).collect();
+                let connects: Vec<_> = peers
+                    .iter()
+                    .map(|(id, p)| {
+                        self.connect(dsf_rpc::ConnectOptions {
+                            address: p.address().into(),
+                            id: Some(id.clone()),
+                            timeout,
+                        })
+                        .unwrap()
+                    })
+                    .collect();
 
                 *state = BootstrapState::Connecting(connects);
 
                 Ok(false)
-            },
+            }
             BootstrapState::Connecting(connects) => {
-
                 // Continue bootstrapping if we're done connecting
                 // TODO: update services, re-connect subs
                 if connects.len() == 0 {
                     *state = BootstrapState::Done;
-                    return Ok(false)
+                    return Ok(false);
                 }
 
                 // TODO: check for connect timeouts?
                 // Or don't worry because the individual calls should timeout?
 
                 // Poll on connect states and remove connected nodes
-                *connects = connects.drain(..).filter_map(|mut c| {
-                    match c.poll_unpin(ctx) {
+                *connects = connects
+                    .drain(..)
+                    .filter_map(|mut c| match c.poll_unpin(ctx) {
                         Poll::Ready(Ok(v)) => {
                             info!("Connect {} ({:?}) done", v.id, opts);
 
                             Some(c)
-                        },
+                        }
                         Poll::Ready(Err(e)) => {
                             warn!("Connect {:?} error: {:?}", opts, e);
 
                             Some(c)
-                        },
+                        }
                         _ => None,
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 Ok(false)
-            },
+            }
             BootstrapState::Done => {
                 let resp = rpc::Response::new(req_id, rpc::ResponseKind::None);
 
                 done.try_send(resp).unwrap();
 
                 Ok(true)
-            },
+            }
             BootstrapState::Error => {
-                let resp = rpc::Response::new(req_id, rpc::ResponseKind::Error(dsf_core::error::Error::Unknown));
+                let resp = rpc::Response::new(
+                    req_id,
+                    rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
+                );
 
                 done.try_send(resp).unwrap();
 
                 Ok(true)
-            },
+            }
         }
     }
 }

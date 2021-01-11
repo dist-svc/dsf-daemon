@@ -1,19 +1,15 @@
-
-
-
-use futures::prelude::*;
 use futures::future::try_join_all;
+use futures::prelude::*;
 
 use async_std::task;
 
-use log::{error};
+use log::error;
 
 use structopt::StructOpt;
 
 use tracing_futures::Instrument;
 
 use async_signals::Signals;
-
 
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::FmtSubscriber;
@@ -68,7 +64,10 @@ fn main() {
                 }
             };
 
-            let handle = d.start().instrument(tracing::debug_span!("engine", i)).await?;
+            let handle = d
+                .start()
+                .instrument(tracing::debug_span!("engine", i))
+                .await?;
 
             handles.push(handle);
         }
@@ -77,12 +76,15 @@ fn main() {
         // Again, this means no exiting on failure :-/
         let _ = exit_rx.next().await;
 
-        let exits: Vec<_> = handles.drain(..).map(|v| async move { 
-            // Send exit signal
-            v.exit_tx().send(()).await.unwrap();
-            // Await engine completion
-            v.join().await
-         }).collect();
+        let exits: Vec<_> = handles
+            .drain(..)
+            .map(|v| async move {
+                // Send exit signal
+                v.exit_tx().send(()).await.unwrap();
+                // Await engine completion
+                v.join().await
+            })
+            .collect();
         if let Err(e) = try_join_all(exits).await {
             error!("Daemon runtime error: {:?}", e);
             return Err(e);

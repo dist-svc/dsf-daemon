@@ -1,15 +1,15 @@
 use std::time::Duration;
 
-use std::pin::Pin;
-use std::task::{Poll, Context};
 use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 use tracing::{span, Level};
 
-use log::{debug, info, warn, error};
+use log::{debug, error, info, warn};
 
-use futures::prelude::*;
 use futures::channel::mpsc;
+use futures::prelude::*;
 
 use kad::prelude::*;
 
@@ -18,9 +18,9 @@ use dsf_core::prelude::*;
 
 use dsf_rpc::{self as rpc, ConnectInfo, ConnectOptions};
 
-use crate::daemon::Dsf;
-use super::ops::{RpcOperation, RpcKind};
+use super::ops::{RpcKind, RpcOperation};
 use crate::core::peers::{Peer, PeerAddress};
+use crate::daemon::Dsf;
 use crate::error::Error as DsfError;
 
 pub enum ConnectState {
@@ -30,23 +30,19 @@ pub enum ConnectState {
     Error,
 }
 
-
 pub struct ConnectOp {
     pub(crate) opts: ConnectOptions,
     pub(crate) state: ConnectState,
 }
 
-
 pub struct ConnectFuture {
     rx: mpsc::Receiver<rpc::Response>,
 }
-
 
 impl Future for ConnectFuture {
     type Output = Result<ConnectInfo, DsfError>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        
         let resp = match self.rx.poll_next_unpin(ctx) {
             Poll::Ready(Some(r)) => r,
             _ => return Poll::Pending,
@@ -59,7 +55,6 @@ impl Future for ConnectFuture {
         }
     }
 }
-
 
 impl Dsf {
     pub fn connect(&mut self, options: ConnectOptions) -> Result<ConnectFuture, DsfError> {
@@ -78,11 +73,17 @@ impl Dsf {
         debug!("Adding RPC op {} to tracking", req_id);
         self.rpc_ops.as_mut().unwrap().insert(req_id, op);
 
-        Ok(ConnectFuture{ rx })
+        Ok(ConnectFuture { rx })
     }
 
-    pub fn poll_rpc_connect(&mut self, req_id: u64, connect_op: &mut ConnectOp, ctx: &mut Context, mut done: mpsc::Sender<rpc::Response>) -> Result<bool, DsfError> {
-        let ConnectOp{opts, state} = connect_op;
+    pub fn poll_rpc_connect(
+        &mut self,
+        req_id: u64,
+        connect_op: &mut ConnectOp,
+        ctx: &mut Context,
+        mut done: mpsc::Sender<rpc::Response>,
+    ) -> Result<bool, DsfError> {
+        let ConnectOp { opts, state } = connect_op;
 
         match state {
             ConnectState::Init => {
@@ -100,7 +101,10 @@ impl Dsf {
                     }
                 };
 
-                debug!("DHT connect start to: {:?} (id: {:?})", opts.address, req_id);
+                debug!(
+                    "DHT connect start to: {:?} (id: {:?})",
+                    opts.address, req_id
+                );
 
                 // Set request flags for initial connection
                 let flags = Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST;
@@ -112,18 +116,18 @@ impl Dsf {
                 // Attach public key for TOFU
                 net_req.common.public_key = Some(self.service().public_key());
 
-
                 // Send message
                 // This bypasses DSF state tracking as it is managed by the DHT
                 // TODO: this precludes _retries_ and state tracking... find a better solution
-                self.net_sink.try_send((opts.address.clone().into(), NetMessage::Request(net_req))).unwrap();
+                self.net_sink
+                    .try_send((opts.address.clone().into(), NetMessage::Request(net_req)))
+                    .unwrap();
 
                 *state = ConnectState::Pending(connect);
 
                 Ok(false)
-            },
+            }
             ConnectState::Pending(connect) => {
-
                 match connect.poll_unpin(ctx) {
                     Poll::Ready(Ok(v)) => {
                         debug!("DHT connect complete! {:?}", v);
@@ -140,7 +144,10 @@ impl Dsf {
                         }
 
                         // Build connect info
-                        let p = v.iter().find(|p| p.info().address() == opts.address.into()).unwrap();
+                        let p = v
+                            .iter()
+                            .find(|p| p.info().address() == opts.address.into())
+                            .unwrap();
                         let i = ConnectInfo {
                             id: p.info().id(),
                             peers: v.len(),
@@ -151,26 +158,25 @@ impl Dsf {
                         done.try_send(resp).unwrap();
 
                         *state = ConnectState::Done;
-                    },
+                    }
                     Poll::Ready(Err(e)) => {
                         error!("DHT connect error: {:?}", e);
 
-                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Error(dsf_core::error::Error::Unknown));
+                        let resp = rpc::Response::new(
+                            req_id,
+                            rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
+                        );
 
                         done.try_send(resp).unwrap();
 
                         *state = ConnectState::Error;
-                    },
+                    }
                     _ => (),
                 }
                 Ok(false)
             }
-            ConnectState::Done => {
-                Ok(true)
-            }
-            ConnectState::Error => {
-                Ok(true)
-            }
+            ConnectState::Done => Ok(true),
+            ConnectState::Error => Ok(true),
         }
     }
 }

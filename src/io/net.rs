@@ -4,8 +4,8 @@ use std::pin::Pin;
 
 use std::collections::HashMap;
 
-use tracing::event;
 use log::{debug, error};
+use tracing::event;
 
 use futures::channel::mpsc;
 use futures::prelude::*;
@@ -18,7 +18,7 @@ use async_std::task::{self, JoinHandle};
 use tracing::{span, Level};
 use tracing_futures::Instrument;
 
-use bytes::{Bytes};
+use bytes::Bytes;
 
 pub const UDP_BUFF_SIZE: usize = 4096;
 
@@ -49,9 +49,7 @@ pub struct NetMessage {
 
 impl PartialEq for NetMessage {
     fn eq(&self, o: &Self) -> bool {
-        self.interface == o.interface &&
-        self.address == o.address &&
-        self.data == o.data
+        self.interface == o.interface && self.address == o.address && self.data == o.data
     }
 }
 
@@ -77,7 +75,8 @@ impl NetMessage {
             None => return Err(NetError::NoResponseChannel),
         };
 
-        r.send(NetMessage::new(self.interface, self.address, d)).await?;
+        r.send(NetMessage::new(self.interface, self.address, d))
+            .await?;
 
         Ok(())
     }
@@ -186,7 +185,12 @@ impl Net {
 
     /// Send a network message
     /// TODO: what if you don't know what interface to send on??
-    pub async fn send(&mut self, address: SocketAddr, interface: Option<u32>, data: Bytes) -> Result<(), NetError> {
+    pub async fn send(
+        &mut self,
+        address: SocketAddr,
+        interface: Option<u32>,
+        data: Bytes,
+    ) -> Result<(), NetError> {
         // Use interface by index if specified
         let index = match &interface {
             Some(v) => *v,

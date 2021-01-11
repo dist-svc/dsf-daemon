@@ -1,25 +1,24 @@
 use std::convert::TryFrom;
-use std::pin::Pin;
-use std::task::{Poll, Context};
 use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use futures::prelude::*;
 use futures::channel::mpsc;
+use futures::prelude::*;
 
+use log::{debug, error, info};
 use tracing::{span, Level};
-use log::{debug, info, error};
 
 use dsf_core::prelude::*;
 
 use dsf_core::net;
-use dsf_core::service::publisher::{DataOptions};
+use dsf_core::service::publisher::DataOptions;
 use dsf_rpc::{self as rpc, DataInfo, PublishInfo, PushOptions};
 
-use crate::daemon::{Dsf, net::NetFuture};
-use crate::core::peers::Peer;
-use crate::error::Error;
 use super::ops::*;
-
+use crate::core::peers::Peer;
+use crate::daemon::{net::NetFuture, Dsf};
+use crate::error::Error;
 
 pub enum PushState {
     Init,
@@ -71,25 +70,31 @@ impl Dsf {
         debug!("Adding RPC op {} to tracking", req_id);
         self.rpc_ops.as_mut().unwrap().insert(req_id, op);
 
-        Ok(PushFuture{ rx })
+        Ok(PushFuture { rx })
     }
 
-    pub fn poll_rpc_push(&mut self, req_id: u64, register_op: &mut PushOp, ctx: &mut Context, mut done: mpsc::Sender<rpc::Response>) -> Result<bool, DsfError> {
-        let PushOp{ opts, state } = register_op;
+    pub fn poll_rpc_push(
+        &mut self,
+        req_id: u64,
+        register_op: &mut PushOp,
+        ctx: &mut Context,
+        mut done: mpsc::Sender<rpc::Response>,
+    ) -> Result<bool, DsfError> {
+        let PushOp { opts, state } = register_op;
 
         // Resolve ID from ID or Index options
         let id = match self.resolve_identifier(&opts.service) {
             Ok(id) => id,
             Err(_e) => {
                 error!("no matching service for");
-                return Err(DsfError::UnknownService)
+                return Err(DsfError::UnknownService);
             }
         };
 
         match state {
             PushState::Init => {
                 debug!("Starting push operation");
-                
+
                 // Fetch the known service from the service list
                 let service_info = match self.services().find(&id) {
                     Some(s) => s,
@@ -97,18 +102,19 @@ impl Dsf {
                         // Only known services can be registered
                         error!("unknown service (id: {})", id);
                         *state = PushState::Error(DsfError::UnknownService);
-                        return Err(DsfError::UnknownService)
+                        return Err(DsfError::UnknownService);
                     }
                 };
 
                 // Parse out / validate incoming data
-                let (base, _n) = match Base::parse(&opts.data, |id| self.find_public_key(id), |_id| None) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!("Invalid data for push");
-                        return Err(DsfError::Base(e))
-                    }
-                };
+                let (base, _n) =
+                    match Base::parse(&opts.data, |id| self.find_public_key(id), |_id| None) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("Invalid data for push");
+                            return Err(DsfError::Base(e));
+                        }
+                    };
 
                 // TODO: check data validity (kind, index, etc.)
 
@@ -116,11 +122,8 @@ impl Dsf {
                 // (beware of the loop possibilities here)
 
                 Ok(false)
-            },
-            PushState::Pending(req) => {
-                
-                Ok(false)
-            },
+            }
+            PushState::Pending(req) => Ok(false),
             _ => Ok(true),
         }
     }

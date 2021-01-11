@@ -1,29 +1,27 @@
+use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::ops::Add;
-use std::time::{Duration, SystemTime};
 use std::pin::Pin;
-use std::task::{Poll, Context};
-use std::future::Future;
-use std::collections::HashMap;
+use std::task::{Context, Poll};
 use std::time::Instant;
+use std::time::{Duration, SystemTime};
 
-
-use log::{trace, debug, info, warn, error};
-
+use log::{debug, error, info, trace, warn};
 
 use bytes::Bytes;
 
 use async_std::future::timeout;
 
-use futures::prelude::*;
 use futures::channel::mpsc;
+use futures::prelude::*;
 use futures::stream::StreamExt;
 
 use tracing::{span, Level};
 
-use dsf_core::prelude::*;
 use dsf_core::net;
+use dsf_core::prelude::*;
 use dsf_core::wire::Container;
 
 use crate::daemon::Dsf;
@@ -36,7 +34,7 @@ use crate::core::peers::{Peer, PeerAddress, PeerState};
 pub struct NetOp {
     /// Network request (required for retries)
     req: net::Request,
-    
+
     /// Pending network requests by peer ID
     reqs: HashMap<Id, mpsc::Receiver<net::Response>>,
 
@@ -54,14 +52,15 @@ impl Future for NetOp {
     type Output = Result<(), ()>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-
         // Poll incoming response channels
-        let resps: Vec<_> = self.reqs.iter_mut().filter_map(|(id, r)| {
-            match r.poll_next_unpin(ctx) {
+        let resps: Vec<_> = self
+            .reqs
+            .iter_mut()
+            .filter_map(|(id, r)| match r.poll_next_unpin(ctx) {
                 Poll::Ready(Some(r)) => Some((id.clone(), r)),
                 _ => None,
-            }
-        }).collect();
+            })
+            .collect();
 
         // Update received responses and remove resolved requests
         for (id, resp) in resps {
@@ -78,7 +77,6 @@ impl Future for NetOp {
         } else if Instant::now().saturating_duration_since(self.ts) > Duration::from_secs(3) {
             debug!("Net operation {} timeout", self.req.id);
             true
-            
         } else {
             false
         };
@@ -90,7 +88,10 @@ impl Future for NetOp {
 
             let resps = self.resps.clone();
             if let Err(e) = self.done.try_send(resps) {
-                trace!("Error sending net done (rx channel may have been dropped): {:?}", e);
+                trace!(
+                    "Error sending net done (rx channel may have been dropped): {:?}",
+                    e
+                );
             }
             return Poll::Ready(Ok(()));
         }
@@ -121,13 +122,12 @@ impl Future for NetFuture {
 
 impl Dsf {
     pub async fn handle_net_raw(&mut self, msg: crate::io::NetMessage) -> Result<(), DaemonError> {
-
         // Decode message
         let decoded = match self.net_decode(&msg.data).await {
             Ok(v) => v,
             Err(e) => {
                 warn!("error decoding message from {:?}: {:?}", msg.address, e);
-                return Ok(())
+                return Ok(());
             }
         };
 
@@ -138,11 +138,11 @@ impl Dsf {
             NetMessage::Response(resp) => {
                 let resp = self.handle_net_resp(msg.address, resp)?;
                 resp
-            },
+            }
             NetMessage::Request(req) => {
                 let resp = self.handle_net_req(msg.address, req)?;
                 Some(resp)
-            },
+            }
         };
 
         // Return response if provided
@@ -175,7 +175,7 @@ impl Dsf {
         // TODO: use n here?
 
         // Convert into message type
-        let message = match net::Message::convert(base, |id| self.find_public_key(id) ) {
+        let message = match net::Message::convert(base, |id| self.find_public_key(id)) {
             Ok(v) => v,
             Err(e) => {
                 error!("Error convertng network message: {:?}", e);
@@ -204,10 +204,13 @@ impl Dsf {
         let req_id = req.id;
 
         // Generate requests
-        let reqs: HashMap<_, _> = peers.iter().map(|p| {
-            let peer_rx = self.issue_net_req(p.address().into(), req.clone()).unwrap();
-            (p.id(), peer_rx)
-        }).collect();
+        let reqs: HashMap<_, _> = peers
+            .iter()
+            .map(|p| {
+                let peer_rx = self.issue_net_req(p.address().into(), req.clone()).unwrap();
+                (p.id(), peer_rx)
+            })
+            .collect();
 
         // Create net operation
         let (tx, rx) = mpsc::channel(1);
@@ -228,12 +231,14 @@ impl Dsf {
 
     pub(crate) fn poll_net_ops(&mut self, ctx: &mut Context<'_>) {
         // Poll on all pending net operations
-        let completed: Vec<_> = self.net_ops.iter_mut().filter_map(|(req_id, op)| {
-            match op.poll_unpin(ctx) {
+        let completed: Vec<_> = self
+            .net_ops
+            .iter_mut()
+            .filter_map(|(req_id, op)| match op.poll_unpin(ctx) {
                 Poll::Ready(_) => Some(*req_id),
                 _ => None,
-            }
-        }).collect();
+            })
+            .collect();
 
         // Remove completed operations
         for req_id in completed {
@@ -246,21 +251,20 @@ impl Dsf {
         addr: SocketAddr,
         req: net::Request,
     ) -> Result<mpsc::Receiver<NetResponse>, DaemonError> {
-        debug!(
-            "issuing {} request id: {} to: {:?}",
-            req.data,
-            req.id,
-            addr,
-        );
+        debug!("issuing {} request id: {} to: {:?}", req.data, req.id, addr,);
 
         let req_id = req.id;
 
         // Add message to internal tracking
         let (tx, rx) = mpsc::channel(1);
-        { self.net_requests.insert((addr.into(), req_id), tx) };
+        {
+            self.net_requests.insert((addr.into(), req_id), tx)
+        };
 
         // Pass message to sink for transmission
-        self.net_sink.try_send((addr.into(), NetMessage::Request(req))).unwrap();
+        self.net_sink
+            .try_send((addr.into(), NetMessage::Request(req)))
+            .unwrap();
 
         // Return future channel
         Ok(rx)
@@ -272,10 +276,9 @@ impl Dsf {
         addr: SocketAddr,
         resp: net::Response,
     ) -> Result<Option<net::Response>, DaemonError> {
-
         let from = resp.from.clone();
         let req_id = resp.id;
-        
+
         // Generic net message processing here
         let peer = self.handle_base(&from, &addr.into(), &resp.common, Some(SystemTime::now()));
 
@@ -291,14 +294,16 @@ impl Dsf {
             Some(mut a) => {
                 trace!("Found pending request for id {} address: {}", req_id, addr);
                 if let Err(e) = a.try_send(resp) {
-                    error!("Error forwarding message for id {} from {}: {:?}", req_id, addr, e);
+                    error!(
+                        "Error forwarding message for id {} from {}: {:?}",
+                        req_id, addr, e
+                    );
                 }
             }
             None => {
                 error!("Received response id {} with no pending request", req_id);
             }
         };
-
 
         // TODO: three-way-ack support?
 
@@ -333,7 +338,6 @@ impl Dsf {
 
         // Handle specific DSF and DHT messages
         let mut resp = if let Some(dht_req) = self.net_to_dht_request(&req.data) {
-
             let dht_resp = self.handle_dht_req(from.clone(), peer, req.id, dht_req)?;
 
             let net_resp = self.dht_to_net_response(dht_resp);
@@ -352,10 +356,9 @@ impl Dsf {
         }
 
         // Update peer info
-        self.peers().update(&from, |p| p.info.sent += 1 );
+        self.peers().update(&from, |p| p.info.sent += 1);
 
         trace!("returning response (to: {:?})\n {:?}", from, &resp);
-
 
         Ok(resp)
     }
@@ -403,7 +406,8 @@ impl Dsf {
         match (peer.state(), &c.public_key) {
             (PeerState::Unknown, Some(pk)) => {
                 info!("Adding key: {:?} to peer: {:?}", pk, id);
-                self.peers().update(&id, |p| p.info.state = PeerState::Known(pk.clone()) );
+                self.peers()
+                    .update(&id, |p| p.info.state = PeerState::Known(pk.clone()));
             }
             _ => (),
         };
@@ -412,7 +416,8 @@ impl Dsf {
         if let Some(a) = c.remote_address {
             if a != peer.address() {
                 info!("Setting explicit address {:?} for peer: {:?}", a, id);
-                self.peers().update(&id, |p| p.info.address = PeerAddress::Explicit(a) );
+                self.peers()
+                    .update(&id, |p| p.info.address = PeerAddress::Explicit(a));
             }
         }
 
@@ -444,7 +449,11 @@ impl Dsf {
 
                 // Fetch pages for service
                 let pages = {
-                    match &self.services().filter(&service_id, |s| s.primary_page.clone() ).flatten() {
+                    match &self
+                        .services()
+                        .filter(&service_id, |s| s.primary_page.clone())
+                        .flatten()
+                    {
                         Some(p) => vec![p.clone()],
                         None => vec![],
                     }
@@ -460,7 +469,6 @@ impl Dsf {
                         inst.info.updated = Some(SystemTime::now());
                         inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
                     })
-                    
                     .unwrap();
 
                 Ok(net::ResponseKind::ValuesFound(service_id, pages))
@@ -532,7 +540,9 @@ impl Dsf {
                 for p in &data {
                     // Apply page to service
                     if p.header().kind().is_page() {
-                        self.services().update_inst(&id, |s| { let _ = s.apply_update(p); } );
+                        self.services().update_inst(&id, |s| {
+                            let _ = s.apply_update(p);
+                        });
                     }
 
                     // Store data
@@ -556,11 +566,16 @@ impl Dsf {
                 // TODO: we should be cleverer about this to avoid
                 // loops etc. (and prolly add a TTL if it can be repeated?)
                 let peer_ids = self.subscribers().find_peers(&id)?;
-                let peer_subs: Vec<_> = peer_ids.iter().filter_map(|peer_id| {
-                    self.peers().find(peer_id)
-                }).collect();
+                let peer_subs: Vec<_> = peer_ids
+                    .iter()
+                    .filter_map(|peer_id| self.peers().find(peer_id))
+                    .collect();
 
-                info!("Sending data push message id {} to: {:?}", req_id, peer_subs.len());
+                info!(
+                    "Sending data push message id {} to: {:?}",
+                    req_id,
+                    peer_subs.len()
+                );
 
                 // Issue data push requests
                 // TODO: we should probably wire the return here to send a delayed PublishInfo to the requester?

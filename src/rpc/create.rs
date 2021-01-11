@@ -1,14 +1,13 @@
-use std::time::SystemTime;
-use std::pin::Pin;
-use std::task::{Poll, Context};
 use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::SystemTime;
 
-use futures::prelude::*;
 use futures::channel::mpsc;
+use futures::prelude::*;
 
+use log::{debug, error, info, warn};
 use tracing::{span, Level};
-use log::{debug, info, warn, error};
-
 
 use dsf_core::options::Options;
 use dsf_core::prelude::*;
@@ -16,17 +15,14 @@ use dsf_core::service::Publisher;
 
 use dsf_rpc::{self as rpc, CreateOptions, RegisterOptions, ServiceIdentifier};
 
-
 use crate::daemon::Dsf;
 use crate::error::Error;
 
-use crate::core::services::*;
-use crate::core::services::ServiceState;
 use crate::core::peers::Peer;
-
+use crate::core::services::ServiceState;
+use crate::core::services::*;
 
 use super::ops::*;
-
 
 pub enum CreateState {
     Init,
@@ -35,24 +31,20 @@ pub enum CreateState {
     Error,
 }
 
-
 pub struct CreateOp {
     pub(crate) id: Option<Id>,
     pub(crate) opts: CreateOptions,
     pub(crate) state: CreateState,
 }
 
-
 pub struct CreateFuture {
     rx: mpsc::Receiver<rpc::Response>,
 }
-
 
 impl Future for CreateFuture {
     type Output = Result<ServiceInfo, DsfError>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        
         let resp = match self.rx.poll_next_unpin(ctx) {
             Poll::Ready(Some(r)) => r,
             _ => return Poll::Pending,
@@ -65,7 +57,6 @@ impl Future for CreateFuture {
         }
     }
 }
-
 
 impl Dsf {
     /// Create (and publish) a new CreateOptions
@@ -85,12 +76,18 @@ impl Dsf {
         debug!("Adding RPC op {} to tracking", req_id);
         self.rpc_ops.as_mut().unwrap().insert(req_id, op);
 
-        Ok(CreateFuture{ rx })
+        Ok(CreateFuture { rx })
     }
 
-    pub fn poll_rpc_create(&mut self, req_id: u64, create_op: &mut CreateOp, ctx: &mut Context, mut done: mpsc::Sender<rpc::Response>) -> Result<bool, DsfError> {
-        let CreateOp{id,  opts, state } = create_op;
-        
+    pub fn poll_rpc_create(
+        &mut self,
+        req_id: u64,
+        create_op: &mut CreateOp,
+        ctx: &mut Context,
+        mut done: mpsc::Sender<rpc::Response>,
+    ) -> Result<bool, DsfError> {
+        let CreateOp { id, opts, state } = create_op;
+
         match state {
             CreateState::Init => {
                 info!("Creating service: {:?}", opts);
@@ -105,8 +102,7 @@ impl Dsf {
 
                 // Append addresses as private options
                 sb = sb.private_options(
-                    opts
-                        .addresses
+                    opts.addresses
                         .iter()
                         .map(|v| Options::address(v.clone()))
                         .collect(),
@@ -133,8 +129,7 @@ impl Dsf {
 
                 // Register service in local database
                 debug!("Storing service information");
-                self
-                    .services()
+                self.services()
                     .register(service, &primary_page, ServiceState::Created, None)
                     .unwrap();
 
@@ -149,7 +144,7 @@ impl Dsf {
                         Ok(r) => r,
                         Err(e) => {
                             error!("DHT store error: {:?}", e);
-                            return Err(DsfError::Unknown)
+                            return Err(DsfError::Unknown);
                         }
                     };
 
@@ -159,17 +154,20 @@ impl Dsf {
                     *state = CreateState::Done;
                     Ok(false)
                 }
-            },
+            }
             CreateState::Pending(store) => {
                 match store.poll_unpin(ctx) {
                     Poll::Ready(Ok(v)) => {
                         debug!("DHT store complete! {:?}", v);
 
                         // Update service
-                        let info = self.services().update_inst(id.as_ref().unwrap(), |s| {
-                            s.state = ServiceState::Registered;
-                            s.last_updated = Some(SystemTime::now());
-                        }).unwrap();
+                        let info = self
+                            .services()
+                            .update_inst(id.as_ref().unwrap(), |s| {
+                                s.state = ServiceState::Registered;
+                                s.last_updated = Some(SystemTime::now());
+                            })
+                            .unwrap();
 
                         // Return info
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Service(info));
@@ -178,27 +176,26 @@ impl Dsf {
                         *state = CreateState::Done;
 
                         Ok(false)
-                    },
+                    }
                     Poll::Ready(Err(e)) => {
                         error!("DHT store error: {:?}", e);
 
-                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Error(dsf_core::error::Error::Unknown));
+                        let resp = rpc::Response::new(
+                            req_id,
+                            rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
+                        );
 
                         done.try_send(resp).unwrap();
 
                         *state = CreateState::Error;
 
                         Ok(false)
-                    },
+                    }
                     _ => Ok(false),
                 }
-            },
-            CreateState::Done => {
-                Ok(true)
-            },
-            CreateState::Error => {
-                Ok(true)
-            },
+            }
+            CreateState::Done => Ok(true),
+            CreateState::Error => Ok(true),
         }
     }
 }

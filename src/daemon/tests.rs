@@ -1,11 +1,10 @@
 #![allow(unused_imports)]
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use crate::sync::{Arc, Mutex};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use log::{trace, debug, info, warn, error};
-
+use log::{debug, error, info, trace, warn};
 
 use async_std::task;
 
@@ -33,7 +32,6 @@ use crate::store::Store;
 
 #[test]
 fn test_manager() {
-
     // Initialise logging
     let _ = FmtSubscriber::builder()
         .with_max_level(LevelFilter::INFO)
@@ -88,16 +86,12 @@ fn test_manager() {
                 Flags::default()
             ),
         );
-
-
     });
-
 }
 #[cfg(nope)]
 
 fn disabled() {
     task::block_on(async {
-
         info!("Connect function");
 
         mux.expect(vec![

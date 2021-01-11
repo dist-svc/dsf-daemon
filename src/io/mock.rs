@@ -1,9 +1,9 @@
-use std::collections::VecDeque;
 use crate::sync::{Arc, Mutex};
+use std::collections::VecDeque;
 use std::time::Duration;
 
-use log::{debug};
 use async_trait::async_trait;
+use log::debug;
 
 use dsf_core::prelude::*;
 

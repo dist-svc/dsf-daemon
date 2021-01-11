@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use log::{trace, debug, info, warn, error};
+use log::{debug, error, info, trace, warn};
 
 use diesel::prelude::*;
 

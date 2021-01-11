@@ -1,20 +1,19 @@
 //! mDNS plugin, provides mDNS support to the DSF daemon
 //!
 
+use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
-use crate::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-use log::{debug};
-use futures::prelude::*;
 use async_std::task::{self, JoinHandle};
+use futures::prelude::*;
+use log::debug;
 use mdns::RecordKind;
 
 use dsf_core::types::Id;
-
 
 const SERVICE_NAME: &str = "_dsf._udp.local";
 

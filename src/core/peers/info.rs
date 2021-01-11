@@ -9,7 +9,6 @@ pub struct Peer {
     pub(crate) info: PeerInfo,
 }
 
-
 impl Peer {
     pub fn id(&self) -> Id {
         self.info.id.clone()

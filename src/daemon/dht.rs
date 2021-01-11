@@ -10,8 +10,8 @@ use dsf_core::types::{Data, Id, RequestId};
 
 use super::Dsf;
 
-use crate::error::Error;
 use crate::core::peers::{Peer, PeerAddress};
+use crate::error::Error;
 
 /// Adaptor to convert between DSF and DHT requests/responses
 #[derive(Clone)]
@@ -34,7 +34,6 @@ impl Dsf {
         req_id: RequestId,
         req: DhtRequest<Id, Data>,
     ) -> Result<DhtResponse<Id, Peer, Data>, Error> {
-
         // Map peer to existing DHT entry
         // TODO: resolve this rather than creating a new instance
         // (or, use only the index and rely on external storage etc.?)
@@ -54,7 +53,6 @@ impl Dsf {
         req_id: RequestId,
         resp: DhtResponse<Id, Peer, Data>,
     ) -> Result<(), Error> {
-
         // Map peer to existing DHT entry
         // TODO: resolve this rather than creating a new instance
         // (or, use only the index and rely on external storage etc.?)
@@ -65,28 +63,27 @@ impl Dsf {
 
         Ok(resp)
     }
-    
+
     pub(crate) fn is_dht_req(msg: &NetRequest) -> bool {
         match msg.data {
-            RequestKind::Ping | 
-            RequestKind::Store(_, _) |
-            RequestKind::FindValue(_) |
-            RequestKind::FindNode(_) => true,
+            RequestKind::Ping
+            | RequestKind::Store(_, _)
+            | RequestKind::FindValue(_)
+            | RequestKind::FindNode(_) => true,
             _ => false,
         }
     }
 
     pub(crate) fn is_dht_resp(msg: &NetResponse) -> bool {
         match msg.data {
-            ResponseKind::NoResult | 
-            ResponseKind::NodesFound(_, _) |
-            ResponseKind::ValuesFound(_, _) => true,
+            ResponseKind::NoResult
+            | ResponseKind::NodesFound(_, _)
+            | ResponseKind::ValuesFound(_, _) => true,
             _ => false,
         }
     }
 
     pub(crate) fn dht_to_net_request(&mut self, req: DhtRequest<Id, Data>) -> NetRequestKind {
-
         match req {
             DhtRequest::Ping => RequestKind::Ping,
             DhtRequest::FindNode(id) => RequestKind::FindNode(Id::from(id.clone())),
@@ -97,39 +94,42 @@ impl Dsf {
         }
     }
 
-    pub(crate) fn dht_to_net_response(&mut self, resp: DhtResponse<Id, Peer, Data>) -> NetResponseKind {
-
+    pub(crate) fn dht_to_net_response(
+        &mut self,
+        resp: DhtResponse<Id, Peer, Data>,
+    ) -> NetResponseKind {
         match resp {
             DhtResponse::NodesFound(id, nodes) => {
-                
-            let nodes = nodes
-                .iter()
-                .filter_map(|n| {
-                    // Drop nodes without keys from responses
-                    // TODO: is this the desired behaviour?
-                    if n.info().pub_key().is_none() {
-                        None
-                    } else {
-                        Some((
-                            Id::from(n.id().clone()),
-                            n.info().address(),
-                            n.info().pub_key().unwrap(),
-                        ))
-                    }
-                })
-                .collect();
-       
+                let nodes = nodes
+                    .iter()
+                    .filter_map(|n| {
+                        // Drop nodes without keys from responses
+                        // TODO: is this the desired behaviour?
+                        if n.info().pub_key().is_none() {
+                            None
+                        } else {
+                            Some((
+                                Id::from(n.id().clone()),
+                                n.info().address(),
+                                n.info().pub_key().unwrap(),
+                            ))
+                        }
+                    })
+                    .collect();
+
                 ResponseKind::NodesFound(Id::from(id.clone()), nodes)
-            },
+            }
             DhtResponse::ValuesFound(id, values) => {
                 ResponseKind::ValuesFound(Id::from(id.clone()), values.to_vec())
             }
             DhtResponse::NoResult => ResponseKind::NoResult,
         }
-
     }
 
-    pub(crate) fn net_to_dht_request(&mut self, req: &NetRequestKind) -> Option<DhtRequest<Id, Data>> {
+    pub(crate) fn net_to_dht_request(
+        &mut self,
+        req: &NetRequestKind,
+    ) -> Option<DhtRequest<Id, Data>> {
         match req {
             RequestKind::Ping => Some(DhtRequest::Ping),
             RequestKind::FindNode(id) => Some(DhtRequest::FindNode(Id::into(id.clone()))),
@@ -141,15 +141,16 @@ impl Dsf {
         }
     }
 
-    pub(crate) fn net_to_dht_response(&mut self, resp: &NetResponseKind) -> Option<DhtResponse<Id, Peer, Data>> {
-
+    pub(crate) fn net_to_dht_response(
+        &mut self,
+        resp: &NetResponseKind,
+    ) -> Option<DhtResponse<Id, Peer, Data>> {
         // TODO: fix peers:new here peers:new
         match resp {
             ResponseKind::NodesFound(id, nodes) => {
                 let mut dht_nodes = Vec::with_capacity(nodes.len());
 
                 for (id, addr, key) in nodes {
-                    
                     let node = self.peers().find_or_create(
                         id.clone(),
                         PeerAddress::Implicit(addr.clone()),
@@ -212,4 +213,3 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
         .map(|(_k, p)| (*p).clone())
         .collect()
 }
-

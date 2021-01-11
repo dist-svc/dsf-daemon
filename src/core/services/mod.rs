@@ -2,15 +2,15 @@
 //!
 //!
 
-use std::collections::HashMap;
 use crate::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::collections::HashMap;
 use std::ops::Add;
+use std::time::{Duration, SystemTime};
 
-use log::{trace, debug, info, error};
+use log::{debug, error, info, trace};
 
-use dsf_core::prelude::*;
 use dsf_core::options::Options;
+use dsf_core::prelude::*;
 use dsf_core::service::Subscriber;
 
 pub use dsf_rpc::service::{ServiceInfo, ServiceState};
@@ -34,10 +34,7 @@ impl ServiceManager {
     pub fn new(store: Arc<Mutex<Store>>) -> Self {
         let services = HashMap::new();
 
-        let mut s = Self {
-            services,
-            store,
-        };
+        let mut s = Self { services, store };
 
         s.load();
 
@@ -52,7 +49,6 @@ impl ServiceManager {
         state: ServiceState,
         updated: Option<SystemTime>,
     ) -> Result<ServiceInfo, DsfError> {
-
         let id = service.id();
 
         // Create a service instance wrapper
@@ -96,8 +92,8 @@ impl ServiceManager {
     pub fn index(&self, index: usize) -> Option<ServiceInfo> {
         self.services
             .iter()
-            .find(|(_id, s)| s.index == index )
-            .map(|(_id, s)| s.info() )
+            .find(|(_id, s)| s.index == index)
+            .map(|(_id, s)| s.info())
     }
 
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
@@ -188,7 +184,7 @@ impl ServiceManager {
     }
 
     /// Fetch a field from a service instance
-    pub fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R> 
+    pub fn filter<F, R>(&mut self, id: &Id, f: F) -> Option<R>
     where
         F: Fn(&ServiceInst) -> R,
     {
@@ -208,7 +204,8 @@ impl ServiceManager {
         interval: Duration,
         force: bool,
     ) -> Vec<ServiceInfo> {
-        let updates: Vec<_> = self.services
+        let updates: Vec<_> = self
+            .services
             .iter()
             .filter_map(|(_id, svc)| {
                 let i = svc;
@@ -245,10 +242,7 @@ impl ServiceManager {
 
     /// Fetch a list of information for known services
     pub fn list(&self) -> Vec<ServiceInfo> {
-        self.services
-            .iter()
-            .map(|(_k, v)| v.info())
-            .collect()
+        self.services.iter().map(|(_k, v)| v.info()).collect()
     }
 
     /// Fetch the number of known services
@@ -286,7 +280,7 @@ impl ServiceManager {
     /// Load the service database from disk
     pub fn load(&mut self) {
         trace!("services load");
-        
+
         let store = self.store.lock().unwrap();
 
         let service_info = store.load_services().unwrap();

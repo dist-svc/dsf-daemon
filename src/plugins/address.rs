@@ -3,7 +3,7 @@
 
 use std::net::IpAddr;
 
-use log::{info};
+use log::info;
 
 use get_if_addrs::get_if_addrs;
 

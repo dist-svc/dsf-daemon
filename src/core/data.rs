@@ -1,7 +1,7 @@
-use std::convert::TryFrom;
 use crate::sync::{Arc, Mutex};
+use std::convert::TryFrom;
 
-use log::{trace, info, error};
+use log::{error, info, trace};
 
 use dsf_core::{page::Page, types::Id};
 
@@ -66,7 +66,6 @@ impl DataManager {
 
     /// Store data for a given service
     pub fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
-
         trace!("store data lock");
         // DEADLOCK DISABLED
         let store = self.store.lock().unwrap();

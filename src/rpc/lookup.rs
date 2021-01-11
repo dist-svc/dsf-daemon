@@ -1,24 +1,22 @@
-use std::pin::Pin;
-use std::task::{Poll, Context};
 use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::SystemTime;
 
-use futures::prelude::*;
 use futures::channel::mpsc;
+use futures::prelude::*;
 
-
+use log::{debug, error, info, warn};
 use tracing::{span, Level};
-use log::{debug, info, warn, error};
 
 use dsf_core::prelude::*;
-use dsf_rpc::{self as rpc, PeerInfo, peer::SearchOptions as LookupOptions};
+use dsf_rpc::{self as rpc, peer::SearchOptions as LookupOptions, PeerInfo};
 
 use crate::daemon::Dsf;
 use crate::error::Error;
 
 use crate::core::peers::Peer;
 use crate::core::services::ServiceState;
-
 
 use super::ops::*;
 
@@ -29,23 +27,19 @@ pub enum LookupState {
     Error,
 }
 
-
 pub struct LookupOp {
     pub(crate) opts: LookupOptions,
     pub(crate) state: LookupState,
 }
 
-
 pub struct LookupFuture {
     rx: mpsc::Receiver<rpc::Response>,
 }
-
 
 impl Future for LookupFuture {
     type Output = Result<PeerInfo, DsfError>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        
         let resp = match self.rx.poll_next_unpin(ctx) {
             Poll::Ready(Some(r)) => r,
             _ => return Poll::Pending,
@@ -58,7 +52,6 @@ impl Future for LookupFuture {
         }
     }
 }
-
 
 impl Dsf {
     /// Look-up a peer via the database
@@ -78,12 +71,18 @@ impl Dsf {
         debug!("Adding RPC op {} to tracking", req_id);
         self.rpc_ops.as_mut().unwrap().insert(req_id, op);
 
-        Ok(LookupFuture{ rx })
+        Ok(LookupFuture { rx })
     }
 
-    pub fn poll_rpc_lookup(&mut self, req_id: u64, create_op: &mut LookupOp, ctx: &mut Context, mut done: mpsc::Sender<rpc::Response>) -> Result<bool, DsfError> {
-        let LookupOp{opts, state } = create_op;
-        
+    pub fn poll_rpc_lookup(
+        &mut self,
+        req_id: u64,
+        create_op: &mut LookupOp,
+        ctx: &mut Context,
+        mut done: mpsc::Sender<rpc::Response>,
+    ) -> Result<bool, DsfError> {
+        let LookupOp { opts, state } = create_op;
+
         match state {
             LookupState::Init => {
                 // Initiate lookup via DHT
@@ -91,13 +90,13 @@ impl Dsf {
                     Ok(r) => r,
                     Err(e) => {
                         error!("DHT store error: {:?}", e);
-                        return Err(DsfError::Unknown)
+                        return Err(DsfError::Unknown);
                     }
                 };
 
                 *state = LookupState::Pending(lookup);
                 Ok(false)
-            },
+            }
             LookupState::Pending(lookup) => {
                 match lookup.poll_unpin(ctx) {
                     Poll::Ready(Ok(v)) => {
@@ -106,28 +105,34 @@ impl Dsf {
                         // TODO: Register or update peer
 
                         // Return info
-                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Peer(v.info().info().clone()));
+                        let resp = rpc::Response::new(
+                            req_id,
+                            rpc::ResponseKind::Peer(v.info().info().clone()),
+                        );
                         done.try_send(resp).unwrap();
 
                         *state = LookupState::Done;
 
                         Ok(false)
-                    },
+                    }
                     Poll::Ready(Err(e)) => {
                         error!("DHT lookup error: {:?}", e);
 
-                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Error(dsf_core::error::Error::Unknown));
+                        let resp = rpc::Response::new(
+                            req_id,
+                            rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
+                        );
 
                         done.try_send(resp).unwrap();
 
                         *state = LookupState::Error;
 
                         Ok(false)
-                    },
+                    }
                     Poll::Pending => Ok(false),
                 }
-            },
-            _ => Ok(true)
+            }
+            _ => Ok(true),
         }
     }
 }

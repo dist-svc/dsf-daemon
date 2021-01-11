@@ -1,16 +1,15 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use log::{trace, debug, info, warn, error};
-
+use log::{debug, error, info, trace, warn};
 
 use structopt::StructOpt;
 
 use async_std::stream;
 use async_std::task::{self, JoinHandle};
 
+use futures::channel::mpsc;
 use futures::prelude::*;
-use futures::channel::{mpsc};
 use futures::select;
 
 use tracing::{span, Level};
@@ -24,14 +23,13 @@ use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
 
 use kad::Config as DhtConfig;
 
-use crate::sync::{Arc, Mutex};
 use crate::daemon::*;
 use crate::error::Error;
 use crate::io::*;
 use crate::store::*;
+use crate::sync::{Arc, Mutex};
 
 use crate::daemon::Options as DaemonOptions;
-
 
 pub const DEFAULT_UNIX_SOCKET: &str = "/tmp/dsf.sock";
 pub const DEFAULT_DATABASE_FILE: &str = "/tmp/dsf.db";
@@ -111,7 +109,6 @@ impl Options {
     }
 }
 
-
 pub struct Engine {
     id: Id,
     dsf: Dsf,
@@ -123,7 +120,6 @@ pub struct Engine {
 
     options: Options,
 }
-
 
 impl Engine {
     /// Create a new daemon instance
@@ -208,13 +204,19 @@ impl Engine {
 
     // Run the DSF daemon
     pub async fn start(self) -> Result<Instance, Error> {
-        let Engine { id, mut dsf, mut net, mut net_source, mut unix, options, } = self;
+        let Engine {
+            id,
+            mut dsf,
+            mut net,
+            mut net_source,
+            mut unix,
+            options,
+        } = self;
 
         let span = span!(Level::DEBUG, "engine", "{}", dsf.id());
         let _enter = span.enter();
 
         if !options.no_bootstrap {
-
             let b = dsf.bootstrap().unwrap();
             // TODO: Create future bootstrap event
             task::spawn(async move {
@@ -234,16 +236,15 @@ impl Engine {
         let (mut dsf_exit_tx, mut dsf_exit_rx) = mpsc::channel(1);
         let (mut net_exit_tx, mut net_exit_rx) = mpsc::channel(1);
 
-       // Setup exist task
-       let _exit_handle = task::spawn(async move {
+        // Setup exist task
+        let _exit_handle = task::spawn(async move {
             // Await exit signal
             exit_rx.next().await;
 
             // Send othert exists
             net_exit_tx.send(()).await.unwrap();
             dsf_exit_tx.send(()).await.unwrap();
-       });
-
+        });
 
         // Setup network IO task
         let net_handle: JoinHandle<Result<(), Error>> = task::spawn(async move {
@@ -280,7 +281,6 @@ impl Engine {
 
         // Setup DSF main task
         let dsf_handle: JoinHandle<Result<(), Error>> = task::spawn(async move {
-
             loop {
                 select! {
                     // Incoming network _requests_
@@ -384,8 +384,6 @@ impl Engine {
         Ok(())
     }
 }
-
-
 
 pub struct Instance {
     id: Id,

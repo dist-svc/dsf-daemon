@@ -1,31 +1,31 @@
 use crate::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
 use std::collections::HashMap;
+use std::time::{Duration, SystemTime};
 
-use std::pin::Pin;
-use std::task::{Poll, Context};
 use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use log::{trace, debug, info, warn, error};
+use log::{debug, error, info, trace, warn};
 
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
 
 use kad::prelude::*;
 
-use futures::channel::mpsc;
 use async_std::future::timeout;
+use futures::channel::mpsc;
 
 use tracing::{span, Level};
 
 use crate::core::data::DataManager;
 use crate::core::peers::{Peer, PeerManager, PeerState};
 use crate::core::replicas::ReplicaManager;
-use crate::core::services::{ServiceManager, ServiceState, ServiceInfo};
+use crate::core::services::{ServiceInfo, ServiceManager, ServiceState};
 use crate::core::subscribers::SubscriberManager;
 
-use crate::rpc::ops::RpcOperation;
 use super::net::NetOp;
+use crate::rpc::ops::RpcOperation;
 
 use crate::error::Error;
 use crate::store::Store;
@@ -69,7 +69,6 @@ pub struct Dsf {
     pub(crate) net_requests: HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>,
 
     pub(crate) net_sink: mpsc::Sender<(Address, NetMessage)>,
-
     //pub(crate) net_source: Arc<Mutex<mpsc::Receiver<(Address, NetMessage)>>>,
 }
 
@@ -93,14 +92,10 @@ impl Dsf {
         let subscribers = SubscriberManager::new();
 
         let id = service.id();
-        
+
         // Instantiate DHT
         let (dht_sink, dht_source) = mpsc::channel(100);
-        let dht = Dht::<Id, Peer, Data, RequestId>::standard(
-            id,
-            config.dht,
-            dht_sink
-        );
+        let dht = Dht::<Id, Peer, Data, RequestId>::standard(id, config.dht, dht_sink);
 
         // Create DSF object
         let s = Self {
@@ -175,7 +170,11 @@ impl Dsf {
     }
 
     /// Store pages in the database at the provided ID
-    pub fn store(&mut self, id: &Id, pages: Vec<Page>) -> Result<kad::dht::StoreFuture<Id, Peer>, Error> {
+    pub fn store(
+        &mut self,
+        id: &Id,
+        pages: Vec<Page>,
+    ) -> Result<kad::dht::StoreFuture<Id, Peer>, Error> {
         let span = span!(Level::DEBUG, "store", "{}", self.id());
         let _enter = span.enter();
 
@@ -320,20 +319,19 @@ impl Dsf {
 
     pub fn find_public_key(&self, id: &Id) -> Option<PublicKey> {
         if let Some(s) = self.services.find(id) {
-            return Some(s.public_key)
+            return Some(s.public_key);
         }
 
         if let Some(p) = self.peers.find(id) {
             if let PeerState::Known(pk) = p.state() {
-                return Some(pk)
+                return Some(pk);
             }
         }
-        
+
         None
     }
 
     pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<ServiceInfo, Error> {
-
         debug!("found {} pages", pages.len());
         // Fetch primary page
         let primary_page = match pages.iter().find(|p| {
@@ -374,19 +372,21 @@ impl Dsf {
         let info = match self.services.known(id) {
             true => {
                 info!("updating existing service");
-                
+
                 // Apply update to known instance
-                self.services.update_inst(id, |s| {
-                    // Apply primary page update
-                    if s.apply_update(&primary_page).unwrap() {
-                        s.primary_page = Some(primary_page.clone());
-                        s.last_updated = Some(SystemTime::now());
-                    }
-                }).unwrap()
+                self.services
+                    .update_inst(id, |s| {
+                        // Apply primary page update
+                        if s.apply_update(&primary_page).unwrap() {
+                            s.primary_page = Some(primary_page.clone());
+                            s.last_updated = Some(SystemTime::now());
+                        }
+                    })
+                    .unwrap()
             }
             false => {
                 info!("creating new service entry");
-                
+
                 // Create instance from page
                 let service = match Service::load(&primary_page) {
                     Ok(s) => s,
@@ -415,7 +415,7 @@ impl Dsf {
 }
 
 impl futures::future::FusedFuture for Dsf {
-    fn is_terminated(&self) -> bool { 
+    fn is_terminated(&self) -> bool {
         false
     }
 }
@@ -426,10 +426,8 @@ impl Future for Dsf {
     type Output = Result<(), DsfError>;
 
     fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-
         // Poll for outgoing DHT messages
         if let Poll::Ready(Some((req_id, target, body))) = self.dht_source.poll_next_unpin(ctx) {
-
             let addr = target.info().address();
             let body = self.dht_to_net_request(body);
             let mut flags = Flags::default();
@@ -450,7 +448,9 @@ impl Future for Dsf {
             // by net::handle_dht, not sure this is a _great_
             // approach but eh
             let (tx, _rx) = mpsc::channel(1);
-            { self.net_requests.insert((addr.clone().into(), req_id), tx) };
+            {
+                self.net_requests.insert((addr.clone().into(), req_id), tx)
+            };
 
             // Encode and enqueue them
             if let Err(e) = self.net_sink.try_send((addr, NetMessage::Request(req))) {
@@ -458,7 +458,6 @@ impl Future for Dsf {
                 return Poll::Ready(Err(DsfError::Unknown));
             }
         }
-
 
         // Poll on internal network operations
         self.poll_net_ops(ctx);
