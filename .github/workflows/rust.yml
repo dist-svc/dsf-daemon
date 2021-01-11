@@ -61,7 +61,7 @@ jobs:
           command: test
     
   build:
-    name: Build
+    name: Build Binaries
     runs-on: ${{ matrix.os }}
     
     strategy:
@@ -130,3 +130,18 @@ jobs:
         asset_name: dsfd-${{ matrix.target }}.tgz
         tag: ${{ github.ref }}
         overwrite: true
+        
+  images:
+    name: Build Images
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - uses: docker/setup-buildx-action@v1
+        id: buildx
+
+      - name: Build
+        run: |
+          docker buildx build --platform linux/arm/v7,linux/amd64 -t github.com/dist-svc/dsf-daemon:${{ CI_SHA_SHORT }}
