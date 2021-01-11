@@ -23,6 +23,7 @@ jobs:
 
       - name: Configure caching
         uses: actions/cache@v2
+        if: ${{ matrix.os != 'macos-latest' }}
         with:
           key: check
           path: |
@@ -38,6 +39,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    continue-on-error: true
+
     steps:
       - uses: actions/checkout@v2
         
@@ -49,6 +52,7 @@ jobs:
 
       - name: Configure caching
         uses: actions/cache@v2
+        if: ${{ matrix.os != 'macos-latest' }}
         with:
           key: test
           path: |
@@ -90,6 +94,7 @@ jobs:
     
     - name: Configure caching
       uses: actions/cache@v2
+      if: ${{ matrix.os != 'macos-latest' }}
       with:
         key: build-${{ matrix.os }}-${{ matrix.target }}
         path: |
@@ -131,20 +136,3 @@ jobs:
         tag: ${{ github.ref }}
         overwrite: true
 
-  images:
-    name: Build Images
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Fetch environmental variables
-        uses: FranzDiebold/github-env-vars-action@v2.1.0
-
-      - uses: docker/setup-buildx-action@v1
-        id: buildx
-
-      - name: Build
-        run: |
-          docker buildx build --platform linux/arm/v7,linux/amd64 -t docker.pkg.github.com/dist-svc/dsf-daemon:$CI_SHA_SHORT .
