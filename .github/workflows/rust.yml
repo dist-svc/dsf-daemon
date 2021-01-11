@@ -1,4 +1,4 @@
-name: Rust CI test / build / deploy
+name: Rust CI
 
 on: [push, pull_request]
 
@@ -16,23 +16,20 @@ jobs:
           override: true
           components: rustfmt, clippy
 
-      - name: Configure cargo cache
-        uses: actions/cache@v1
+      - name: Configure caching
+        uses: actions/cache@v2
         with:
-          key: cargo-check
-          path: ${{ env.HOME }}/.cargo"
-
-      - name: Configure target cache
-        uses: actions/cache@v1
-        with:
-          key: target-check
-          path: ./target
+          key: check
+          path: |
+            ${{ env.HOME }}/.cargo
+            ./target
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: -- --check
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -45,17 +42,13 @@ jobs:
           toolchain: nightly
           override: true
 
-      - name: Configure cargo cache 
-        uses: actions/cache@v1
+      - name: Configure caching
+        uses: actions/cache@v2
         with:
-          key: cargo-test
-          path: ${{ env.HOME }}/.cargo"
-
-      - name: Configure target cache
-        uses: actions/cache@v1
-        with:
-          key: target-test
-          path: ./target
+          key: test
+          path: |
+            ${{ env.HOME }}/.cargo
+            ./target
         
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -65,7 +58,6 @@ jobs:
   build:
     name: Build
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental }}
     
     strategy:
       fail-fast: false
@@ -74,18 +66,12 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             output: dsfd
-            use_cross: false
-            experimental: false
           - target: armv7-unknown-linux-gnueabihf 
             os: ubuntu-latest
             output: dsfd
-            use_cross: true
-            experimental: false
           - target: x86_64-apple-darwin
             os: macos-latest
             output: dsfd
-            use_cross: false
-            experimental: false
 
     steps:
     - uses: actions/checkout@v2
@@ -97,18 +83,23 @@ jobs:
         target:  ${{ matrix.target }}
         override: true
     
-    - name: Configure cargo cache 
-      uses: actions/cache@v1
+    - name: Configure caching
+      uses: actions/cache@v2
       with:
-        key: cargo-${{ matrix.os }}-${{ matrix.target }}
-        path: ${{ env.HOME }}/.cargo"
-
-    - name: Configure target cache
-      uses: actions/cache@v1
-      with:
-        key: target-${{ matrix.os }}-${{ matrix.target }}
-        path: ./target
+        key: build-${{ matrix.os }}-${{ matrix.target }}
+        path: |
+          ${{ env.HOME }}/.cargo
+          ./target
     
+    - name: Install cross toolchain (armv7)
+      if: ${{ matrix.target == 'armv7-unknown-linux-gnueabihf' }}
+      run: sudo apt-get install gcc-arm-linux-gnueabihf
+
+    - name: Enable cross compilation (armv7)
+      if: ${{ matrix.target == 'armv7-unknown-linux-gnueabihf' }}
+      run: |
+        echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
+
     - name: Build release
       uses: actions-rs/cargo@v1
       with:
@@ -125,4 +116,12 @@ jobs:
         name: dsfd-${{ matrix.target }}.tgz
         path: target/dsfd-${{ matrix.target }}.tgz
       
-   
+    - name: Upload release
+      if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: target/dsfd-${{ matrix.target }}.tgz
+        asset_name: dsfd-${{ matrix.target }}.tgz
+        tag: ${{ github.ref }}
+        overwrite: true
