@@ -58,15 +58,15 @@ strum_macros = "0.20.1"
 
 
 [dependencies.dsf-core]
-version = "0.1.3"
+version = "0.2.0"
 features = [ "serde", "std" ]
 
 [dependencies.dsf-rpc]
-version = "0.1.3"
+version = "0.2.0"
 features = [ "std" ]
 
 [dependencies.kad]
-version = "0.5.0"
+version = "0.6.0"
 
 [dependencies.async-std]
 version = "1.5.0"
@@ -107,7 +107,7 @@ tempdir = "0.3.7"
 rr-mux = "0.10.1"
 rand = "0.7.3"
 indicatif = "0.13.0"
-dsf-client = "0.1.0"
+dsf-client = "0.2.0"
 
 
 [[bin]]
