@@ -147,4 +147,4 @@ jobs:
 
       - name: Build
         run: |
-          docker buildx build --platform linux/arm/v7,linux/amd64 -t docker.pkg.github.com/dist-svc/dsf-daemon:$CI_SHA_SHORT
+          docker buildx build --platform linux/arm/v7,linux/amd64 -t docker.pkg.github.com/dist-svc/dsf-daemon:$CI_SHA_SHORT .
