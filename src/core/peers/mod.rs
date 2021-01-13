@@ -74,6 +74,8 @@ impl PeerManager {
     
         let info = PeerInfo::new(id.clone(), address, state, index, None);
         let peer = Peer { info };
+
+        self.peers.insert(id.clone(), peer.clone());
     
     
         // Write to store
