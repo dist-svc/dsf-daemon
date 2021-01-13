@@ -151,6 +151,7 @@ impl Dsf {
                 let mut dht_nodes = Vec::with_capacity(nodes.len());
 
                 for (id, addr, key) in nodes {
+                    // Add peer to local tracking
                     let node = self.peers().find_or_create(
                         id.clone(),
                         PeerAddress::Implicit(addr.clone()),
@@ -159,6 +160,7 @@ impl Dsf {
 
                     dht_nodes.push((id.clone(), node).into());
                 }
+
 
                 Some(DhtResponse::NodesFound(Id::into(id.clone()), dht_nodes))
             }

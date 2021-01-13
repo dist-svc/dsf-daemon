@@ -17,12 +17,11 @@ pub use info::{Peer, PeerAddress, PeerInfo, PeerState};
 
 /// PeerManager allows the creation of and provides storage for peer objects.
 /// This insures that one shared peer object exists for each PeerManager id
-#[derive(Clone)]
 pub struct PeerManager {
-    peers: Arc<Mutex<HashMap<Id, Peer>>>,
+    peers: HashMap<Id, Peer>,
     store: Arc<Mutex<Store>>,
 
-    index: Arc<AtomicUsize>,
+    index: usize,
 }
 
 impl PeerManager {
@@ -30,9 +29,9 @@ impl PeerManager {
         let peers = HashMap::new();
 
         let mut s = Self {
-            peers: Arc::new(Mutex::new(peers)),
+            peers,
             store,
-            index: Arc::new(AtomicUsize::new(0)),
+            index: 0,
         };
 
         s.load();
@@ -41,49 +40,55 @@ impl PeerManager {
     }
 
     pub fn find(&self, id: &Id) -> Option<Peer> {
-        let peers = self.peers.lock().unwrap();
-
-        peers.get(id).map(|p| p.clone())
+        self.peers.get(id).map(|p| p.clone())
     }
 
     pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
+
+        // Update and return existing peer
+        if let Some(p) = self.peers.get_mut(&id) {
+    
+            p.info.update_address(address);
+            
+            if let Some(k) = key {
+                p.info.set_state(PeerState::Known(k))
+            }
+    
+            return p.clone()
+        }
+    
         // Create new peer
-        let peer = self
-            .peers
-            .lock()
-            .unwrap()
-            .entry(id.clone())
-            .or_insert_with(|| {
-                debug!(
-                    "Creating new peer instance id: ({:?} addr: {:?}, key: {:?})",
-                    id, address, key
-                );
+        
+        let state = match key {
+            Some(k) => PeerState::Known(k),
+            None => PeerState::Unknown,
+        };
 
-                let state = match key {
-                    Some(k) => PeerState::Known(k),
-                    None => PeerState::Unknown,
-                };
-
-                let index = self.index.fetch_add(1, Ordering::SeqCst);
-                let info = PeerInfo::new(id.clone(), address, state, index, None);
-
-                Peer { info }
-            })
-            .clone();
-
+        debug!(
+            "Creating new peer instance id: ({:?} addr: {:?}, state: {:?})",
+            id, address, state
+        );
+    
+        let index = self.index;
+        self.index += 1;
+    
+        let info = PeerInfo::new(id.clone(), address, state, index, None);
+        let peer = Peer { info };
+    
+    
         // Write to store
         //        let store = self.store.lock().unwrap();
         //        if let Err(e) = store.save_peer(&peer.info) {
         //            error!("Error writing peer {} to db: {:?}", id, e);
         //        }
-
+    
         peer
     }
 
-    pub fn remove(&self, id: &Id) -> Option<PeerInfo> {
+    pub fn remove(&mut self, id: &Id) -> Option<PeerInfo> {
         trace!("remove peer lock");
 
-        let peer = { self.peers.lock().unwrap().remove(id) };
+        let peer = self.peers.remove(id);
 
         if let Some(p) = peer {
             let info = p.info();
@@ -102,8 +107,7 @@ impl PeerManager {
     pub fn count(&self) -> usize {
         trace!("count peer lock");
 
-        let peers = self.peers.lock().unwrap();
-        peers.len()
+        self.peers.len()
     }
 
     pub fn info(&self, id: &Id) -> Option<PeerInfo> {
@@ -113,8 +117,7 @@ impl PeerManager {
     pub fn list(&self) -> Vec<(Id, Peer)> {
         trace!("list peer lock");
 
-        let peers = self.peers.lock().unwrap();
-        peers
+        self.peers
             .iter()
             .map(|(id, p)| (id.clone(), p.clone()))
             .collect()
@@ -123,9 +126,7 @@ impl PeerManager {
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
         trace!("index to id peer lock");
 
-        let peers = self.peers.lock().unwrap();
-
-        peers
+        self.peers
             .iter()
             .find(|(_id, p)| p.info.index == index)
             .map(|(id, _s)| id.clone())
@@ -136,11 +137,7 @@ impl PeerManager {
     where
         F: FnMut(&mut Peer),
     {
-        let mut peers = self.peers.lock().unwrap();
-
-        trace!("peer update inst");
-
-        match peers.get_mut(id) {
+        match self.peers.get_mut(id) {
             Some(p) => {
                 (f)(p);
                 Some(p.info())
@@ -154,21 +151,14 @@ impl PeerManager {
     where
         F: Fn(&Peer) -> R,
     {
-        let peers = self.peers.lock().unwrap();
-
-        trace!("peer fetch inst");
-
-        match peers.get(id) {
+        match self.peers.get(id) {
             Some(p) => Some((f)(&p)),
             None => None,
         }
     }
 
     pub fn sync(&self) {
-        trace!("sync peer lock");
-        let peers = self.peers.lock().unwrap();
-
-        for (id, inst) in peers.iter() {
+        for (id, inst) in self.peers.iter() {
             let info = inst.info();
 
             if let Err(e) = self.store.lock().unwrap().save_peer(&info) {
@@ -180,7 +170,6 @@ impl PeerManager {
     // Load all peers from store
     fn load(&mut self) {
         trace!("load peers lock");
-        let mut peers = self.peers.lock().unwrap();
 
         trace!("take store lock");
         let store = self.store.lock().unwrap();
@@ -194,9 +183,10 @@ impl PeerManager {
         };
 
         for mut info in peer_info {
-            info.index = self.index.fetch_add(1, Ordering::SeqCst);
+            info.index = self.index;
+            self.index += 1;
 
-            peers.entry(info.id.clone()).or_insert(Peer { info });
+            self.peers.entry(info.id.clone()).or_insert(Peer { info });
         }
     }
 }

@@ -506,6 +506,8 @@ impl Dsf {
 
                 self.service_register(&id, pages)?;
 
+                info!("Register request for service: {} complete", id);
+
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             }
             net::RequestKind::Unregister(id) => {

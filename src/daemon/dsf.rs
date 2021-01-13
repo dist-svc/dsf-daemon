@@ -12,6 +12,7 @@ use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
 
 use kad::prelude::*;
+use kad::table::NodeTable;
 
 use async_std::future::timeout;
 use futures::channel::mpsc;
@@ -328,10 +329,18 @@ impl Dsf {
             }
         }
 
+        if let Some(e) = self.dht.nodetable().contains(id) {
+            if let PeerState::Known(pk) = e.info().state() {
+                return Some(pk);
+            }
+        }
+
         None
     }
 
     pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<ServiceInfo, Error> {
+        debug!("Registering service: {}", id);
+
         debug!("found {} pages", pages.len());
         // Fetch primary page
         let primary_page = match pages.iter().find(|p| {
@@ -405,10 +414,14 @@ impl Dsf {
             }
         };
 
+        debug!("Updating replicas");
+
         // Update listed replicas
         for (peer_id, page) in &replicas {
             self.replicas.create_or_update(id, peer_id, page);
         }
+
+        debug!("Service registered!");
 
         Ok(info)
     }
