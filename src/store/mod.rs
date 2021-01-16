@@ -6,6 +6,7 @@ use log::{debug, error, warn};
 use diesel::dsl::sql_query;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
+use diesel::r2d2::{ConnectionManager, Pool};
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 
@@ -22,8 +23,9 @@ pub mod page;
 
 pub use error::StoreError;
 
+#[derive(Clone)]
 pub struct Store {
-    conn: SqliteConnection,
+    pool: Pool<ConnectionManager<SqliteConnection>>,
 }
 
 fn to_dt(s: SystemTime) -> NaiveDateTime {
@@ -56,9 +58,11 @@ impl Store {
     pub fn new(path: &str) -> Result<Self, StoreError> {
         debug!("Connecting to store: {}", path);
 
-        let conn = SqliteConnection::establish(path)?;
+        let mgr = ConnectionManager::new(path);
 
-        let s = Self { conn };
+        let pool = Pool::new(mgr).unwrap();
+
+        let s = Self { pool };
 
         let _ = s.create_tables();
 
@@ -89,7 +93,7 @@ impl Store {
             subscribed BOOLEAN NOT NULL
         );",
         )
-        .execute(&self.conn)?;
+        .execute(&self.pool.get().unwrap())?;
 
         sql_query(
             "CREATE TABLE peers (
@@ -107,7 +111,7 @@ impl Store {
             blocked BOOLEAN NOT NULL
         );",
         )
-        .execute(&self.conn)?;
+        .execute(&self.pool.get().unwrap())?;
 
         sql_query(
             "CREATE TABLE data (
@@ -121,7 +125,7 @@ impl Store {
             previous TEXT
         );",
         )
-        .execute(&self.conn)?;
+        .execute(&self.pool.get().unwrap())?;
 
         sql_query(
             "CREATE TABLE object (
@@ -133,7 +137,7 @@ impl Store {
             signature TEXT NOT NULL PRIMARY KEY
         );",
         )
-        .execute(&self.conn)?;
+        .execute(&self.pool.get().unwrap())?;
 
         sql_query(
             "CREATE TABLE identity (
@@ -146,21 +150,21 @@ impl Store {
             last_page TEXT NOT NULL
         );",
         )
-        .execute(&self.conn)?;
+        .execute(&self.pool.get().unwrap())?;
 
         Ok(())
     }
 
     pub fn drop_tables(&self) -> Result<(), StoreError> {
-        sql_query("DROP TABLE IF EXISTS services;").execute(&self.conn)?;
+        sql_query("DROP TABLE IF EXISTS services;").execute(&self.pool.get().unwrap())?;
 
-        sql_query("DROP TABLE IF EXISTS peers;").execute(&self.conn)?;
+        sql_query("DROP TABLE IF EXISTS peers;").execute(&self.pool.get().unwrap())?;
 
-        sql_query("DROP TABLE IF EXISTS data;").execute(&self.conn)?;
+        sql_query("DROP TABLE IF EXISTS data;").execute(&self.pool.get().unwrap())?;
 
-        sql_query("DROP TABLE IF EXISTS object;").execute(&self.conn)?;
+        sql_query("DROP TABLE IF EXISTS object;").execute(&self.pool.get().unwrap())?;
 
-        sql_query("DROP TABLE IF EXISTS identity;").execute(&self.conn)?;
+        sql_query("DROP TABLE IF EXISTS identity;").execute(&self.pool.get().unwrap())?;
 
         Ok(())
     }
@@ -171,7 +175,7 @@ impl Store {
         // Find service id and last page
         let results = identity
             .select((service_id, public_key, private_key, secret_key, last_page))
-            .load::<(String, String, String, Option<String>, String)>(&self.conn)?;
+            .load::<(String, String, String, Option<String>, String)>(&self.pool.get().unwrap())?;
 
         if results.len() != 1 {
             return Ok(None);
@@ -226,15 +230,15 @@ impl Store {
         );
 
         // Check if the identity already exists
-        let results = identity.select(service_id).load::<String>(&self.conn)?;
+        let results = identity.select(service_id).load::<String>(&self.pool.get().unwrap())?;
 
         // Create or update
         if results.len() != 0 {
-            diesel::update(identity).set(values).execute(&self.conn)?;
+            diesel::update(identity).set(values).execute(&self.pool.get().unwrap())?;
         } else {
             diesel::insert_into(identity)
                 .values(values)
-                .execute(&self.conn)?;
+                .execute(&self.pool.get().unwrap())?;
         }
 
         Ok(())

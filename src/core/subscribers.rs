@@ -30,30 +30,26 @@ pub struct UnixSubscriber {
 /// Subscriber Manager manages local, delegated, and RPC service Subscribers
 #[derive(Clone)]
 pub struct SubscriberManager {
-    store: Arc<Mutex<HashMap<Id, Vec<SubscriberInst>>>>,
+    store: HashMap<Id, Vec<SubscriberInst>>,
 }
 
 impl SubscriberManager {
     pub fn new() -> Self {
         Self {
-            store: Arc::new(Mutex::new(HashMap::new())),
+            store: HashMap::new(),
         }
     }
 
     /// Fetch subscribers for a given service
     pub fn find(&self, service_id: &Id) -> Result<Vec<SubscriberInst>, Error> {
-        let store = self.store.lock().unwrap();
-
-        match store.get(service_id) {
+        match self.store.get(service_id) {
             Some(v) => Ok(v.clone()),
             None => Ok(vec![]),
         }
     }
 
     pub fn find_peers(&self, service_id: &Id) -> Result<Vec<Id>, Error> {
-        let store = self.store.lock().unwrap();
-
-        let subs = match store.get(service_id) {
+        let subs = match self.store.get(service_id) {
             Some(v) => v,
             None => return Ok(vec![]),
         };
@@ -76,10 +72,7 @@ impl SubscriberManager {
         peer_id: &Id,
         f: F,
     ) -> Result<(), Error> {
-        trace!("update sub net lock");
-        let mut store = self.store.lock().unwrap();
-
-        let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
+        let subscribers = self.store.entry(service_id.clone()).or_insert(vec![]);
 
         // Find subscriber in list
         let mut subscriber = subscribers.iter_mut().find(|s| {
@@ -122,11 +115,7 @@ impl SubscriberManager {
         socket_id: u32,
         f: F,
     ) -> Result<(), Error> {
-        trace!("update sub socket lock");
-
-        let mut store = self.store.lock().unwrap();
-
-        let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
+        let subscribers = self.store.entry(service_id.clone()).or_insert(vec![]);
 
         let mut subscriber = subscribers.iter_mut().find(|s| {
             if let SubscriptionKind::Socket(i) = &s.info.kind {
@@ -163,10 +152,7 @@ impl SubscriberManager {
     /// Remove a subscription
     pub fn remove(&mut self, service_id: &Id, peer_id: &Id) -> Result<(), Error> {
         trace!("remove sub lock");
-
-        let mut store = self.store.lock().unwrap();
-
-        let subscribers = store.entry(service_id.clone()).or_insert(vec![]);
+        let subscribers = self.store.entry(service_id.clone()).or_insert(vec![]);
 
         for i in 0..subscribers.len() {
             match &subscribers[i].info.kind {

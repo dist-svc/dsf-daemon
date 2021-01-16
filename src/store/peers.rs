@@ -64,17 +64,17 @@ impl Store {
         let r = peers
             .filter(peer_id.eq(info.id.to_string()))
             .select(peer_id)
-            .load::<String>(&self.conn)?;
+            .load::<String>(&self.pool.get().unwrap())?;
 
         if r.len() != 0 {
             diesel::update(peers)
                 .filter(peer_id.eq(info.id.to_string()))
                 .set(values)
-                .execute(&self.conn)?;
+                .execute(&self.pool.get().unwrap())?;
         } else {
             diesel::insert_into(peers)
                 .values(values)
-                .execute(&self.conn)?;
+                .execute(&self.pool.get().unwrap())?;
         }
 
         Ok(())
@@ -95,7 +95,7 @@ impl Store {
                 received,
                 blocked,
             ))
-            .load::<PeerFields>(&self.conn)?;
+            .load::<PeerFields>(&self.pool.get().unwrap())?;
 
         let p: Vec<PeerInfo> = results
             .iter()
@@ -129,7 +129,7 @@ impl Store {
                 received,
                 blocked,
             ))
-            .load::<PeerFields>(&self.conn)?;
+            .load::<PeerFields>(&self.pool.get().unwrap())?;
 
         let p = results
             .iter()
@@ -148,7 +148,7 @@ impl Store {
     pub fn delete_peer(&self, peer: &PeerInfo) -> Result<(), StoreError> {
         diesel::delete(peers)
             .filter(peer_id.eq(peer.id.to_string()))
-            .execute(&self.conn)?;
+            .execute(&self.pool.get().unwrap())?;
 
         Ok(())
     }

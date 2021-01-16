@@ -182,7 +182,7 @@ impl Engine {
         let dsf = Dsf::new(
             options.daemon_options.clone(),
             service,
-            Arc::new(Mutex::new(store)),
+            store,
             net_sink,
         )?;
 

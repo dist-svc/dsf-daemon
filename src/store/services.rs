@@ -70,17 +70,17 @@ impl Store {
         let r = services
             .filter(service_id.eq(info.id.to_string()))
             .select(service_index)
-            .load::<i32>(&self.conn)?;
+            .load::<i32>(&self.pool.get().unwrap())?;
 
         if r.len() != 0 {
             diesel::update(services)
                 .filter(service_id.eq(info.id.to_string()))
                 .set(values)
-                .execute(&self.conn)?;
+                .execute(&self.pool.get().unwrap())?;
         } else {
             diesel::insert_into(services)
                 .values(values)
-                .execute(&self.conn)?;
+                .execute(&self.pool.get().unwrap())?;
         }
 
         Ok(())
@@ -107,7 +107,7 @@ impl Store {
                 original,
                 subscribed,
             ))
-            .load::<ServiceFields>(&self.conn)?;
+            .load::<ServiceFields>(&self.pool.get().unwrap())?;
 
         let mut v = vec![];
         for r in &results {
@@ -137,7 +137,7 @@ impl Store {
                 original,
                 subscribed,
             ))
-            .load::<ServiceFields>(&self.conn)?;
+            .load::<ServiceFields>(&self.pool.get().unwrap())?;
 
         let mut v = vec![];
         for r in &results {
@@ -152,7 +152,7 @@ impl Store {
 
         diesel::delete(services)
             .filter(service_id.eq(info.id.to_string()))
-            .execute(&self.conn)?;
+            .execute(&self.pool.get().unwrap())?;
 
         Ok(())
     }

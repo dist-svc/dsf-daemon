@@ -37,17 +37,17 @@ impl Store {
         let r = data
             .filter(signature.eq(info.signature.to_string()))
             .select(service_id)
-            .load::<String>(&self.conn)?;
+            .load::<String>(&self.pool.get().unwrap())?;
 
         if r.len() != 0 {
             diesel::update(data)
                 .filter(signature.eq(info.signature.to_string()))
                 .set(values)
-                .execute(&self.conn)?;
+                .execute(&self.pool.get().unwrap())?;
         } else {
             diesel::insert_into(data)
                 .values(values)
-                .execute(&self.conn)?;
+                .execute(&self.pool.get().unwrap())?;
         }
 
         Ok(())
@@ -65,7 +65,7 @@ impl Store {
                 previous,
                 signature,
             ))
-            .load::<DataFields>(&self.conn)?;
+            .load::<DataFields>(&self.pool.get().unwrap())?;
 
         let mut v = vec![];
 
@@ -79,7 +79,7 @@ impl Store {
     pub fn delete_data(&self, sig: &Signature) -> Result<(), StoreError> {
         diesel::delete(data)
             .filter(signature.eq(sig.to_string()))
-            .execute(&self.conn)?;
+            .execute(&self.pool.get().unwrap())?;
 
         Ok(())
     }
@@ -95,7 +95,7 @@ impl Store {
                 previous,
                 signature,
             ))
-            .load::<DataFields>(&self.conn)?;
+            .load::<DataFields>(&self.pool.get().unwrap())?;
 
         if results.len() == 0 {
             return Ok(None);

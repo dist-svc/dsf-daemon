@@ -112,7 +112,7 @@ impl Dsf {
                         Ok(v) => v,
                         Err(e) => {
                             error!("Invalid data for push");
-                            return Err(DsfError::Base(e));
+                            return Err(e);
                         }
                     };
 

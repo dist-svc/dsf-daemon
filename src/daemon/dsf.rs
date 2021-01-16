@@ -61,7 +61,7 @@ pub struct Dsf {
 
     dht_source: mpsc::Receiver<(RequestId, DhtEntry<Id, Peer>, DhtRequest<Id, Page>)>,
 
-    store: Arc<Mutex<Store>>,
+    store: Store,
 
     pub(crate) rpc_ops: Option<HashMap<u64, RpcOperation>>,
 
@@ -78,7 +78,7 @@ impl Dsf {
     pub fn new(
         config: Options,
         service: Service,
-        store: Arc<Mutex<Store>>,
+        store:Store,
         net_sink: mpsc::Sender<(Address, NetMessage)>,
     ) -> Result<Self, Error> {
         debug!("Creating new DSF instance");

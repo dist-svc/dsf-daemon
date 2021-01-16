@@ -41,33 +41,29 @@ impl From<Page> for ReplicaInst {
 
 #[derive(Clone)]
 pub struct ReplicaManager {
-    store: Arc<Mutex<HashMap<Id, Vec<ReplicaInst>>>>,
+    store: HashMap<Id, Vec<ReplicaInst>>,
 }
 
 impl ReplicaManager {
     /// Create a new replica manager
     pub fn new() -> Self {
         ReplicaManager {
-            store: Arc::new(Mutex::new(HashMap::new())),
+            store: HashMap::new(),
         }
     }
 
     /// Find replicas for a given service
     pub fn find(&self, service_id: &Id) -> Vec<ReplicaInst> {
-        trace!("find replica lock");
-        let mut store = self.store.lock().unwrap();
 
-        let v = store.entry(service_id.clone()).or_insert(vec![]);
+        let v = self.store.get(service_id);
 
-        v.clone()
+        v.map(|v| v.clone() ).unwrap_or(vec![])
     }
 
     /// Create or update a given replica instance
-    pub fn create_or_update(&self, service_id: &Id, peer_id: &Id, page: &Page) {
-        trace!("create or update replica lock");
+    pub fn create_or_update(&mut self, service_id: &Id, peer_id: &Id, page: &Page) {
 
-        let mut store = self.store.lock().unwrap();
-        let replicas = store.entry(service_id.clone()).or_insert(vec![]);
+        let replicas = self.store.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 
         match replica {
@@ -81,14 +77,13 @@ impl ReplicaManager {
 
     /// Update a specified replica
     pub fn update_replica<F: Fn(&mut ReplicaInst)>(
-        &self,
+        &mut self,
         service_id: &Id,
         peer_id: &Id,
         f: F,
     ) -> Result<(), ()> {
-        trace!("update replica lock");
-        let mut store = self.store.lock().unwrap();
-        let replicas = store.entry(service_id.clone()).or_insert(vec![]);
+
+        let replicas = self.store.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 
         if let Some(mut r) = replica {

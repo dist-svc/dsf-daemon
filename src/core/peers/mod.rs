@@ -19,13 +19,13 @@ pub use info::{Peer, PeerAddress, PeerInfo, PeerState};
 /// This insures that one shared peer object exists for each PeerManager id
 pub struct PeerManager {
     peers: HashMap<Id, Peer>,
-    store: Arc<Mutex<Store>>,
+    store: Store,
 
     index: usize,
 }
 
 impl PeerManager {
-    pub fn new(store: Arc<Mutex<Store>>) -> Self {
+    pub fn new(store: Store) -> Self {
         let peers = HashMap::new();
 
         let mut s = Self {
@@ -79,24 +79,21 @@ impl PeerManager {
     
     
         // Write to store
-        //        let store = self.store.lock().unwrap();
-        //        if let Err(e) = store.save_peer(&peer.info) {
-        //            error!("Error writing peer {} to db: {:?}", id, e);
-        //        }
+        if let Err(e) = self.store.save_peer(&peer.info) {
+            error!("Error writing peer {} to db: {:?}", id, e);
+        }
     
         peer
     }
 
     pub fn remove(&mut self, id: &Id) -> Option<PeerInfo> {
-        trace!("remove peer lock");
-
         let peer = self.peers.remove(id);
 
         if let Some(p) = peer {
             let info = p.info();
 
             trace!("update peer (store) lock");
-            if let Err(e) = self.store.lock().unwrap().delete_peer(&info) {
+            if let Err(e) = self.store.delete_peer(&info) {
                 error!("Error removing peer from db: {:?}", e);
             }
 
@@ -107,8 +104,6 @@ impl PeerManager {
     }
 
     pub fn count(&self) -> usize {
-        trace!("count peer lock");
-
         self.peers.len()
     }
 
@@ -117,8 +112,6 @@ impl PeerManager {
     }
 
     pub fn list(&self) -> Vec<(Id, Peer)> {
-        trace!("list peer lock");
-
         self.peers
             .iter()
             .map(|(id, p)| (id.clone(), p.clone()))
@@ -126,8 +119,6 @@ impl PeerManager {
     }
 
     pub fn index_to_id(&self, index: usize) -> Option<Id> {
-        trace!("index to id peer lock");
-
         self.peers
             .iter()
             .find(|(_id, p)| p.info.index == index)
@@ -163,7 +154,7 @@ impl PeerManager {
         for (id, inst) in self.peers.iter() {
             let info = inst.info();
 
-            if let Err(e) = self.store.lock().unwrap().save_peer(&info) {
+            if let Err(e) = self.store.save_peer(&info) {
                 error!("Error writing peer {} to db: {:?}", id, e);
             }
         }
@@ -171,12 +162,7 @@ impl PeerManager {
 
     // Load all peers from store
     fn load(&mut self) {
-        trace!("load peers lock");
-
-        trace!("take store lock");
-        let store = self.store.lock().unwrap();
-
-        let peer_info: Vec<PeerInfo> = match store.load_peers() {
+        let peer_info: Vec<PeerInfo> = match self.store.load_peers() {
             Ok(v) => v,
             Err(e) => {
                 error!("Error listing files: {:?}", e);

@@ -12,7 +12,7 @@ use crate::store::Store;
 
 #[derive(Clone)]
 pub struct DataManager {
-    store: Arc<Mutex<Store>>,
+    store: Store,
 }
 
 pub struct DataInst {
@@ -28,24 +28,21 @@ impl From<Page> for DataInst {
 }
 
 impl DataManager {
-    pub fn new(store: Arc<Mutex<Store>>) -> Self {
+    pub fn new(store: Store) -> Self {
         Self { store }
     }
 
     /// Fetch data for a given service
     // TODO: add paging?
     pub fn fetch_data(&self, service_id: &Id, _limit: usize) -> Result<Vec<DataInst>, Error> {
-        trace!("fetch data lock");
-        let store = self.store.lock().unwrap();
-
         // Load service info
-        let service = match store.find_service(service_id)? {
+        let service = match self.store.find_service(service_id)? {
             Some(s) => s,
             None => return Err(Error::NotFound),
         };
 
         // Load data info
-        let info: Vec<DataInfo> = store.find_data(service_id)?;
+        let info: Vec<DataInfo> =self. store.find_data(service_id)?;
 
         info!("Loaded data info: {:?}", info);
 
@@ -54,7 +51,7 @@ impl DataManager {
         for i in info {
             info!("Fetching raw page for: {}", i.signature);
 
-            let p = store.load_page(&i.signature, Some(service.public_key.clone()))?;
+            let p = self.store.load_page(&i.signature, Some(service.public_key.clone()))?;
             data.push(DataInst {
                 info: i,
                 page: p.unwrap(),
@@ -66,15 +63,12 @@ impl DataManager {
 
     /// Store data for a given service
     pub fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
-        trace!("store data lock");
-        // DEADLOCK DISABLED
-        let store = self.store.lock().unwrap();
 
         // Store data object
-        store.save_data(info)?;
+        self.store.save_data(info)?;
 
         // Store backing raw object
-        store.save_page(page)?;
+        self.store.save_page(page)?;
 
         Ok(())
     }

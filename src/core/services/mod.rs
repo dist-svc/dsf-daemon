@@ -26,12 +26,12 @@ pub use data::Data;
 /// ServiceManager keeps track of local and remote services
 pub struct ServiceManager {
     pub(crate) services: HashMap<Id, ServiceInst>,
-    store: Arc<Mutex<Store>>,
+    store: Store,
 }
 
 impl ServiceManager {
     /// Create a new service manager instance
-    pub fn new(store: Arc<Mutex<Store>>) -> Self {
+    pub fn new(store: Store) -> Self {
         let services = HashMap::new();
 
         let mut s = Self { services, store };
@@ -111,7 +111,7 @@ impl ServiceManager {
         if let Some(s) = service {
             let info = s.info();
             // TODO: DEADLOCK?
-            //let _ = self.store.lock().unwrap().delete_service(&info);
+            //let _ = self.store.delete_service(&info);
 
             return Ok(Some(info));
         };
@@ -225,18 +225,16 @@ impl ServiceManager {
     pub(crate) fn sync_inst(&mut self, inst: &ServiceInst) {
         trace!("service sync inst");
 
-        let store = self.store.lock().unwrap();
-
-        if let Err(e) = store.save_service(&inst.info()) {
+        if let Err(e) = self.store.save_service(&inst.info()) {
             error!("Error writing service instance {}: {:?}", inst.id(), e);
         }
 
         if let Some(p) = &inst.primary_page {
-            store.save_page(p).unwrap();
+            self.store.save_page(p).unwrap();
         }
 
         if let Some(p) = &inst.replica_page {
-            store.save_page(p).unwrap();
+            self.store.save_page(p).unwrap();
         }
     }
 
@@ -253,7 +251,6 @@ impl ServiceManager {
     /// Sync the service database to disk
     pub fn sync(&mut self) {
         trace!("services sync");
-        let store = self.store.lock().unwrap();
 
         for (id, inst) in self.services.iter_mut() {
             // Skip unchanged instances
@@ -261,16 +258,16 @@ impl ServiceManager {
                 continue;
             }
 
-            if let Err(e) = store.save_service(&inst.info()) {
+            if let Err(e) = self.store.save_service(&inst.info()) {
                 error!("Error writing service instance {}: {:?}", id, e);
             }
 
             if let Some(p) = &inst.primary_page {
-                store.save_page(p).unwrap();
+                self.store.save_page(p).unwrap();
             }
 
             if let Some(p) = &inst.replica_page {
-                store.save_page(p).unwrap();
+                self.store.save_page(p).unwrap();
             }
 
             inst.changed = false;
@@ -281,9 +278,7 @@ impl ServiceManager {
     pub fn load(&mut self) {
         trace!("services load");
 
-        let store = self.store.lock().unwrap();
-
-        let service_info = store.load_services().unwrap();
+        let service_info = self.store.load_services().unwrap();
 
         debug!("Loading {} services from database", service_info.len());
 
@@ -291,7 +286,7 @@ impl ServiceManager {
             let public_key = i.public_key.clone();
 
             let primary_page = match i.primary_page {
-                Some(p) => store
+                Some(p) => self.store
                     .load_page(&p, Some(public_key.clone()))
                     .unwrap()
                     .unwrap(),
@@ -303,7 +298,7 @@ impl ServiceManager {
 
             let replica_page = i
                 .replica_page
-                .map(|s| store.load_page(&s, Some(public_key.clone())).unwrap())
+                .map(|s| self.store.load_page(&s, Some(public_key.clone())).unwrap())
                 .flatten();
 
             let mut service = Service::load(&primary_page).unwrap();

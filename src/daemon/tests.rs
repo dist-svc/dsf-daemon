@@ -41,7 +41,7 @@ fn test_manager() {
 
     let config = Options::default();
     let db_file = format!("{}/dsf-test.db", d.path().to_str().unwrap());
-    let store = Arc::new(Mutex::new(Store::new(&db_file).unwrap()));
+    let store = Store::new(&db_file).unwrap();
 
     let (net_sink_tx, _net_sink_rx) = mpsc::channel(10);
 

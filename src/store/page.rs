@@ -30,17 +30,17 @@ impl Store {
         let r = object
             .filter(sig.clone())
             .select(service_id)
-            .load::<String>(&self.conn)?;
+            .load::<String>(&self.pool.get().unwrap())?;
 
         if r.len() != 0 {
             diesel::update(object)
                 .filter(sig)
                 .set(values)
-                .execute(&self.conn)?;
+                .execute(&self.pool.get().unwrap())?;
         } else {
             diesel::insert_into(object)
                 .values(values)
-                .execute(&self.conn)?;
+                .execute(&self.pool.get().unwrap())?;
         }
 
         Ok(())
@@ -51,7 +51,7 @@ impl Store {
         let results = object
             .filter(service_id.eq(id.to_string()))
             .select((service_id, raw_data, previous, signature))
-            .load::<PageFields>(&self.conn)?;
+            .load::<PageFields>(&self.pool.get().unwrap())?;
 
         let (_r_id, r_raw, _r_previous, _r_signature) = &results[0];
 
@@ -64,7 +64,7 @@ impl Store {
     pub fn delete_page(&self, sig: &Signature) -> Result<(), StoreError> {
         diesel::delete(object)
             .filter(signature.eq(sig.to_string()))
-            .execute(&self.conn)?;
+            .execute(&self.pool.get().unwrap())?;
 
         Ok(())
     }
@@ -77,7 +77,7 @@ impl Store {
         let results = object
             .filter(signature.eq(sig.to_string()))
             .select((service_id, raw_data, previous, signature))
-            .load::<PageFields>(&self.conn)?;
+            .load::<PageFields>(&self.pool.get().unwrap())?;
 
         if results.len() == 0 {
             return Ok(None);
