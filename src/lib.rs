@@ -2,9 +2,6 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 
-#[macro_use]
-extern crate diesel;
-
 pub(crate) mod sync {
     pub(crate) type Arc<T> = std::sync::Arc<T>;
 

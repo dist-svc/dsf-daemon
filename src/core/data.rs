@@ -39,13 +39,13 @@ impl DataManager {
         let store = self.store.lock().unwrap();
 
         // Load service info
-        let service = match store.find_service(service_id)? {
+        let service = match store.find_service(service_id).map_err(Error::Store)? {
             Some(s) => s,
             None => return Err(Error::NotFound),
         };
 
         // Load data info
-        let info: Vec<DataInfo> = store.find_data(service_id)?;
+        let info: Vec<DataInfo> = store.find_data(service_id).map_err(Error::Store)?;
 
         info!("Loaded data info: {:?}", info);
 
@@ -54,7 +54,7 @@ impl DataManager {
         for i in info {
             info!("Fetching raw page for: {}", i.signature);
 
-            let p = store.load_page(&i.signature, Some(service.public_key.clone()))?;
+            let p = store.load_page(&i.signature, Some(service.public_key.clone())).map_err(Error::Store)?;
             data.push(DataInst {
                 info: i,
                 page: p.unwrap(),
@@ -71,10 +71,10 @@ impl DataManager {
         let store = self.store.lock().unwrap();
 
         // Store data object
-        store.save_data(info)?;
+        store.save_data(info).map_err(Error::Store)?;
 
         // Store backing raw object
-        store.save_page(page)?;
+        store.save_page(page).map_err(Error::Store)?;
 
         Ok(())
     }

@@ -20,10 +20,13 @@ use bytes::Bytes;
 
 pub const UNIX_BUFF_LEN: usize = 10 * 1024;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum UnixError {
+    #[error("IO error: {0:?}")]
     Io(io::ErrorKind),
+    #[error("MPSC send error: {0}")]
     Sender(mpsc::SendError),
+    #[error("No matching connection")]
     NoMatchingConnection,
 }
 

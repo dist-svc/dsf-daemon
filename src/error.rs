@@ -1,20 +1,18 @@
 use async_std::future::TimeoutError;
 use futures::channel::mpsc::SendError;
 
-pub use dsf_core::base::BaseError;
 pub use dsf_core::error::Error as CoreError;
 
 pub use crate::io::{NetError, UnixError};
-pub use crate::store::StoreError;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Error {
     Net(NetError),
     Unix(UnixError),
-    Store(StoreError),
+    Store(anyhow::Error),
     Channel(SendError),
+
     Core(CoreError),
-    Base(BaseError),
 
     Timeout,
     Unknown,
@@ -37,12 +35,6 @@ impl From<UnixError> for Error {
     }
 }
 
-impl From<StoreError> for Error {
-    fn from(e: StoreError) -> Self {
-        Self::Store(e)
-    }
-}
-
 impl From<SendError> for Error {
     fn from(e: SendError) -> Self {
         Self::Channel(e)
@@ -52,12 +44,6 @@ impl From<SendError> for Error {
 impl From<CoreError> for Error {
     fn from(e: CoreError) -> Self {
         Self::Core(e)
-    }
-}
-
-impl From<BaseError> for Error {
-    fn from(e: BaseError) -> Self {
-        Self::Base(e)
     }
 }
 

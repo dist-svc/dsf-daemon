@@ -12,7 +12,7 @@ default-run = "dsfd"
 
 [features]
 profile = []
-default = [ "no_deadlocks", "libsqlite3-sys/bundled" ] 
+default = [ "no_deadlocks" ] 
 
 # Debian packaging metadata (for cargo-deb)
 [package.metadata.deb]
@@ -57,6 +57,7 @@ anyhow = "1.0.34"
 async-signals = "0.3.1"
 libc = "0.2.80"
 strum_macros = "0.20.1"
+thiserror = "1.0.23"
 
 
 
@@ -66,7 +67,7 @@ features = [ "serde", "std" ]
 
 [dependencies.dsf-rpc]
 version = "0.2.0"
-features = [ "std" ]
+features = [ "std", "sqlx" ]
 
 [dependencies.kad]
 version = "0.6.0"
@@ -79,15 +80,8 @@ features = [ "unstable" ]
 features = ["max_level_trace", "release_max_level_info"]
 version = "0.4.6"
 
-[dependencies.diesel]
-features = [ "sqlite", "extras", "chrono" ]
-version = "1.4.3"
-
-[dependencies.libsqlite3-sys]
-version = "0.9.1"
-
 [dependencies.sqlx]
-features = [ "macros", "any", "runtime-async-std-rustls" ]
+features = [ "macros", "any", "sqlite", "runtime-async-std-rustls", "chrono" ]
 version = "0.4.2"
 
 [dependencies.serde]

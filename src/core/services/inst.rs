@@ -3,7 +3,6 @@ use std::time::{Duration, SystemTime};
 
 use log::{debug, error, warn};
 
-use diesel::Queryable;
 use serde::{Deserialize, Serialize};
 
 use dsf_core::options::Options;
@@ -13,7 +12,7 @@ use dsf_core::service::{Publisher, Subscriber};
 
 use dsf_rpc::service::{ServiceInfo, ServiceState};
 
-#[derive(Debug, Serialize, Deserialize, Queryable)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ServiceInst {
     pub(crate) service: Service,
 

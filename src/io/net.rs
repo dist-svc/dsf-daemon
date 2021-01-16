@@ -82,11 +82,15 @@ impl NetMessage {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, thiserror::Error)]
 pub enum NetError {
+    #[error("IO error: {0:?}")]
     Io(io::ErrorKind),
+    #[error("MPSC eror: {0}")]
     Sender(mpsc::SendError),
+    #[error("No matching interface")]
     NoMatchingInterface,
+    #[error("No response channel found")]
     NoResponseChannel,
 }
 

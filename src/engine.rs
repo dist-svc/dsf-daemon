@@ -125,10 +125,10 @@ impl Engine {
     /// Create a new daemon instance
     pub async fn new(options: Options) -> Result<Self, Error> {
         // Create new local data store
-        let store = Store::new(&options.database_file)?;
+        let store = Store::new(&options.database_file).await.map_err(Error::Store)?;
 
         // Fetch or create new peer service
-        let mut service = match store.load_peer_service()? {
+        let mut service = match store.load_peer_service().map_err(Error::Store)? {
             Some(s) => {
                 info!("Loaded existing peer service: {}", s.id());
                 s
@@ -146,7 +146,7 @@ impl Engine {
         page.raw = Some(buff[..n].to_vec());
 
         // Store service and page
-        store.set_peer_service(&service, &page)?;
+        store.set_peer_service(&service, &page).map_err(Error::Store)?;
 
         let span = span!(Level::DEBUG, "engine", "{}", service.id());
         let _enter = span.enter();

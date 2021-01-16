@@ -3,27 +3,17 @@ use std::time::SystemTime;
 
 use log::{debug, error, warn};
 
-use diesel::dsl::sql_query;
-use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
-
+use sqlx::{Connection, Any, Pool, Sqlite};
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 
 use dsf_core::prelude::*;
 use dsf_core::service::Subscriber;
 
-pub mod data;
-pub mod error;
-pub mod peers;
-pub mod schema;
-pub mod services;
+use dsf_rpc::{ServiceInfo, ServiceState, PeerInfo, PeerState, DataInfo};
 
-pub mod page;
-
-pub use error::StoreError;
 
 pub struct Store {
-    conn: SqliteConnection,
+    pool: Pool<Sqlite>,
 }
 
 fn to_dt(s: SystemTime) -> NaiveDateTime {
@@ -36,207 +26,139 @@ fn from_dt(n: &NaiveDateTime) -> SystemTime {
     dt.into()
 }
 
-#[cfg(nope)]
-pub trait Base<Item> {
-    // Store an item
-    fn save(&self, item: &Item) -> Result<(), StoreError>;
-
-    // Find an item or items by associated service
-    fn find(&self, service_id: &Id) -> Result<Vec<Item>, StoreError>;
-
-    // Load all items
-    fn load(&self) -> Result<Vec<Item>, StoreError>;
-
-    // Delete an item
-    fn delete(&self, item: &Item) -> Result<(), StoreError>;
-}
-
 impl Store {
-    /// Create or connect to a store with the provided filename
-    pub fn new(path: &str) -> Result<Self, StoreError> {
-        debug!("Connecting to store: {}", path);
+    /// Create or connect to a store with the provided database name
+    pub async fn new(db: &str) -> Result<Self, anyhow::Error> {
+        let pool = Pool::connect(db).await?;
 
-        let conn = SqliteConnection::establish(path)?;
-
-        let s = Self { conn };
-
-        let _ = s.create_tables();
-
-        Ok(s)
+        Ok(Self{ pool })
     }
 
-    /// Initialise the store
-    ///
-    /// This is called automatically in the `new` function
-    pub fn create_tables(&self) -> Result<(), StoreError> {
-        sql_query(
-            "CREATE TABLE services (
-            service_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
-            service_index TEGER NOT NULL, 
-            state TEXT NOT NULL, 
-
-            public_key TEXT NOT NULL, 
-            private_key TEXT, 
-            secret_key TEXT, 
-
-            primary_page BLOB, 
-            replica_page BLOB, 
-            
-            last_updated TEXT, 
-            subscribers INTEGER NOT NULL, 
-            replicas INTEGER NOT NULL,
-            original BOOLEAN NOT NULL,
-            subscribed BOOLEAN NOT NULL
-        );",
-        )
-        .execute(&self.conn)?;
-
-        sql_query(
-            "CREATE TABLE peers (
-            peer_id TEXT NOT NULL UNIQUE PRIMARY KEY, 
-            peer_index INTEGER, 
-            state TEXT NOT NULL, 
-
-            public_key TEXT, 
-            address TEXT, 
-            address_mode TEXT, 
-            last_seen TEXT, 
-            
-            sent INTEGER NOT NULL, 
-            received INTEGER NOT NULL, 
-            blocked BOOLEAN NOT NULL
-        );",
-        )
-        .execute(&self.conn)?;
-
-        sql_query(
-            "CREATE TABLE data (
-            signature TEXT NOT NULL UNIQUE PRIMARY KEY, 
-            service_id TEXT NOT NULL,
-
-            object_index INTEGER NOT NULL,
-            body_kind TEXT NOT NULL,
-            body_value BLOB,
-
-            previous TEXT
-        );",
-        )
-        .execute(&self.conn)?;
-
-        sql_query(
-            "CREATE TABLE object (
-            service_id TEXT NOT NULL,
-
-            raw_data BLOB NOT NULL,
-
-            previous TEXT,
-            signature TEXT NOT NULL PRIMARY KEY
-        );",
-        )
-        .execute(&self.conn)?;
-
-        sql_query(
-            "CREATE TABLE identity (
-            service_id TEXT NOT NULL PRIMARY KEY,
-
-            public_key TEXT NOT NULL,
-            private_key TEXT NOT NULL,
-            secret_key TEXT,
-            
-            last_page TEXT NOT NULL
-        );",
-        )
-        .execute(&self.conn)?;
-
-        Ok(())
+    pub fn load_peer_service(&self) -> Result<Option<Service>, anyhow::Error> {
+        unimplemented!()
     }
 
-    pub fn drop_tables(&self) -> Result<(), StoreError> {
-        sql_query("DROP TABLE IF EXISTS services;").execute(&self.conn)?;
-
-        sql_query("DROP TABLE IF EXISTS peers;").execute(&self.conn)?;
-
-        sql_query("DROP TABLE IF EXISTS data;").execute(&self.conn)?;
-
-        sql_query("DROP TABLE IF EXISTS object;").execute(&self.conn)?;
-
-        sql_query("DROP TABLE IF EXISTS identity;").execute(&self.conn)?;
-
-        Ok(())
+    pub fn set_peer_service(&self, service: &Service, page: &Page) -> Result<(), anyhow::Error> {
+        unimplemented!()
     }
 
-    pub fn load_peer_service(&self) -> Result<Option<Service>, StoreError> {
-        use crate::store::schema::identity::dsl::*;
+    pub fn save_page(&self, page: &Page) -> Result<(), anyhow::Error> {
+        unimplemented!()
 
-        // Find service id and last page
-        let results = identity
-            .select((service_id, public_key, private_key, secret_key, last_page))
-            .load::<(String, String, String, Option<String>, String)>(&self.conn)?;
+    }
 
-        if results.len() != 1 {
-            return Ok(None);
-        }
+    pub fn find_pages(&self, id: &Id) -> Result<Vec<Page>, anyhow::Error> {
+        unimplemented!()
 
-        let (_s_id, s_pub_key, s_pri_key, s_sec_key, page_sig) = &results[0];
+    }
 
-        let sig = Signature::from_str(&page_sig).unwrap();
-        let pub_key = PublicKey::from_str(&s_pub_key).unwrap();
+    pub fn delete_page(&self, sig: &Signature) -> Result<(), anyhow::Error> {
+        unimplemented!()
 
-        // Load page
-        let page = match self.load_page(&sig, Some(pub_key))? {
+    }
+
+    pub fn load_page(
+        &self,
+        sig: &Signature,
+        public_key: Option<PublicKey>,
+    ) -> Result<Option<Page>, anyhow::Error> {
+        unimplemented!()
+
+    }
+
+
+    pub fn save_service(&self, info: &ServiceInfo) -> Result<(), anyhow::Error> {
+        unimplemented!()
+
+    }
+    // Find an item or items
+    pub async fn find_service2(&self, id: &Id) -> Result<Option<ServiceInfo>, anyhow::Error> {
+        let id_str = id.to_string();
+
+        let row = sqlx::query!("SELECT * FROM services WHERE id = ?", id_str)
+            .fetch_optional(&self.pool).await?;
+
+        let row = match row {
             Some(v) => v,
-            None => return Ok(None),
+            None => return Ok(None)
         };
 
-        // Generate service
-        let mut service = Service::load(&page).unwrap();
+        Ok(Some(ServiceInfo {
+            id: Id::from_str(&row.id)?,
+            index: row.index as usize,
+            state: ServiceState::from_str(&row.state)?,
 
-        service.set_private_key(Some(PrivateKey::from_str(s_pri_key).unwrap()));
-        let sec_key = s_sec_key.as_ref().map(|v| SecretKey::from_str(&v).unwrap());
-        service.set_secret_key(sec_key);
+            primary_page: row.primary_page.as_ref().map(|v| Signature::from_str(&v).unwrap()),
+            replica_page: row.replica_page.as_ref().map(|v| Signature::from_str(&v).unwrap()),
 
-        Ok(Some(service))
+            body: Body::None,
+
+            public_key: PublicKey::from_str(&row.public_key.unwrap())?,
+            private_key: row.private_key
+                .as_ref()
+                .map(|v| PrivateKey::from_str(&v).unwrap()),
+            secret_key: row.secret_key.as_ref().map(|v| SecretKey::from_str(&v).unwrap()),
+
+            last_updated: row.last_updated.as_ref().map(|v| from_dt(v)),
+
+            subscribers: row.subscribers.unwrap_or(0) as usize,
+            replicas: row.replicas.unwrap_or(0) as usize,
+
+            origin: row.origin.unwrap_or(false),
+            subscribed: row.subscribed.unwrap_or(false),
+        }))
     }
 
-    pub fn set_peer_service(&self, service: &Service, page: &Page) -> Result<(), StoreError> {
-        use crate::store::schema::identity::dsl::*;
-
-        let pub_key = public_key.eq(service.public_key().to_string());
-        let pri_key = service.private_key().map(|v| private_key.eq(v.to_string()));
-        let sec_key = service.secret_key().map(|v| secret_key.eq(v.to_string()));
-        let sig = page.signature.as_ref().map(|v| last_page.eq(v.to_string()));
-
-        let p_sig = page.signature.as_ref().unwrap();
-
-        // Ensure the page has been written
-        if self
-            .load_page(&p_sig, Some(service.public_key()))?
-            .is_none()
-        {
-            self.save_page(page)?;
-        }
-
-        // Setup identity values
-        let values = (
-            service_id.eq(service.id().to_string()),
-            pub_key,
-            pri_key,
-            sec_key,
-            sig,
-        );
-
-        // Check if the identity already exists
-        let results = identity.select(service_id).load::<String>(&self.conn)?;
-
-        // Create or update
-        if results.len() != 0 {
-            diesel::update(identity).set(values).execute(&self.conn)?;
-        } else {
-            diesel::insert_into(identity)
-                .values(values)
-                .execute(&self.conn)?;
-        }
-
-        Ok(())
+    pub fn find_service(&self, id: &Id) -> Result<Option<ServiceInfo>, anyhow::Error> {
+        unimplemented!()
     }
+
+    // Load all items
+    pub fn load_services(&self) -> Result<Vec<ServiceInfo>, anyhow::Error> {
+        unimplemented!()
+
+    }
+
+    pub fn delete_service(&self, info: &ServiceInfo) -> Result<(), anyhow::Error> {
+        unimplemented!()
+
+    }
+
+    pub fn save_peer(&self, info: &PeerInfo) -> Result<(), anyhow::Error> {
+        unimplemented!()
+
+    }
+
+    pub fn find_peer(&self, id: &Id) -> Result<Option<PeerInfo>, anyhow::Error> {
+        unimplemented!()
+
+    }
+
+    pub fn load_peers(&self) -> Result<Vec<PeerInfo>, anyhow::Error> {
+        unimplemented!()
+
+    }
+
+    pub fn delete_peer(&self, peer: &PeerInfo) -> Result<(), anyhow::Error>{
+        unimplemented!()
+
+    }
+
+    pub fn save_data(&self, info: &DataInfo) -> Result<(), anyhow::Error> {
+        unimplemented!()
+    }
+
+    pub fn find_data(&self, id: &Id) -> Result<Vec<DataInfo>, anyhow::Error> {
+        unimplemented!()
+    }
+
+    pub fn delete_data(&self, sig: &Signature) -> Result<(), anyhow::Error> {
+        unimplemented!()
+    }
+
+    pub fn load_data(&self, sig: &Signature) -> Result<Option<DataInfo>, anyhow::Error> {
+        unimplemented!()
+    }
+
+
 }
