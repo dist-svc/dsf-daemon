@@ -10,7 +10,6 @@ pub use dsf_rpc::data::DataInfo;
 use crate::error::Error;
 use crate::store::Store;
 
-#[derive(Clone)]
 pub struct DataManager {
     store: Store,
 }

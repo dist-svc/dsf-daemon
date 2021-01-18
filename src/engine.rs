@@ -186,7 +186,7 @@ impl Engine {
             net_sink,
         )?;
 
-        debug!("Engine created!");
+        info!("Engine created!");
 
         Ok(Self {
             id: dsf.id(),
@@ -217,8 +217,10 @@ impl Engine {
         let _enter = span.enter();
 
         if !options.no_bootstrap {
+            // Create future bootstrap event
             let b = dsf.bootstrap().unwrap();
-            // TODO: Create future bootstrap event
+            
+            // Await on this in the future
             task::spawn(async move {
                 task::sleep(Duration::from_secs(2)).await;
                 let _ = b.await;
@@ -241,6 +243,8 @@ impl Engine {
             // Await exit signal
             exit_rx.next().await;
 
+            debug!("Received exit signal");
+
             // Send othert exists
             net_exit_tx.send(()).await.unwrap();
             dsf_exit_tx.send(()).await.unwrap();
@@ -251,7 +255,7 @@ impl Engine {
             loop {
                 select! {
                     // Incoming network messages
-                    net_rx = net.next().fuse() => {
+                    net_rx = net.next() => {
                         if let Some(m) = net_rx {
                             trace!("engine::net_rx {:?}", m);
 
@@ -260,6 +264,8 @@ impl Engine {
                                 error!("error forwarding incoming network message: {:?}", e);
                                 return Err(Error::Unknown);
                             }
+                        } else {
+                            error!("engine::net_rx returned None");
                         }
                     },
                     net_tx = net_out_rx.next().fuse() => {
@@ -269,6 +275,8 @@ impl Engine {
                             if let Err(e) = net.send(address, None, data).await {
                                 error!("error sending ougoing network message: {:?}", e);
                             }
+                        } else {
+                            error!("engine::net_out_rx returned None");
                         }
                     },
                     _exit = net_exit_rx.next().fuse() => {

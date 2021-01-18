@@ -39,7 +39,6 @@ impl From<Page> for ReplicaInst {
     }
 }
 
-#[derive(Clone)]
 pub struct ReplicaManager {
     store: HashMap<Id, Vec<ReplicaInst>>,
 }

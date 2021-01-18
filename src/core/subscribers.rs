@@ -28,7 +28,6 @@ pub struct UnixSubscriber {
 }
 
 /// Subscriber Manager manages local, delegated, and RPC service Subscribers
-#[derive(Clone)]
 pub struct SubscriberManager {
     store: HashMap<Id, Vec<SubscriberInst>>,
 }

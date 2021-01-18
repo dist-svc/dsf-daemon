@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::collections::HashMap;
 
 use log::{debug, error};
+use stream::FusedStream;
 use tracing::event;
 
 use futures::channel::mpsc;
@@ -301,6 +302,12 @@ impl Stream for Net {
         let _fg = ::flame::start_guard("net::poll_next");
 
         Pin::new(&mut self.rx_stream).poll_next(ctx)
+    }
+}
+
+impl FusedStream for Net {
+    fn is_terminated(&self) -> bool {
+        false
     }
 }
 

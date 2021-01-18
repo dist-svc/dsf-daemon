@@ -161,7 +161,7 @@ impl Dsf {
         // TODO: check we're not overwriting anything here
 
         debug!("Adding RPC op {} to tracking", req_id);
-        self.rpc_ops.as_mut().unwrap().insert(req_id, op);
+        self.rpc_ops.insert(req_id, op);
 
         Ok(())
     }
@@ -170,11 +170,11 @@ impl Dsf {
     // Context must be propagated through here to keep the waker happy
     pub fn poll_rpc(&mut self, ctx: &mut Context) -> Result<(), Error> {
         // Take RPC operations so we can continue using `&mut self`
-        let mut rpc_ops = self.rpc_ops.take().unwrap();
+        let mut rpc_ops: Vec<_> = self.rpc_ops.drain().collect();
         let mut ops_done = vec![];
 
         // Iterate through and update each operation
-        for (_req_id, op) in rpc_ops.iter_mut() {
+        for (_req_id, op) in &mut rpc_ops {
             let RpcOperation { kind, done, req_id } = op;
 
             let complete = match kind {
@@ -213,13 +213,15 @@ impl Dsf {
             }
         }
 
-        // Remove completed operations
-        for d in ops_done {
-            rpc_ops.remove(&d);
+        // Re-add updated operations
+        for (req_id, op) in rpc_ops {
+            self.rpc_ops.insert(req_id, op);
         }
 
-        // Return updated RPC operations
-        self.rpc_ops = Some(rpc_ops);
+        // Remove completed operations
+        for d in ops_done {
+            self.rpc_ops.remove(&d);
+        }
 
         Ok(())
     }

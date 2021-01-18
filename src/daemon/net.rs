@@ -537,8 +537,6 @@ impl Dsf {
 
                 // Pick out service pages
 
-                let data_mgr = self.data().clone();
-
                 for p in &data {
                     // Apply page to service
                     if p.header().kind().is_page() {
@@ -550,7 +548,7 @@ impl Dsf {
                     // Store data
                     if p.header().kind().is_data() {
                         if let Ok(info) = DataInfo::try_from(p) {
-                            data_mgr.store_data(&info, p).unwrap();
+                            self.data().store_data(&info, p).unwrap();
                         };
                     }
                 }
@@ -576,7 +574,7 @@ impl Dsf {
                 info!(
                     "Sending data push message id {} to: {:?}",
                     req_id,
-                    peer_subs.len()
+                    peer_subs
                 );
 
                 // Issue data push requests

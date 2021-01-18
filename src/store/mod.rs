@@ -58,12 +58,16 @@ impl Store {
     pub fn new(path: &str) -> Result<Self, StoreError> {
         debug!("Connecting to store: {}", path);
 
-        let mgr = ConnectionManager::new(path);
+        // Setup connection manager / pool
+        let _conn = SqliteConnection::establish(path)?;
 
+        let mgr = ConnectionManager::new(path);
         let pool = Pool::new(mgr).unwrap();
 
+        // Create object
         let s = Self { pool };
 
+        // Ensure tables exist
         let _ = s.create_tables();
 
         Ok(s)

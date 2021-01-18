@@ -70,7 +70,7 @@ impl Dsf {
 
         // Add to tracking
         debug!("Adding RPC op {} to tracking", req_id);
-        self.rpc_ops.as_mut().unwrap().insert(req_id, op);
+        self.rpc_ops.insert(req_id, op);
 
         Ok(PublishFuture { rx })
     }

@@ -63,7 +63,7 @@ pub struct Dsf {
 
     store: Store,
 
-    pub(crate) rpc_ops: Option<HashMap<u64, RpcOperation>>,
+    pub(crate) rpc_ops: HashMap<u64, RpcOperation>,
 
     pub(crate) net_ops: HashMap<u16, NetOp>,
 
@@ -114,7 +114,7 @@ impl Dsf {
 
             store,
 
-            rpc_ops: Some(HashMap::new()),
+            rpc_ops: HashMap::new(),
 
             net_sink,
             net_requests: HashMap::new(),

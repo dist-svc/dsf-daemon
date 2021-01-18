@@ -1,11 +1,13 @@
 use diesel::result::Error as DieselError;
 use diesel::ConnectionError;
+use diesel::r2d2::PoolError;
 use std::net::AddrParseError;
 use strum::ParseError as StrumError;
 
 #[derive(Debug, PartialEq)]
 pub enum StoreError {
     Connection(ConnectionError),
+    Pool,
     Diesel(DieselError),
     Strum(StrumError),
     B64(base64::DecodeError),
