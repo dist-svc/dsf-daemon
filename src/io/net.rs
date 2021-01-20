@@ -234,36 +234,50 @@ impl Net {
                     select! {
                         // Handle incoming messages
                         res = socket.recv_from(&mut buff).fuse() => {
-                            match res {
-                                Ok((n, address)) => {
-                                    let data = Bytes::copy_from_slice(&buff[..n]);
-                                    event!(Level::TRACE, kind="UDP receive", address = %address);
-
-                                    let msg = NetMessage{
-                                        interface: Some(interface),
-                                        address,
-                                        data,
-                                        resp_tx: Some(resp_tx.clone()),
-                                    };
-
-                                    rx_sink.send(msg).await?;
-                                },
+                            let (n, address) = match res {
+                                Ok(v) => v,
                                 Err(e) => {
                                     error!("recieve error: {:?}", e);
                                     break
                                 },
+                            };
+
+                            let data = Bytes::copy_from_slice(&buff[..n]);
+                            event!(Level::TRACE, kind="UDP rx", address = %address);
+
+                            let msg = NetMessage{
+                                interface: Some(interface),
+                                address,
+                                data,
+                                resp_tx: Some(resp_tx.clone()),
+                            };
+
+                            if let Err(e) = rx_sink.send(msg).await {
+                                error!("rx sink error: {:?}", e);
+                                break
                             }
+
+                            event!(Level::TRACE, kind="UDP rx compete", address = %address);
                         },
+
                         // Handle outgoing messages
                         res = tx_stream.next() => {
-                            match res {
-                                Some(d) => {
-                                    event!(Level::TRACE, kind="UDP transmit", address = %d.address);
+                            let d = match res {
+                                Some(v) => v,
+                                None => {
+                                    error!("tx stream closed");
+                                    break;
+                                }
+                            };
 
-                                    socket.send_to(&d.data, &d.address).await?;
-                                },
-                                None => debug!("tx stream closed"),
+                            event!(Level::TRACE, kind="UDP tx", address = %d.address);
+
+                            if let Err(e) = socket.send_to(&d.data, &d.address).await {
+                                error!("socket send error: {:?}", e);
+                                break;
                             }
+
+                            event!(Level::TRACE, kind="UDP tx compete", address = %address);
                         },
                         // Handle the exit signal
                         res = exit_stream.next() => {
@@ -274,6 +288,8 @@ impl Net {
                         },
                     }
                 }
+
+                debug!("Exiting UDP listener");
 
                 Ok(())
             }

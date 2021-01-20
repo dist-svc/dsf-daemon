@@ -257,14 +257,15 @@ impl Dsf {
 
         // Add message to internal tracking
         let (tx, rx) = mpsc::channel(1);
-        {
-            self.net_requests.insert((addr.into(), req_id), tx)
-        };
+        self.net_requests.insert((addr.into(), req_id), tx);
 
         // Pass message to sink for transmission
-        self.net_sink
-            .try_send((addr.into(), NetMessage::Request(req)))
-            .unwrap();
+        // TODO: deadlock appears when this line is enabled
+        //#[cfg(deadlock)]
+        if let Err(e) = self.net_sink.try_send((addr.into(), NetMessage::Request(req))) {
+            error!("Request send error: {:?}", e);
+            return Err(DaemonError::Unknown);
+        }
 
         // Return future channel
         Ok(rx)
@@ -548,6 +549,7 @@ impl Dsf {
                     // Store data
                     if p.header().kind().is_data() {
                         if let Ok(info) = DataInfo::try_from(p) {
+                            // TODO: deadlock? nope still happens when removed
                             self.data().store_data(&info, p).unwrap();
                         };
                     }
@@ -579,6 +581,7 @@ impl Dsf {
 
                 // Issue data push requests
                 // TODO: we should probably wire the return here to send a delayed PublishInfo to the requester?
+                // TODO: deadlock? yeees, deadlock is here or related to this call
                 let _ = self.net_op(peer_subs, req);
 
                 info!("Data push complete");

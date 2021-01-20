@@ -32,9 +32,7 @@ maintainer-scripts = "scripts/"
 [dependencies]
 futures = "0.3.4"
 colored = "1.9.0"
-tracing = "0.1.10"
-tracing-futures = "0.2.0"
-tracing-subscriber = "0.1.6"
+
 futures_codec = "0.3.4"
 async-trait = "0.1.21"
 bytes = "0.5.3"
@@ -58,6 +56,8 @@ async-signals = "0.3.1"
 libc = "0.2.80"
 strum_macros = "0.20.1"
 
+tracing-futures = "0.2.4"
+tracing-subscriber = "0.2.15"
 
 
 [dependencies.dsf-core]
@@ -78,6 +78,10 @@ features = [ "unstable" ]
 [dependencies.log]
 features = ["max_level_trace", "release_max_level_trace"]
 version = "0.4.6"
+
+[dependencies.tracing]
+features = ["max_level_trace", "release_max_level_trace"]
+version = "0.1.22"
 
 [dependencies.diesel]
 features = [ "sqlite", "extras", "chrono", "r2d2" ]

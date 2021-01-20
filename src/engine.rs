@@ -27,7 +27,6 @@ use crate::daemon::*;
 use crate::error::Error;
 use crate::io::*;
 use crate::store::*;
-use crate::sync::{Arc, Mutex};
 
 use crate::daemon::Options as DaemonOptions;
 

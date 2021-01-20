@@ -23,9 +23,9 @@ struct Config {
     #[structopt(long = "profile")]
     profile: Option<String>,
 
-    #[structopt(long = "log-level", default_value = "debug")]
+    #[structopt(long = "log-level", default_value = "debug", env="LOG_LEVEL")]
     /// Enable verbose logging
-    level: LevelFilter,
+    log_level: LevelFilter,
 }
 
 fn main() {
@@ -34,7 +34,7 @@ fn main() {
 
     // Initialise logging
     let _ = FmtSubscriber::builder()
-        .with_max_level(opts.level.clone())
+        .with_max_level(opts.log_level.clone())
         .try_init();
 
     // Create async task
