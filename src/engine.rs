@@ -332,19 +332,24 @@ impl Engine {
                     },
                     // TODO: periodic update
                     interval = update_timer.next().fuse() => {
-                        trace!("engine::tick");
+                        trace!("engine::update");
 
                         if let Some(_i) = interval {
-                            // TODO: do something
+                            // TODO: prompt dsf service updates?
+                            // Maybe this should just use time internally?
                         }
                     },
                     // Poll on DSF internal state (this actually runs DSF logic)
                     _ = dsf => {
-
+                        // TODO: handle results / errors here?
                     },
                     // Tick timer for process reactivity
-                    _tick = tick_timer.next().fuse() => {},
+                    _tick = tick_timer.next().fuse() => {
+                        trace!("engine::tick");
 
+                        // Prompt DSF poll
+                        dsf.wake();
+                    },
                     // Exit signal
                     _exit = dsf_exit_rx.next().fuse() => {
                         debug!("Exiting DSF handler");

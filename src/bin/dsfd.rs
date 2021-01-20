@@ -28,7 +28,8 @@ struct Config {
     log_level: LevelFilter,
 }
 
-fn main() {
+#[async_std::main]
+async fn main() -> Result<(), anyhow::Error> {
     // Fetch arguments
     let opts = Config::from_args();
 
@@ -37,48 +38,41 @@ fn main() {
         .with_max_level(opts.log_level.clone())
         .try_init();
 
-    // Create async task
-    let res = task::block_on(async move {
-        // Bind exit handler
-        let mut exit_rx = Signals::new(vec![libc::SIGINT]).expect("Error setting Ctrl-C handler");
+    // Bind exit handler
+    let mut exit_rx = Signals::new(vec![libc::SIGINT])?;
 
-        // Initialise daemon
-        let d = match Engine::new(opts.daemon_opts).await {
-            Ok(d) => d,
-            Err(e) => {
-                error!("Daemon creation error: {:?}", e);
-                return Err(e);
-            }
-        };
-
-        // Spawn daemon instance
-        let h = match d.start().await {
-            Ok(i) => i,
-            Err(e) => {
-                error!("Daemon launch error: {:?}", e);
-                return Err(e);
-            }
-        };
-
-        // Setup exit task
-        let mut exit_tx = h.exit_tx();
-        task::spawn(async move {
-            let _ = exit_rx.next().await;
-            let _ = exit_tx.send(()).await;
-        });
-
-        // Execute daemon / await completion
-        if let Err(e) = h.join().await {
-            error!("Daemon error: {:?}", e);
+    // Initialise daemon
+    let d = match Engine::new(opts.daemon_opts).await {
+        Ok(d) => d,
+        Err(e) => {
+            return Err(anyhow::anyhow!("Daemon creation error: {:?}", e));
         }
+    };
 
-        Ok(())
+    // Spawn daemon instance
+    let h = match d.start().await {
+        Ok(i) => i,
+        Err(e) => {
+            return Err(anyhow::anyhow!("Daemon launch error: {:?}", e));
+        }
+    };
+
+    // Setup exit task
+    let mut exit_tx = h.exit_tx();
+    task::spawn(async move {
+        let _ = exit_rx.next().await;
+        let _ = exit_tx.send(()).await;
     });
+
+    // Execute daemon / await completion
+    let res = h.join().await;
 
     info!("Exiting");
 
     // Return error on failure
-    if let Err(_e) = res {
-        std::process::exit(-1);
+    if let Err(e) = res {
+        return Err(anyhow::anyhow!("Daemon error: {:?}", e));
     }
+
+    Ok(())
 }

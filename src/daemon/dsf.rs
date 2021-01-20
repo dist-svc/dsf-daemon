@@ -4,9 +4,16 @@ use std::time::{Duration, SystemTime};
 
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 use log::{debug, error, info, trace, warn};
+use tracing::{span, Level};
+
+use futures::prelude::*;
+use futures::channel::mpsc;
+
+use async_std::future::timeout;
+
 
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
@@ -14,10 +21,6 @@ use dsf_core::service::Publisher;
 use kad::prelude::*;
 use kad::table::NodeTable;
 
-use async_std::future::timeout;
-use futures::channel::mpsc;
-
-use tracing::{span, Level};
 
 use crate::core::data::DataManager;
 use crate::core::peers::{Peer, PeerManager, PeerState};
@@ -34,8 +37,10 @@ use crate::store::Store;
 use super::dht::{dht_reducer, DsfDhtMessage};
 use super::Options;
 
+
 /// Re-export of Dht type used for DSF
 pub type DsfDht = Dht<Id, Peer, Data, RequestId>;
+
 
 pub struct Dsf {
     /// Inernal storage for daemon service
@@ -71,6 +76,8 @@ pub struct Dsf {
 
     pub(crate) net_sink: mpsc::Sender<(Address, NetMessage)>,
     //pub(crate) net_source: Arc<Mutex<mpsc::Receiver<(Address, NetMessage)>>>,
+
+    waker: Option<Waker>,
 }
 
 impl Dsf {
@@ -119,6 +126,8 @@ impl Dsf {
             net_sink,
             net_requests: HashMap::new(),
             net_ops: HashMap::new(),
+
+            waker: None,
         };
 
         Ok(s)
@@ -160,6 +169,12 @@ impl Dsf {
 
     pub(crate) fn pub_key(&self) -> PublicKey {
         self.service.public_key()
+    }
+
+    pub(crate) fn wake(&self) {
+        if let Some(w) = &self.waker {
+            w.clone().wake();
+        }
     }
 
     pub(crate) fn primary<T: AsRef<[u8]> + AsMut<[u8]>>(
@@ -433,8 +448,6 @@ impl futures::future::FusedFuture for Dsf {
     }
 }
 
-use futures::prelude::*;
-
 impl Future for Dsf {
     type Output = Result<(), DsfError>;
 
@@ -485,10 +498,17 @@ impl Future for Dsf {
 
         // TODO: poll on internal state / messages
 
-        // Always wake
+        // Manage waking
         // TODO: propagate this, in a better manner
-        ctx.waker().clone().wake();
 
+        // Always wake
+        //ctx.waker().clone().wake();
+
+        // Store waker
+        self.waker = Some(ctx.waker().clone());
+
+
+        // Indicate we're still running
         Poll::Pending
     }
 }
