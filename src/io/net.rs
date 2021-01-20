@@ -140,7 +140,7 @@ impl NetInfo {
 impl Net {
     /// Create a new network manager object
     pub fn new() -> Self {
-        let (rx_sink, rx_stream) = mpsc::channel::<NetMessage>(0);
+        let (rx_sink, rx_stream) = mpsc::channel::<NetMessage>(1000);
 
         //let rx_stream = Box::pin(rx_stream);
 
@@ -252,6 +252,9 @@ impl Net {
                                 resp_tx: Some(resp_tx.clone()),
                             };
 
+                            // TODO: sometimes this blocks, mitigated by increasing
+                            // stream size in the constructor above but, really incoming messages
+                            // should be serviced pretty much immediately?!
                             if let Err(e) = rx_sink.send(msg).await {
                                 error!("rx sink error: {:?}", e);
                                 break
