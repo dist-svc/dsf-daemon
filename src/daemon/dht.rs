@@ -161,7 +161,6 @@ impl Dsf {
                     dht_nodes.push((id.clone(), node).into());
                 }
 
-
                 Some(DhtResponse::NodesFound(Id::into(id.clone()), dht_nodes))
             }
             ResponseKind::ValuesFound(id, values) => Some(DhtResponse::ValuesFound(

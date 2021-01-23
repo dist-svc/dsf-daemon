@@ -9,18 +9,16 @@ use std::task::{Context, Poll, Waker};
 use log::{debug, error, info, trace, warn};
 use tracing::{span, Level};
 
-use futures::prelude::*;
 use futures::channel::mpsc;
+use futures::prelude::*;
 
 use async_std::future::timeout;
-
 
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;
 
 use kad::prelude::*;
 use kad::table::NodeTable;
-
 
 use crate::core::data::DataManager;
 use crate::core::peers::{Peer, PeerManager, PeerState};
@@ -37,10 +35,8 @@ use crate::store::Store;
 use super::dht::{dht_reducer, DsfDhtMessage};
 use super::Options;
 
-
 /// Re-export of Dht type used for DSF
 pub type DsfDht = Dht<Id, Peer, Data, RequestId>;
-
 
 pub struct Dsf {
     /// Inernal storage for daemon service
@@ -76,7 +72,6 @@ pub struct Dsf {
 
     pub(crate) net_sink: mpsc::Sender<(Address, NetMessage)>,
     //pub(crate) net_source: Arc<Mutex<mpsc::Receiver<(Address, NetMessage)>>>,
-
     waker: Option<Waker>,
 }
 
@@ -85,7 +80,7 @@ impl Dsf {
     pub fn new(
         config: Options,
         service: Service,
-        store:Store,
+        store: Store,
         net_sink: mpsc::Sender<(Address, NetMessage)>,
     ) -> Result<Self, Error> {
         debug!("Creating new DSF instance");
@@ -506,7 +501,6 @@ impl Future for Dsf {
 
         // Store waker
         self.waker = Some(ctx.waker().clone());
-
 
         // Indicate we're still running
         Poll::Pending

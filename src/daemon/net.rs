@@ -262,7 +262,10 @@ impl Dsf {
         // Pass message to sink for transmission
         // TODO: deadlock appears when this line is enabled
         //#[cfg(deadlock)]
-        if let Err(e) = self.net_sink.try_send((addr.into(), NetMessage::Request(req))) {
+        if let Err(e) = self
+            .net_sink
+            .try_send((addr.into(), NetMessage::Request(req)))
+        {
             error!("Request send error: {:?}", e);
             return Err(DaemonError::Unknown);
         }
@@ -575,8 +578,7 @@ impl Dsf {
 
                 info!(
                     "Sending data push message id {} to: {:?}",
-                    req_id,
-                    peer_subs
+                    req_id, peer_subs
                 );
 
                 // Issue data push requests

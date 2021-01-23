@@ -1,6 +1,6 @@
+use diesel::r2d2::PoolError;
 use diesel::result::Error as DieselError;
 use diesel::ConnectionError;
-use diesel::r2d2::PoolError;
 use std::net::AddrParseError;
 use strum::ParseError as StrumError;
 

@@ -23,7 +23,7 @@ struct Config {
     #[structopt(long = "profile")]
     profile: Option<String>,
 
-    #[structopt(long = "log-level", default_value = "debug", env="LOG_LEVEL")]
+    #[structopt(long = "log-level", default_value = "debug", env = "LOG_LEVEL")]
     /// Enable verbose logging
     log_level: LevelFilter,
 }

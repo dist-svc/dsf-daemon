@@ -178,12 +178,7 @@ impl Engine {
         let (net_sink, net_source) = mpsc::channel(1000);
 
         // Create new DSF instance
-        let dsf = Dsf::new(
-            options.daemon_options.clone(),
-            service,
-            store,
-            net_sink,
-        )?;
+        let dsf = Dsf::new(options.daemon_options.clone(), service, store, net_sink)?;
 
         info!("Engine created!");
 
@@ -218,7 +213,7 @@ impl Engine {
         if !options.no_bootstrap {
             // Create future bootstrap event
             let b = dsf.bootstrap().unwrap();
-            
+
             // Await on this in the future
             task::spawn(async move {
                 task::sleep(Duration::from_secs(2)).await;

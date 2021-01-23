@@ -53,15 +53,13 @@ impl ReplicaManager {
 
     /// Find replicas for a given service
     pub fn find(&self, service_id: &Id) -> Vec<ReplicaInst> {
-
         let v = self.store.get(service_id);
 
-        v.map(|v| v.clone() ).unwrap_or(vec![])
+        v.map(|v| v.clone()).unwrap_or(vec![])
     }
 
     /// Create or update a given replica instance
     pub fn create_or_update(&mut self, service_id: &Id, peer_id: &Id, page: &Page) {
-
         let replicas = self.store.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 
@@ -81,7 +79,6 @@ impl ReplicaManager {
         peer_id: &Id,
         f: F,
     ) -> Result<(), ()> {
-
         let replicas = self.store.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 

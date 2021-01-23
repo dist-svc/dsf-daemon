@@ -5,8 +5,8 @@ use log::{debug, error, warn};
 
 use diesel::dsl::sql_query;
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::sqlite::SqliteConnection;
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 
@@ -234,11 +234,15 @@ impl Store {
         );
 
         // Check if the identity already exists
-        let results = identity.select(service_id).load::<String>(&self.pool.get().unwrap())?;
+        let results = identity
+            .select(service_id)
+            .load::<String>(&self.pool.get().unwrap())?;
 
         // Create or update
         if results.len() != 0 {
-            diesel::update(identity).set(values).execute(&self.pool.get().unwrap())?;
+            diesel::update(identity)
+                .set(values)
+                .execute(&self.pool.get().unwrap())?;
         } else {
             diesel::insert_into(identity)
                 .values(values)

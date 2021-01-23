@@ -286,7 +286,8 @@ impl ServiceManager {
             let public_key = i.public_key.clone();
 
             let primary_page = match i.primary_page {
-                Some(p) => self.store
+                Some(p) => self
+                    .store
                     .load_page(&p, Some(public_key.clone()))
                     .unwrap()
                     .unwrap(),

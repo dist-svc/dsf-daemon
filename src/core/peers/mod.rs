@@ -44,21 +44,19 @@ impl PeerManager {
     }
 
     pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
-
         // Update and return existing peer
         if let Some(p) = self.peers.get_mut(&id) {
-    
             p.info.update_address(address);
-            
+
             if let Some(k) = key {
                 p.info.set_state(PeerState::Known(k))
             }
-    
-            return p.clone()
+
+            return p.clone();
         }
-    
+
         // Create new peer
-        
+
         let state = match key {
             Some(k) => PeerState::Known(k),
             None => PeerState::Unknown,
@@ -68,21 +66,20 @@ impl PeerManager {
             "Creating new peer instance id: ({:?} addr: {:?}, state: {:?})",
             id, address, state
         );
-    
+
         let index = self.index;
         self.index += 1;
-    
+
         let info = PeerInfo::new(id.clone(), address, state, index, None);
         let peer = Peer { info };
 
         self.peers.insert(id.clone(), peer.clone());
-    
-    
+
         // Write to store
         if let Err(e) = self.store.save_peer(&peer.info) {
             error!("Error writing peer {} to db: {:?}", id, e);
         }
-    
+
         peer
     }
 

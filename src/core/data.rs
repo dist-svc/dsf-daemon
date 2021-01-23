@@ -41,7 +41,7 @@ impl DataManager {
         };
 
         // Load data info
-        let info: Vec<DataInfo> =self. store.find_data(service_id)?;
+        let info: Vec<DataInfo> = self.store.find_data(service_id)?;
 
         info!("Loaded data info: {:?}", info);
 
@@ -50,7 +50,9 @@ impl DataManager {
         for i in info {
             info!("Fetching raw page for: {}", i.signature);
 
-            let p = self.store.load_page(&i.signature, Some(service.public_key.clone()))?;
+            let p = self
+                .store
+                .load_page(&i.signature, Some(service.public_key.clone()))?;
             data.push(DataInst {
                 info: i,
                 page: p.unwrap(),
@@ -62,7 +64,6 @@ impl DataManager {
 
     /// Store data for a given service
     pub fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
-
         // Store data object
         self.store.save_data(info)?;
 
