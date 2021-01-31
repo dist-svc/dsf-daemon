@@ -542,17 +542,17 @@ impl Dsf {
                 // Pick out service pages
 
                 for p in &data {
-                    // Apply page to service
+                    // Apply any updates to the service
                     if p.header().kind().is_page() {
                         self.services().update_inst(&id, |s| {
                             let _ = s.apply_update(p);
                         });
                     }
 
-                    // Store data
+                    // Store data pages
                     if p.header().kind().is_data() {
                         if let Ok(info) = DataInfo::try_from(p) {
-                            // TODO: deadlock? nope still happens when removed
+                            // TODO: this is (probably) one of the sloww bits
                             self.data().store_data(&info, p).unwrap();
                         };
                     }
