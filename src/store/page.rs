@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 
-use dsf_core::prelude::*;
+use dsf_core::{KeySource, prelude::*};
 
 use super::{Store, StoreError};
 
@@ -47,7 +47,7 @@ impl Store {
     }
 
     // Find an item or items
-    pub fn find_pages(&self, id: &Id) -> Result<Vec<Page>, StoreError> {
+    pub fn find_pages<K: KeySource>(&self, id: &Id, key_source: &K) -> Result<Vec<Page>, StoreError> {
         let results = object
             .filter(service_id.eq(id.to_string()))
             .select((service_id, raw_data, previous, signature))
@@ -55,7 +55,7 @@ impl Store {
 
         let (_r_id, r_raw, _r_previous, _r_signature) = &results[0];
 
-        let v = Page::decode_pages(&r_raw, |_id| None).unwrap();
+        let v = Page::decode_pages(&r_raw, key_source).unwrap();
 
         Ok(v)
     }
@@ -69,10 +69,10 @@ impl Store {
         Ok(())
     }
 
-    pub fn load_page(
+    pub fn load_page<K: KeySource>(
         &self,
         sig: &Signature,
-        public_key: Option<PublicKey>,
+        key_source: &K,
     ) -> Result<Option<Page>, StoreError> {
         let results = object
             .filter(signature.eq(sig.to_string()))
@@ -85,7 +85,7 @@ impl Store {
 
         let (_r_id, r_raw, _r_previous, _r_signature) = &results[0];
 
-        let mut v = Page::decode_pages(&r_raw, |_id| public_key.clone()).unwrap();
+        let mut v = Page::decode_pages(&r_raw, key_source).unwrap();
 
         Ok(Some(v.remove(0)))
     }
@@ -112,7 +112,7 @@ mod test {
         store.create_tables().unwrap();
 
         let mut s = Service::default();
-        let public_key = s.public_key();
+        let keys = s.keys();
 
         let mut buff = vec![0u8; 1024];
         let (n, mut page) = s.publish_primary(&mut buff).expect("Error creating page");
@@ -122,7 +122,7 @@ mod test {
         // Check no matching service exists
         assert_eq!(
             None,
-            store.load_page(&sig, Some(public_key.clone())).unwrap()
+            store.load_page(&sig, &keys).unwrap()
         );
 
         // Store data
@@ -130,17 +130,17 @@ mod test {
         assert_eq!(
             Some(&page),
             store
-                .load_page(&sig, Some(public_key.clone()))
+                .load_page(&sig, &keys)
                 .unwrap()
                 .as_ref()
         );
-        assert_eq!(vec![page.clone()], store.find_pages(&s.id()).unwrap());
+        assert_eq!(vec![page.clone()], store.find_pages(&s.id(), &keys).unwrap());
 
         // Delete data
         store.delete_page(&sig).unwrap();
         assert_eq!(
             None,
-            store.load_page(&sig, Some(public_key.clone())).unwrap()
+            store.load_page(&sig, &keys).unwrap()
         );
     }
 }

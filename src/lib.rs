@@ -5,6 +5,13 @@
 #[macro_use]
 extern crate diesel;
 
+#[cfg(feature="jemalloc")]
+extern crate jemallocator;
+
+#[cfg(feature="jemalloc")]
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 pub(crate) mod sync {
     pub(crate) type Arc<T> = std::sync::Arc<T>;
 

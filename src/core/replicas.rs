@@ -40,27 +40,27 @@ impl From<Page> for ReplicaInst {
 }
 
 pub struct ReplicaManager {
-    store: HashMap<Id, Vec<ReplicaInst>>,
+    replicas: HashMap<Id, Vec<ReplicaInst>>,
 }
 
 impl ReplicaManager {
     /// Create a new replica manager
     pub fn new() -> Self {
         ReplicaManager {
-            store: HashMap::new(),
+            replicas: HashMap::new(),
         }
     }
 
     /// Find replicas for a given service
     pub fn find(&self, service_id: &Id) -> Vec<ReplicaInst> {
-        let v = self.store.get(service_id);
+        let v = self.replicas.get(service_id);
 
         v.map(|v| v.clone()).unwrap_or(vec![])
     }
 
     /// Create or update a given replica instance
     pub fn create_or_update(&mut self, service_id: &Id, peer_id: &Id, page: &Page) {
-        let replicas = self.store.entry(service_id.clone()).or_insert(vec![]);
+        let replicas = self.replicas.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 
         match replica {
@@ -79,7 +79,7 @@ impl ReplicaManager {
         peer_id: &Id,
         f: F,
     ) -> Result<(), ()> {
-        let replicas = self.store.entry(service_id.clone()).or_insert(vec![]);
+        let replicas = self.replicas.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 
         if let Some(mut r) = replica {

@@ -189,9 +189,10 @@ impl Store {
 
         let sig = Signature::from_str(&page_sig).unwrap();
         let pub_key = PublicKey::from_str(&s_pub_key).unwrap();
+        let keys = Keys::new(pub_key);
 
         // Load page
-        let page = match self.load_page(&sig, Some(pub_key))? {
+        let page = match self.load_page(&sig, &keys)? {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -216,9 +217,11 @@ impl Store {
 
         let p_sig = page.signature.as_ref().unwrap();
 
+        let keys = Keys::new(service.public_key());
+
         // Ensure the page has been written
         if self
-            .load_page(&p_sig, Some(service.public_key()))?
+            .load_page(&p_sig, &keys)?
             .is_none()
         {
             self.save_page(page)?;

@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 use std::time::Instant;
 use std::time::{Duration, SystemTime};
 
+use kad::common::message;
 use log::{debug, error, info, trace, warn};
 
 use bytes::Bytes;
@@ -28,7 +29,7 @@ use crate::daemon::Dsf;
 use crate::error::Error as DaemonError;
 
 use crate::core::data::DataInfo;
-use crate::core::peers::{Peer, PeerAddress, PeerState};
+use crate::core::peers::{Peer, PeerAddress, PeerState, PeerFlags};
 
 /// Network operation for management by network module
 pub struct NetOp {
@@ -132,6 +133,7 @@ impl Dsf {
         };
 
         trace!("Net message: {:?}", decoded);
+        let from = decoded.from();
 
         // Route responses as required internally
         let resp = match decoded {
@@ -148,7 +150,7 @@ impl Dsf {
         // Return response if provided
         if let Some(r) = resp {
             // Encode response
-            let d = self.net_encode(net::Message::Response(r)).await?;
+            let d = self.net_encode(Some(&from), net::Message::Response(r)).await?;
 
             // Short-circuit to respond
             msg.reply(&d).await?;
@@ -162,9 +164,9 @@ impl Dsf {
         let (container, _n) = Container::from(&data);
         let _id: Id = container.id().into();
 
-        // Parse out base object
+        // Parse out message object
         // TODO: pass secret keys for encode / decode here
-        let (base, _n) = match Base::parse(&data, |id| self.find_public_key(id), |_id| None) {
+        let (message, _n) = match net::Message::parse(&data, self) {
             Ok(v) => v,
             Err(e) => {
                 error!("Error decoding base message: {:?}", e);
@@ -172,30 +174,42 @@ impl Dsf {
             }
         };
 
-        // TODO: use n here?
+        // TODO: handle crypto mode errors
+        // (eg. message encoded with SYMMETRIC but no pubkey for derivation)
 
-        // Convert into message type
-        let message = match net::Message::convert(base, |id| self.find_public_key(id)) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Error convertng network message: {:?}", e);
-                return Err(e.into());
-            }
-        };
+
+        // Upgrade to symmetric mode on incoming symmetric message
+        // TODO: there needs to be another transition for this in p2p comms
+        if message.flags().contains(Flags::SYMMETRIC_MODE) {
+            self.peers().update(&message.from(), |p| {
+                if !p.flags.contains(PeerFlags::SYMMETRIC_ENABLED) {
+                    warn!("Enabling symmetricy crypto for peer: {}", message.from());
+                    p.flags |= PeerFlags::SYMMETRIC_ENABLED;
+                }
+                
+            });
+        }
 
         Ok(message)
     }
 
-    pub async fn net_encode(&mut self, msg: net::Message) -> Result<Bytes, DaemonError> {
+    pub async fn net_encode(&mut self, id: Option<&Id>, mut msg: net::Message) -> Result<Bytes, DaemonError> {
         // Encode response
         let mut buff = vec![0u8; 4096];
 
-        // Convert to base message
-        let mut b: Base = msg.into();
+        // Fetch cached keys if available, otherwise use service keys
+        let (enc_key, sym) = match id.map(|id| (self.keys(id), self.peers().filter(id, |p| p.flags )) ) {
+            Some((Some(k), Some(f))) if f.contains(PeerFlags::SYMMETRIC_ENABLED) => (k, true),
+            Some((Some(k), _)) => (k, false),
+            _ => (self.service().keys(), false)
+        };
 
-        // Sign and encode outgoing message
-        // TODO: pass secret keys for encode / encrypt here
-        let n = b.encode(self.service().private_key().as_ref(), None, &mut buff)?;
+        if sym {
+            *msg.flags_mut() |= Flags::SYMMETRIC_MODE;
+        }
+
+        // Encode and sign message
+        let n = msg.encode(&enc_key, &mut buff)?;
 
         Ok(Bytes::from((&buff[..n]).to_vec()))
     }
@@ -261,10 +275,11 @@ impl Dsf {
 
         // Pass message to sink for transmission
         // TODO: deadlock appears when this line is enabled
+        // TODO: pass ID into this
         //#[cfg(deadlock)]
         if let Err(e) = self
             .net_sink
-            .try_send((addr.into(), NetMessage::Request(req)))
+            .try_send((addr.into(), None, NetMessage::Request(req)))
         {
             error!("Request send error: {:?}", e);
             return Err(DaemonError::Unknown);
@@ -389,6 +404,16 @@ impl Dsf {
             PeerAddress::Implicit(*address),
             c.public_key.clone(),
         );
+
+        // Update key cache
+        match (self.key_cache.contains_key(id), &c.public_key) {
+            (false, Some(pk)) => {
+                if let Ok(k) = self.service().keys().derive_peer(pk.clone()) {
+                    self.key_cache.insert(id.clone(), k.clone());
+                }
+            },
+            _ => (),
+        }
 
         // Update peer info
         self.peers().update(&id, |p| {

@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 
 use log::{error, info, trace};
 
-use dsf_core::{page::Page, types::Id};
+use dsf_core::{Keys, page::Page, types::Id};
 
 pub use dsf_rpc::data::DataInfo;
 
@@ -39,6 +39,7 @@ impl DataManager {
             Some(s) => s,
             None => return Err(Error::NotFound),
         };
+        let keys = Keys::new(service.public_key.clone());
 
         // Load data info
         let info: Vec<DataInfo> = self.store.find_data(service_id)?;
@@ -52,7 +53,7 @@ impl DataManager {
 
             let p = self
                 .store
-                .load_page(&i.signature, Some(service.public_key.clone()))?;
+                .load_page(&i.signature, &keys)?;
             data.push(DataInst {
                 info: i,
                 page: p.unwrap(),
@@ -65,9 +66,11 @@ impl DataManager {
     /// Store data for a given service
     pub fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
         // Store data object
+        #[cfg(feature="store")]
         self.store.save_data(info)?;
 
         // Store backing raw object
+        #[cfg(feature="store")]
         self.store.save_page(page)?;
 
         Ok(())

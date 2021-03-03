@@ -108,7 +108,7 @@ impl Dsf {
 
                 // Parse out / validate incoming data
                 let (base, _n) =
-                    match Base::parse(&opts.data, |id| self.find_public_key(id), |_id| None) {
+                    match Base::parse(&opts.data, self) {
                         Ok(v) => v,
                         Err(e) => {
                             error!("Invalid data for push");

@@ -17,7 +17,7 @@ use dsf_rpc::{self as rpc};
 
 #[test]
 fn smol_scale() {
-    scale(3, LevelFilter::INFO);
+    scale(3, LevelFilter::DEBUG);
 }
 
 #[test]

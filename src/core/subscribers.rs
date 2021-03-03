@@ -29,26 +29,26 @@ pub struct UnixSubscriber {
 
 /// Subscriber Manager manages local, delegated, and RPC service Subscribers
 pub struct SubscriberManager {
-    store: HashMap<Id, Vec<SubscriberInst>>,
+    subs: HashMap<Id, Vec<SubscriberInst>>,
 }
 
 impl SubscriberManager {
     pub fn new() -> Self {
         Self {
-            store: HashMap::new(),
+            subs: HashMap::new(),
         }
     }
 
     /// Fetch subscribers for a given service
     pub fn find(&self, service_id: &Id) -> Result<Vec<SubscriberInst>, Error> {
-        match self.store.get(service_id) {
+        match self.subs.get(service_id) {
             Some(v) => Ok(v.clone()),
             None => Ok(vec![]),
         }
     }
 
     pub fn find_peers(&self, service_id: &Id) -> Result<Vec<Id>, Error> {
-        let subs = match self.store.get(service_id) {
+        let subs = match self.subs.get(service_id) {
             Some(v) => v,
             None => return Ok(vec![]),
         };
@@ -71,7 +71,7 @@ impl SubscriberManager {
         peer_id: &Id,
         f: F,
     ) -> Result<(), Error> {
-        let subscribers = self.store.entry(service_id.clone()).or_insert(vec![]);
+        let subscribers = self.subs.entry(service_id.clone()).or_insert(vec![]);
 
         // Find subscriber in list
         let mut subscriber = subscribers.iter_mut().find(|s| {
@@ -114,7 +114,7 @@ impl SubscriberManager {
         socket_id: u32,
         f: F,
     ) -> Result<(), Error> {
-        let subscribers = self.store.entry(service_id.clone()).or_insert(vec![]);
+        let subscribers = self.subs.entry(service_id.clone()).or_insert(vec![]);
 
         let mut subscriber = subscribers.iter_mut().find(|s| {
             if let SubscriptionKind::Socket(i) = &s.info.kind {
@@ -151,7 +151,7 @@ impl SubscriberManager {
     /// Remove a subscription
     pub fn remove(&mut self, service_id: &Id, peer_id: &Id) -> Result<(), Error> {
         trace!("remove sub lock");
-        let subscribers = self.store.entry(service_id.clone()).or_insert(vec![]);
+        let subscribers = self.subs.entry(service_id.clone()).or_insert(vec![]);
 
         for i in 0..subscribers.len() {
             match &subscribers[i].info.kind {

@@ -70,9 +70,11 @@ pub struct Dsf {
 
     pub(crate) net_requests: HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>,
 
-    pub(crate) net_sink: mpsc::Sender<(Address, NetMessage)>,
+    pub(crate) net_sink: mpsc::Sender<(Address, Option<Id>, NetMessage)>,
     //pub(crate) net_source: Arc<Mutex<mpsc::Receiver<(Address, NetMessage)>>>,
     waker: Option<Waker>,
+
+    pub(super) key_cache: HashMap<Id, Keys>,
 }
 
 impl Dsf {
@@ -81,7 +83,7 @@ impl Dsf {
         config: Options,
         service: Service,
         store: Store,
-        net_sink: mpsc::Sender<(Address, NetMessage)>,
+        net_sink: mpsc::Sender<(Address, Option<Id>, NetMessage)>,
     ) -> Result<Self, Error> {
         debug!("Creating new DSF instance");
 
@@ -123,6 +125,7 @@ impl Dsf {
             net_ops: HashMap::new(),
 
             waker: None,
+            key_cache: HashMap::new(),
         };
 
         Ok(s)
@@ -190,19 +193,24 @@ impl Dsf {
         let _enter = span.enter();
 
         // Pre-sign new pages so encoding works
-        // TODO: this should not be here
+        // TODO: this should not need to be here
         let mut pages = pages.clone();
         for p in &mut pages {
+            // We can only sign our own pages...
             if p.id() != &self.id() {
                 continue;
             }
+            // And we don't need to worry if they're already signed
             if let Some(_s) = p.signature() {
                 continue;
             }
 
             let mut b = Base::from(&*p);
             let mut buff = vec![0u8; 4096];
-            let _n = b.encode(None, None, &mut buff).unwrap();
+
+            let enc_keys = self.service().keys();
+            let _n = b.encode(Some(&enc_keys), &mut buff).unwrap();
+            
             p.set_signature(b.signature().clone().unwrap());
         }
 
@@ -437,6 +445,46 @@ impl Dsf {
     }
 }
 
+impl dsf_core::KeySource for Dsf {
+    fn keys(&self, id: &Id) -> Option<dsf_core::Keys> {
+        
+        // Check key cache for matching keys
+        if let Some(keys) = self.key_cache.get(id) {
+            return Some(keys.clone())
+        }
+
+        // Find public key from source
+        let (pub_key, sec_key) = if let Some(s) = self.services.find(id) {
+            (Some(s.public_key), s.secret_key)
+        } else if let Some(p) = self.peers.find(id) {
+            if let PeerState::Known(pk) = p.state() {
+                (Some(pk), None)
+            } else {
+                (None, None)
+            }
+        } else if let Some(e) = self.dht.nodetable().contains(id) {
+            if let PeerState::Known(pk) = e.info().state() {
+                (Some(pk), None)
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
+
+         match pub_key {
+            Some(pk) => {
+                let mut keys = Keys::new(pk);
+                if let Some(sk) = sec_key {
+                    keys.sec_key = Some(sk);
+                }
+                Some(keys)
+            }
+            None => None,
+        }
+    }
+}
+
 impl futures::future::FusedFuture for Dsf {
     fn is_terminated(&self) -> bool {
         false
@@ -450,6 +498,7 @@ impl Future for Dsf {
         // Poll for outgoing DHT messages
         if let Poll::Ready(Some((req_id, target, body))) = self.dht_source.poll_next_unpin(ctx) {
             let addr = target.info().address();
+            let id = target.info().id();
             let body = self.dht_to_net_request(body);
             let mut flags = Flags::default();
 
@@ -474,7 +523,7 @@ impl Future for Dsf {
             };
 
             // Encode and enqueue them
-            if let Err(e) = self.net_sink.try_send((addr, NetMessage::Request(req))) {
+            if let Err(e) = self.net_sink.try_send((addr, Some(id), NetMessage::Request(req))) {
                 error!("Error sending outgoing DHT message: {:?}", e);
                 return Poll::Ready(Err(DsfError::Unknown));
             }
@@ -496,7 +545,7 @@ impl Future for Dsf {
         // Manage waking
         // TODO: propagate this, in a better manner
 
-        // Always wake
+        // Always wake (terrible for CPU use)
         //ctx.waker().clone().wake();
 
         // Store waker

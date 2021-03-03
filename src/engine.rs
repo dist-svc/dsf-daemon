@@ -115,7 +115,7 @@ pub struct Engine {
     unix: Unix,
     net: Net,
 
-    net_source: mpsc::Receiver<(Address, dsf_core::net::Message)>,
+    net_source: mpsc::Receiver<(Address, Option<Id>, dsf_core::net::Message)>,
 
     options: Options,
 }
@@ -302,8 +302,8 @@ impl Engine {
                     },
                     // Outgoing network _requests_
                     net_tx = net_source.next().fuse() => {
-                        if let Some((addr, msg)) = net_tx {
-                            let enc = match dsf.net_encode(msg).await {
+                        if let Some((addr, id, msg)) = net_tx {
+                            let enc = match dsf.net_encode(id.as_ref(), msg).await {
                                 Ok(v) => v,
                                 Err(e) => {
                                     error!("error encoding outgoing DSF message: {:?}", e);

@@ -12,7 +12,9 @@ default-run = "dsfd"
 
 [features]
 profile = []
-default = [ "no_deadlocks", "libsqlite3-sys/bundled" ] 
+jemalloc = [ "jemallocator" ]
+store = []
+default = [ "jemalloc", "no_deadlocks", "libsqlite3-sys/bundled" ] 
 
 # Debian packaging metadata (for cargo-deb)
 [package.metadata.deb]
@@ -58,6 +60,7 @@ strum_macros = "0.20.1"
 
 tracing-futures = "0.2.4"
 tracing-subscriber = "0.2.15"
+jemallocator = { version = "0.3.2", optional = true }
 
 
 [dependencies.dsf-core]
