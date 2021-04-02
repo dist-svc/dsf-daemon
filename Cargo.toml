@@ -14,7 +14,7 @@ default-run = "dsfd"
 profile = []
 jemalloc = [ "jemallocator" ]
 store = []
-default = [ "jemalloc", "no_deadlocks", "libsqlite3-sys/bundled" ] 
+default = [ "store", "jemalloc", "no_deadlocks", "libsqlite3-sys/bundled" ] 
 
 # Debian packaging metadata (for cargo-deb)
 [package.metadata.deb]

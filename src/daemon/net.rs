@@ -470,7 +470,7 @@ impl Dsf {
                 let _service = match self.services().find(&service_id) {
                     Some(s) => s,
                     None => {
-                        // Only known services can be registered
+                        // Only known services can be subscribed
                         error!("no service found (id: {})", service_id);
                         return Ok(net::ResponseKind::Status(net::Status::InvalidRequest));
                     }

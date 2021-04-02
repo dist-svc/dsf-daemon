@@ -76,11 +76,15 @@ impl Dsf {
                 Some(ResponseKind::Peers(peers))
             }
             RequestKind::Peer(PeerCommands::Remove(options)) => {
-                let id = self.resolve_peer_identifier(&options)?;
-                let p = self.peers().remove(&id);
-                match p {
-                    Some(p) => Some(ResponseKind::Peer(p)),
-                    None => Some(ResponseKind::None),
+                match self.resolve_peer_identifier(&options) {
+                    Ok(id) => {
+                        let p = self.peers().remove(&id);
+                        match p {
+                            Some(p) => Some(ResponseKind::Peer(p)),
+                            None => Some(ResponseKind::None),
+                        }
+                    },
+                    Err(_e) => Some(ResponseKind::None)
                 }
             }
             RequestKind::Service(ServiceCommands::List(_options)) => {
@@ -88,45 +92,57 @@ impl Dsf {
                 Some(ResponseKind::Services(s))
             }
             RequestKind::Service(ServiceCommands::Info(options)) => {
-                let id = self.resolve_identifier(&options.service)?;
-
-                Some(
-                    self.services()
-                        .find(&id)
-                        .map(|i| ResponseKind::Service(i))
-                        .unwrap_or(ResponseKind::None),
-                )
+                match self.resolve_identifier(&options.service) {
+                    Ok(id) => {
+                        Some(
+                            self.services()
+                                .find(&id)
+                                .map(|i| ResponseKind::Service(i))
+                                .unwrap_or(ResponseKind::None),
+                        )
+                    }, Err(_e) => Some(ResponseKind::None)
+                }  
             }
             RequestKind::Service(ServiceCommands::SetKey(options)) => {
-                let id = self.resolve_identifier(&options.service)?;
+                match self.resolve_identifier(&options.service) {
+                    Ok(id) => {
+                        // TODO: Ehh?
+                        let s = self.services().update_inst(&id, |s| {
+                            s.service.set_secret_key(options.secret_key.clone());
+                        });
 
-                // TODO: Ehh?
-                let s = self.services().update_inst(&id, |s| {
-                    s.service.set_secret_key(options.secret_key.clone());
-                });
-
-                match s {
-                    Some(s) => Some(ResponseKind::Services(vec![s])),
-                    None => Some(ResponseKind::None),
+                        match s {
+                            Some(s) => Some(ResponseKind::Services(vec![s])),
+                            None => Some(ResponseKind::None),
+                        }
+                    },
+                    Err(_e) => Some(ResponseKind::None)
                 }
             }
             RequestKind::Service(ServiceCommands::Remove(options)) => {
-                let id = self.resolve_identifier(&options.service)?;
+                match self.resolve_identifier(&options.service) {
+                    Ok(id) => {
+                        let s = self.services().remove(&id)?;
 
-                let s = self.services().remove(&id)?;
-
-                match s {
-                    Some(s) => Some(ResponseKind::Service(s)),
-                    None => Some(ResponseKind::None),
+                        match s {
+                            Some(s) => Some(ResponseKind::Service(s)),
+                            None => Some(ResponseKind::None),
+                        }
+                    },
+                    Err(e) => Some(ResponseKind::None)
                 }
             }
             RequestKind::Data(DataCommands::List(data::ListOptions { service, bounds })) => {
-                let id = self.resolve_identifier(&service)?;
+                match self.resolve_identifier(&service) {
+                    Ok(id) => {
 
-                let d = self.data().fetch_data(&id, bounds.count.unwrap_or(100))?;
-                let i = d.iter().map(|i| i.info.clone()).collect();
-
-                Some(ResponseKind::Data(i))
+                        let d = self.data().fetch_data(&id, bounds.count.unwrap_or(100))?;
+                        let i = d.iter().map(|i| i.info.clone()).collect();
+        
+                        Some(ResponseKind::Data(i))
+                    }, 
+                    Err(_e) => Some(ResponseKind::None)
+                }
             }
 
             _ => None,
