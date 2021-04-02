@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 
-use dsf_core::{KeySource, prelude::*};
+use dsf_core::{prelude::*, KeySource};
 
 use super::{Store, StoreError};
 
@@ -47,7 +47,11 @@ impl Store {
     }
 
     // Find an item or items
-    pub fn find_pages<K: KeySource>(&self, id: &Id, key_source: &K) -> Result<Vec<Page>, StoreError> {
+    pub fn find_pages<K: KeySource>(
+        &self,
+        id: &Id,
+        key_source: &K,
+    ) -> Result<Vec<Page>, StoreError> {
         let results = object
             .filter(service_id.eq(id.to_string()))
             .select((service_id, raw_data, previous, signature))
@@ -120,27 +124,18 @@ mod test {
         page.raw = Some(buff[..n].to_vec());
 
         // Check no matching service exists
-        assert_eq!(
-            None,
-            store.load_page(&sig, &keys).unwrap()
-        );
+        assert_eq!(None, store.load_page(&sig, &keys).unwrap());
 
         // Store data
         store.save_page(&page).unwrap();
+        assert_eq!(Some(&page), store.load_page(&sig, &keys).unwrap().as_ref());
         assert_eq!(
-            Some(&page),
-            store
-                .load_page(&sig, &keys)
-                .unwrap()
-                .as_ref()
+            vec![page.clone()],
+            store.find_pages(&s.id(), &keys).unwrap()
         );
-        assert_eq!(vec![page.clone()], store.find_pages(&s.id(), &keys).unwrap());
 
         // Delete data
         store.delete_page(&sig).unwrap();
-        assert_eq!(
-            None,
-            store.load_page(&sig, &keys).unwrap()
-        );
+        assert_eq!(None, store.load_page(&sig, &keys).unwrap());
     }
 }

@@ -220,10 +220,7 @@ impl Store {
         let keys = Keys::new(service.public_key());
 
         // Ensure the page has been written
-        if self
-            .load_page(&p_sig, &keys)?
-            .is_none()
-        {
+        if self.load_page(&p_sig, &keys)?.is_none() {
             self.save_page(page)?;
         }
 

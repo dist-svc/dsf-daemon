@@ -65,7 +65,7 @@ impl ServiceManager {
         let info = inst.info();
 
         // Write new instance to disk
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         self.sync_inst(&inst);
 
         // Insert into storage
@@ -112,7 +112,7 @@ impl ServiceManager {
         if let Some(s) = service {
             let info = s.info();
             // TODO: DEADLOCK?
-            #[cfg(feature="store")]
+            #[cfg(feature = "store")]
             let _ = self.store.delete_service(&info);
 
             return Ok(Some(info));
@@ -227,17 +227,17 @@ impl ServiceManager {
     pub(crate) fn sync_inst(&mut self, inst: &ServiceInst) {
         trace!("service sync inst");
 
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         if let Err(e) = self.store.save_service(&inst.info()) {
             error!("Error writing service instance {}: {:?}", inst.id(), e);
         }
 
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         if let Some(p) = &inst.primary_page {
             self.store.save_page(p).unwrap();
         }
 
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         if let Some(p) = &inst.replica_page {
             self.store.save_page(p).unwrap();
         }
@@ -257,7 +257,7 @@ impl ServiceManager {
     pub fn sync(&mut self) {
         trace!("services sync");
 
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         for (id, inst) in self.services.iter_mut() {
             // Skip unchanged instances
             if !inst.changed {
@@ -284,22 +284,18 @@ impl ServiceManager {
     pub fn load(&mut self) {
         trace!("services load");
 
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         let service_info = self.store.load_services().unwrap();
 
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         debug!("Loading {} services from database", service_info.len());
 
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         for i in service_info {
             let keys = Keys::new(i.public_key.clone());
 
             let primary_page = match i.primary_page {
-                Some(p) => self
-                    .store
-                    .load_page(&p, &keys)
-                    .unwrap()
-                    .unwrap(),
+                Some(p) => self.store.load_page(&p, &keys).unwrap().unwrap(),
                 None => {
                     trace!("No primary page for service: {:?}", i);
                     continue;

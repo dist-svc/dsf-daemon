@@ -4,7 +4,7 @@
 use crate::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{hash_map::Entry, HashMap};
 
 use log::{debug, error, info, trace, warn};
 
@@ -13,7 +13,7 @@ use dsf_core::prelude::*;
 use crate::store::Store;
 
 pub mod info;
-pub use info::{Peer, PeerAddress, PeerInfo, PeerState, PeerFlags};
+pub use info::{Peer, PeerAddress, PeerFlags, PeerInfo, PeerState};
 
 /// PeerManager allows the creation of and provides storage for peer objects.
 /// This insures that one shared peer object exists for each PeerManager id
@@ -71,12 +71,15 @@ impl PeerManager {
         self.index += 1;
 
         let info = PeerInfo::new(id.clone(), address, state, index, None);
-        let peer = Peer { info, flags: PeerFlags::empty() };
+        let peer = Peer {
+            info,
+            flags: PeerFlags::empty(),
+        };
 
         self.peers.insert(id.clone(), peer.clone());
 
         // Write to store
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         if let Err(e) = self.store.save_peer(&peer.info) {
             error!("Error writing peer {} to db: {:?}", id, e);
         }
@@ -90,7 +93,7 @@ impl PeerManager {
         if let Some(p) = peer {
             let info = p.info();
 
-            #[cfg(feature="store")]
+            #[cfg(feature = "store")]
             if let Err(e) = self.store.delete_peer(&info) {
                 error!("Error removing peer from db: {:?}", e);
             }
@@ -156,7 +159,7 @@ impl PeerManager {
         for (id, inst) in self.peers.iter() {
             let info = inst.info();
 
-            #[cfg(feature="store")]
+            #[cfg(feature = "store")]
             if let Err(e) = self.store.save_peer(&info) {
                 error!("Error writing peer {} to db: {:?}", id, e);
             }
@@ -165,7 +168,7 @@ impl PeerManager {
 
     // Load all peers from store
     fn load(&mut self) {
-        #[cfg(feature="store")]
+        #[cfg(feature = "store")]
         let peer_info: Vec<PeerInfo> = match self.store.load_peers() {
             Ok(v) => v,
             Err(e) => {
@@ -173,14 +176,17 @@ impl PeerManager {
                 return;
             }
         };
-        #[cfg(not(feature="store"))]
+        #[cfg(not(feature = "store"))]
         let peer_info: Vec<PeerInfo> = vec![];
 
         for mut info in peer_info {
             info.index = self.index;
             self.index += 1;
 
-            self.peers.entry(info.id.clone()).or_insert(Peer { info, flags: PeerFlags::empty() });
+            self.peers.entry(info.id.clone()).or_insert(Peer {
+                info,
+                flags: PeerFlags::empty(),
+            });
         }
     }
 }

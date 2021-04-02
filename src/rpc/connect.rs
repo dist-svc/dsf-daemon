@@ -120,7 +120,11 @@ impl Dsf {
                 // This bypasses DSF state tracking as it is managed by the DHT
                 // TODO: this precludes _retries_ and state tracking... find a better solution
                 self.net_sink
-                    .try_send((opts.address.clone().into(), None, NetMessage::Request(net_req)))
+                    .try_send((
+                        opts.address.clone().into(),
+                        None,
+                        NetMessage::Request(net_req),
+                    ))
                     .unwrap();
 
                 *state = ConnectState::Pending(connect);

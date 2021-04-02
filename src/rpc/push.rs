@@ -107,14 +107,13 @@ impl Dsf {
                 };
 
                 // Parse out / validate incoming data
-                let (base, _n) =
-                    match Base::parse(&opts.data, self) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            error!("Invalid data for push");
-                            return Err(e);
-                        }
-                    };
+                let (base, _n) = match Base::parse(&opts.data, self) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Invalid data for push");
+                        return Err(e);
+                    }
+                };
 
                 // TODO: check data validity (kind, index, etc.)
 

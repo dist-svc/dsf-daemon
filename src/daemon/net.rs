@@ -29,7 +29,7 @@ use crate::daemon::Dsf;
 use crate::error::Error as DaemonError;
 
 use crate::core::data::DataInfo;
-use crate::core::peers::{Peer, PeerAddress, PeerState, PeerFlags};
+use crate::core::peers::{Peer, PeerAddress, PeerFlags, PeerState};
 
 /// Network operation for management by network module
 pub struct NetOp {
@@ -150,7 +150,9 @@ impl Dsf {
         // Return response if provided
         if let Some(r) = resp {
             // Encode response
-            let d = self.net_encode(Some(&from), net::Message::Response(r)).await?;
+            let d = self
+                .net_encode(Some(&from), net::Message::Response(r))
+                .await?;
 
             // Short-circuit to respond
             msg.reply(&d).await?;
@@ -177,7 +179,6 @@ impl Dsf {
         // TODO: handle crypto mode errors
         // (eg. message encoded with SYMMETRIC but no pubkey for derivation)
 
-
         // Upgrade to symmetric mode on incoming symmetric message
         // TODO: there needs to be another transition for this in p2p comms
         if message.flags().contains(Flags::SYMMETRIC_MODE) {
@@ -186,23 +187,27 @@ impl Dsf {
                     warn!("Enabling symmetricy crypto for peer: {}", message.from());
                     p.flags |= PeerFlags::SYMMETRIC_ENABLED;
                 }
-                
             });
         }
 
         Ok(message)
     }
 
-    pub async fn net_encode(&mut self, id: Option<&Id>, mut msg: net::Message) -> Result<Bytes, DaemonError> {
+    pub async fn net_encode(
+        &mut self,
+        id: Option<&Id>,
+        mut msg: net::Message,
+    ) -> Result<Bytes, DaemonError> {
         // Encode response
         let mut buff = vec![0u8; 4096];
 
         // Fetch cached keys if available, otherwise use service keys
-        let (enc_key, sym) = match id.map(|id| (self.keys(id), self.peers().filter(id, |p| p.flags )) ) {
-            Some((Some(k), Some(f))) if f.contains(PeerFlags::SYMMETRIC_ENABLED) => (k, true),
-            Some((Some(k), _)) => (k, false),
-            _ => (self.service().keys(), false)
-        };
+        let (enc_key, sym) =
+            match id.map(|id| (self.keys(id), self.peers().filter(id, |p| p.flags))) {
+                Some((Some(k), Some(f))) if f.contains(PeerFlags::SYMMETRIC_ENABLED) => (k, true),
+                Some((Some(k), _)) => (k, false),
+                _ => (self.service().keys(), false),
+            };
 
         if sym {
             *msg.flags_mut() |= Flags::SYMMETRIC_MODE;
@@ -411,7 +416,7 @@ impl Dsf {
                 if let Ok(k) = self.service().keys().derive_peer(pk.clone()) {
                     self.key_cache.insert(id.clone(), k.clone());
                 }
-            },
+            }
             _ => (),
         }
 

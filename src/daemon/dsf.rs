@@ -210,7 +210,7 @@ impl Dsf {
 
             let enc_keys = self.service().keys();
             let _n = b.encode(Some(&enc_keys), &mut buff).unwrap();
-            
+
             p.set_signature(b.signature().clone().unwrap());
         }
 
@@ -447,10 +447,9 @@ impl Dsf {
 
 impl dsf_core::KeySource for Dsf {
     fn keys(&self, id: &Id) -> Option<dsf_core::Keys> {
-        
         // Check key cache for matching keys
         if let Some(keys) = self.key_cache.get(id) {
-            return Some(keys.clone())
+            return Some(keys.clone());
         }
 
         // Find public key from source
@@ -472,7 +471,7 @@ impl dsf_core::KeySource for Dsf {
             (None, None)
         };
 
-         match pub_key {
+        match pub_key {
             Some(pk) => {
                 let mut keys = Keys::new(pk);
                 if let Some(sk) = sec_key {
@@ -523,7 +522,10 @@ impl Future for Dsf {
             };
 
             // Encode and enqueue them
-            if let Err(e) = self.net_sink.try_send((addr, Some(id), NetMessage::Request(req))) {
+            if let Err(e) = self
+                .net_sink
+                .try_send((addr, Some(id), NetMessage::Request(req)))
+            {
                 error!("Error sending outgoing DHT message: {:?}", e);
                 return Poll::Ready(Err(DsfError::Unknown));
             }

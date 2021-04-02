@@ -83,8 +83,8 @@ impl Dsf {
                             Some(p) => Some(ResponseKind::Peer(p)),
                             None => Some(ResponseKind::None),
                         }
-                    },
-                    Err(_e) => Some(ResponseKind::None)
+                    }
+                    Err(_e) => Some(ResponseKind::None),
                 }
             }
             RequestKind::Service(ServiceCommands::List(_options)) => {
@@ -93,15 +93,14 @@ impl Dsf {
             }
             RequestKind::Service(ServiceCommands::Info(options)) => {
                 match self.resolve_identifier(&options.service) {
-                    Ok(id) => {
-                        Some(
-                            self.services()
-                                .find(&id)
-                                .map(|i| ResponseKind::Service(i))
-                                .unwrap_or(ResponseKind::None),
-                        )
-                    }, Err(_e) => Some(ResponseKind::None)
-                }  
+                    Ok(id) => Some(
+                        self.services()
+                            .find(&id)
+                            .map(|i| ResponseKind::Service(i))
+                            .unwrap_or(ResponseKind::None),
+                    ),
+                    Err(_e) => Some(ResponseKind::None),
+                }
             }
             RequestKind::Service(ServiceCommands::SetKey(options)) => {
                 match self.resolve_identifier(&options.service) {
@@ -115,8 +114,8 @@ impl Dsf {
                             Some(s) => Some(ResponseKind::Services(vec![s])),
                             None => Some(ResponseKind::None),
                         }
-                    },
-                    Err(_e) => Some(ResponseKind::None)
+                    }
+                    Err(_e) => Some(ResponseKind::None),
                 }
             }
             RequestKind::Service(ServiceCommands::Remove(options)) => {
@@ -128,20 +127,19 @@ impl Dsf {
                             Some(s) => Some(ResponseKind::Service(s)),
                             None => Some(ResponseKind::None),
                         }
-                    },
-                    Err(e) => Some(ResponseKind::None)
+                    }
+                    Err(e) => Some(ResponseKind::None),
                 }
             }
             RequestKind::Data(DataCommands::List(data::ListOptions { service, bounds })) => {
                 match self.resolve_identifier(&service) {
                     Ok(id) => {
-
                         let d = self.data().fetch_data(&id, bounds.count.unwrap_or(100))?;
                         let i = d.iter().map(|i| i.info.clone()).collect();
-        
+
                         Some(ResponseKind::Data(i))
-                    }, 
-                    Err(_e) => Some(ResponseKind::None)
+                    }
+                    Err(_e) => Some(ResponseKind::None),
                 }
             }
 

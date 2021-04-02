@@ -5,10 +5,10 @@
 #[macro_use]
 extern crate diesel;
 
-#[cfg(feature="jemalloc")]
+#[cfg(feature = "jemalloc")]
 extern crate jemallocator;
 
-#[cfg(feature="jemalloc")]
+#[cfg(feature = "jemalloc")]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
