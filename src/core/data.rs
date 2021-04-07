@@ -1,7 +1,7 @@
 use crate::sync::{Arc, Mutex};
 use std::convert::TryFrom;
 
-use log::{error, info, trace};
+use log::{error, info, debug, trace};
 
 use dsf_core::{page::Page, types::Id, Keys};
 
@@ -44,12 +44,12 @@ impl DataManager {
         // Load data info
         let info: Vec<DataInfo> = self.store.find_data(service_id)?;
 
-        info!("Loaded data info: {:?}", info);
+        debug!("Loaded data info for service: {}", service_id);
 
         // Load associated raw pages
         let mut data = Vec::with_capacity(info.len());
         for i in info {
-            info!("Fetching raw page for: {}", i.signature);
+            trace!("Fetching raw page for: {}", i.signature);
 
             let p = self.store.load_page(&i.signature, &keys)?;
             data.push(DataInst {

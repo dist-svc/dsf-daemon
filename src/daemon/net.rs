@@ -205,13 +205,18 @@ impl Dsf {
         let (enc_key, sym) =
             match id.map(|id| (self.keys(id), self.peers().filter(id, |p| p.flags))) {
                 Some((Some(k), Some(f))) if f.contains(PeerFlags::SYMMETRIC_ENABLED) => (k, true),
-                Some((Some(k), _)) => (k, false),
+                // TODO: disabled to avoid attempting to encode using peer private key when symmetric mode is disabled
+                // Not _entirely_ sure why this needed to be there at all...
+                // Some((Some(k), _)) => (k, false),
                 _ => (self.service().keys(), false),
             };
 
         if sym {
             *msg.flags_mut() |= Flags::SYMMETRIC_MODE;
         }
+
+        debug!("Encoding message: {:?}", msg);
+        debug!("Keys: {:?}", enc_key);
 
         // Encode and sign message
         let n = msg.encode(&enc_key, &mut buff)?;
