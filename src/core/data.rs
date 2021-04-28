@@ -6,6 +6,7 @@ use log::{error, info, debug, trace};
 use dsf_core::{page::Page, types::Id, Keys};
 
 pub use dsf_rpc::data::DataInfo;
+use dsf_rpc::{PageBounds, TimeBounds};
 
 use crate::error::Error;
 use crate::store::Store;
@@ -33,7 +34,7 @@ impl DataManager {
 
     /// Fetch data for a given service
     // TODO: add paging?
-    pub fn fetch_data(&self, service_id: &Id, _limit: usize) -> Result<Vec<DataInst>, Error> {
+    pub fn fetch_data(&self, service_id: &Id, page_bounds: &PageBounds, _time_bounds: &TimeBounds) -> Result<Vec<DataInst>, Error> {
         // Load service info
         let service = match self.store.find_service(service_id)? {
             Some(s) => s,
@@ -42,13 +43,24 @@ impl DataManager {
         let keys = Keys::new(service.public_key.clone());
 
         // Load data info
-        let info: Vec<DataInfo> = self.store.find_data(service_id)?;
+        let mut info: Vec<DataInfo> = self.store.find_data(service_id)?;
+        info.sort_by(|a, b| a.index.partial_cmp(&b.index).unwrap() );
+        info.reverse();
+
+
+        // TODO: filter by time bounds (where possible)
+
+        // TODO: apply offset
+
+        let offset = page_bounds.offset.unwrap_or(0);
+        let limit = page_bounds.count.unwrap_or(10);
+        let limit = info.len().min(offset + limit);
 
         debug!("Loaded data info for service: {}", service_id);
 
         // Load associated raw pages
         let mut data = Vec::with_capacity(info.len());
-        for i in info {
+        for i in info.drain(offset..limit) {
             trace!("Fetching raw page for: {}", i.signature);
 
             let p = self.store.load_page(&i.signature, &keys)?;

@@ -131,10 +131,10 @@ impl Dsf {
                     Err(e) => Some(ResponseKind::None),
                 }
             }
-            RequestKind::Data(DataCommands::List(data::ListOptions { service, bounds })) => {
+            RequestKind::Data(DataCommands::List(data::ListOptions { service, page_bounds, time_bounds })) => {
                 match self.resolve_identifier(&service) {
                     Ok(id) => {
-                        let d = self.data().fetch_data(&id, bounds.count.unwrap_or(100))?;
+                        let d = self.data().fetch_data(&id, &page_bounds, &time_bounds)?;
                         let i = d.iter().map(|i| i.info.clone()).collect();
 
                         Some(ResponseKind::Data(i))

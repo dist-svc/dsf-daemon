@@ -130,8 +130,8 @@ impl Dsf {
 
                         // Return info
                         let info = LocateInfo {
-                            origin: true,
-                            updated: false,
+                            origin: false,
+                            updated: true,
                         };
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Located(info));
                         done.try_send(resp).unwrap();
@@ -143,6 +143,23 @@ impl Dsf {
                     Poll::Ready(Err(e)) => {
                         error!("DHT search error: {:?}", e);
 
+                        // Check local registry
+                        if let Some(_i) = self.services().find(&opts.id) {
+
+                            // Return info
+                            let info = LocateInfo {
+                                origin: false,
+                                updated: false,
+                            };
+                            let resp = rpc::Response::new(req_id, rpc::ResponseKind::Located(info));
+                            done.try_send(resp).unwrap();
+
+                            *state = LocateState::Done;
+
+                            return Ok(false)
+                        }
+
+                        // Otherwise, fail
                         let resp = rpc::Response::new(
                             req_id,
                             rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
