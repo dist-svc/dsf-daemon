@@ -94,7 +94,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - uses: FranzDiebold/github-env-vars-action@v1
+    - uses: FranzDiebold/github-env-vars-action@v2
+
     - name: Configure toolchain
       uses: actions-rs/toolchain@v1
       with:
@@ -142,7 +143,7 @@ jobs:
       run: |
         cargo deb --no-build --no-strip --target ${{ matrix.target }}
     
-    - name: Create archive
+    - name: Create tgz archive
       run: tar -cvf target/dsfd-${{ matrix.target }}.tgz -C target/${{ matrix.target }}/release/ ${{ matrix.output }}
       
     - name: Store CI artifacts
@@ -167,8 +168,8 @@ jobs:
       uses: svenstaro/upload-release-action@v2
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: target/dsfd-${{ matrix.target }}.tgz
         asset_name: dsfd-${{ matrix.target }}.tgz
+        file: target/dsfd-${{ matrix.target }}.tgz
         tag: ${{ github.ref }}
         overwrite: true
 
