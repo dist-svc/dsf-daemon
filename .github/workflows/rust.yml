@@ -138,8 +138,9 @@ jobs:
 
     - name: Package deb
       if: ${{ matrix.os == 'ubuntu-latest' }}
+      # --no-strip to keep debug symbols while we're still alpha
       run: |
-        cargo deb --no-build --target ${{ matrix.target }}
+        cargo deb --no-build --no-strip --target ${{ matrix.target }}
     
     - name: Create archive
       run: tar -cvf target/dsfd-${{ matrix.target }}.tgz -C target/${{ matrix.target }}/release/ ${{ matrix.output }}
