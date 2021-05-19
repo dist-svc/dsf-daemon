@@ -65,6 +65,12 @@ jobs:
   build:
     name: Build Binaries
     runs-on: ${{ matrix.os }}
+    env:
+      ACCESS_KEY:  ${{ secrets.ACCESS_KEY }}
+      SECRET_KEY:  ${{ secrets.SECRET_KEY }}
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_REGION:   ${{ secrets.S3_REGION }}
+      S3_BUCKET:   ${{ secrets.S3_BUCKET }}
     
     strategy:
       fail-fast: false
