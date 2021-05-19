@@ -14,7 +14,7 @@ default-run = "dsfd"
 profile = []
 jemalloc = [ "jemallocator" ]
 store = []
-default = [ "store", "jemalloc", "no_deadlocks", "libsqlite3-sys/bundled" ] 
+default = [ "store", "no_deadlocks", "libsqlite3-sys/bundled" ] 
 
 # Debian packaging metadata (for cargo-deb)
 [package.metadata.deb]
@@ -37,7 +37,7 @@ colored = "1.9.0"
 
 futures_codec = "0.3.4"
 async-trait = "0.1.21"
-bytes = "0.5.3"
+bytes = "1.0.1"
 serde_json = "1.0.44"
 chrono-humanize = "0.0.11"
 tempdir = "0.3.7"
@@ -133,3 +133,8 @@ path = "src/bin/dsfd.rs"
 name = "dsfm"
 path = "src/bin/dsfm.rs"
 
+[patch.crates-io]
+dsf-core = { git = "https://github.com/dist-svc/dsf-core" }
+dsf-rpc = { git = "https://github.com/dist-svc/dsf-rpc" }
+sodiumoxide = { git = "https://github.com/sodiumoxide/sodiumoxide" }
+kad = { git = "https://github.com/ryankurte/rust-kad" }

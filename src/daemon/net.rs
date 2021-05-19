@@ -69,7 +69,7 @@ impl Future for NetOp {
             self.resps.insert(id, resp);
         }
 
-        // Check for completion
+        // Check for completion (no pending requests)
         let done = if self.reqs.len() == 0 {
             debug!("Net operation {} complete", self.req.id);
             true

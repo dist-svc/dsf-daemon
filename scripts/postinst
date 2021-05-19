@@ -3,7 +3,7 @@
 # Create dsfd user
 useradd dsfd
 
-# Create dsfd data storage directory
+# Create dsfd data directory
 mkdir -p /var/dsfd/
 chown -R dsfd:root /var/dsfd
 chmod -R 770 /var/dsfd

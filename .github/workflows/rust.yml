@@ -75,9 +75,15 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             output: dsfd
+            use_cross: false
           - target: armv7-unknown-linux-gnueabihf 
             os: ubuntu-latest
             output: dsfd
+            use_cross: true
+          - target: armv7-unknown-linux-musleabihf
+            os: ubuntu-latest
+            output: dsfd
+            use_cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
             output: dsfd
@@ -91,6 +97,13 @@ jobs:
         toolchain: nightly
         target:  ${{ matrix.target }}
         override: true
+
+    - name: Install cargo-deb
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      uses: actions-rs/install@v0.1
+      with:
+        crate: cargo-deb
+        version: latest
     
     - name: Configure caching
       uses: actions/cache@v2
@@ -116,17 +129,24 @@ jobs:
         use-cross: ${{ matrix.use_cross }}
         command: build
         args: --release --target ${{ matrix.target }}
+
+    - name: Package deb
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: |
+        cargo deb --no-build --target ${{ matrix.target }}
     
     - name: Create archive
       run: tar -cvf target/dsfd-${{ matrix.target }}.tgz -C target/${{ matrix.target }}/release/ ${{ matrix.output }}
       
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v1
+    - name: Store CI artifacts
+      uses: actions/upload-artifact@v2
       with:
-        name: dsfd-${{ matrix.target }}.tgz
-        path: target/dsfd-${{ matrix.target }}.tgz
+        name: dsfd-${{ matrix.target }}
+        path: |
+          target/dsfd-${{ matrix.target }}.tgz
+          target/${{ matrix.target }}/debian/*.deb
       
-    - name: Upload release
+    - name: Upload assets to release
       if: ${{ startsWith(github.ref, 'refs/tags/v') }}
       uses: svenstaro/upload-release-action@v2
       with:
