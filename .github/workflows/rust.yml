@@ -23,7 +23,6 @@ jobs:
 
       - name: Configure caching
         uses: actions/cache@v2
-        if: ${{ matrix.os != 'macos-latest' }}
         with:
           key: check
           path: |
@@ -52,7 +51,6 @@ jobs:
 
       - name: Configure caching
         uses: actions/cache@v2
-        if: ${{ matrix.os != 'macos-latest' }}
         with:
           key: test
           path: |
@@ -90,7 +88,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-      
+    - uses: FranzDiebold/github-env-vars-action@v1
     - name: Configure toolchain
       uses: actions-rs/toolchain@v1
       with:
@@ -104,6 +102,12 @@ jobs:
       with:
         crate: cargo-deb
         version: latest
+
+    - name: Install s3-util
+      uses: actions-rs/install@v0.1
+      with:
+        crate: s3-util
+        version: latest
     
     - name: Configure caching
       uses: actions/cache@v2
@@ -114,12 +118,8 @@ jobs:
           ${{ env.HOME }}/.cargo
           ./target
     
-    - name: Install cross toolchain (armv7)
-      if: ${{ matrix.target == 'armv7-unknown-linux-gnueabihf' }}
-      run: sudo apt-get install gcc-arm-linux-gnueabihf
-
-    - name: Enable cross compilation (armv7)
-      if: ${{ matrix.target == 'armv7-unknown-linux-gnueabihf' }}
+    - name: Enable cross compilation
+      if: ${{ matrix.use_cross }}
       run: |
         echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
 
@@ -145,6 +145,15 @@ jobs:
         path: |
           target/dsfd-${{ matrix.target }}.tgz
           target/${{ matrix.target }}/debian/*.deb
+
+    - name: Upload binaries to S3
+      run: |
+        s3-util upload dsfd-${{ matrix.target }}-${{ github.ref }}.tgz target/dsfd-${{ matrix.target }}.tgz
+
+    - name: Upload deb packages to S3
+      if: ${{ matrix.os == 'ubuntu-latest' }}
+      run: |
+        s3-util upload dsfd-${{ matrix.target }}-${{ github.ref }}.deb "target/${{ matrix.target }}/debian/*.deb"
       
     - name: Upload assets to release
       if: ${{ startsWith(github.ref, 'refs/tags/v') }}

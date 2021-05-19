@@ -131,17 +131,19 @@ impl Dsf {
                     Err(e) => Some(ResponseKind::None),
                 }
             }
-            RequestKind::Data(DataCommands::List(data::ListOptions { service, page_bounds, time_bounds })) => {
-                match self.resolve_identifier(&service) {
-                    Ok(id) => {
-                        let d = self.data().fetch_data(&id, &page_bounds, &time_bounds)?;
-                        let i = d.iter().map(|i| i.info.clone()).collect();
+            RequestKind::Data(DataCommands::List(data::ListOptions {
+                service,
+                page_bounds,
+                time_bounds,
+            })) => match self.resolve_identifier(&service) {
+                Ok(id) => {
+                    let d = self.data().fetch_data(&id, &page_bounds, &time_bounds)?;
+                    let i = d.iter().map(|i| i.info.clone()).collect();
 
-                        Some(ResponseKind::Data(i))
-                    }
-                    Err(_e) => Some(ResponseKind::None),
+                    Some(ResponseKind::Data(i))
                 }
-            }
+                Err(_e) => Some(ResponseKind::None),
+            },
 
             _ => None,
         };

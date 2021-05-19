@@ -20,6 +20,7 @@ use dsf_rpc::{self as rpc};
 const NUM_DAEMONS: usize = 3;
 
 #[test]
+#[ignore]
 fn end_to_end() {
     let d = TempDir::new("dsf-e2e").unwrap();
     let d = d.path().to_str().unwrap().to_string();

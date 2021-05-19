@@ -145,7 +145,6 @@ impl Dsf {
 
                         // Check local registry
                         if let Some(_i) = self.services().find(&opts.id) {
-
                             // Return info
                             let info = LocateInfo {
                                 origin: false,
@@ -156,7 +155,7 @@ impl Dsf {
 
                             *state = LocateState::Done;
 
-                            return Ok(false)
+                            return Ok(false);
                         }
 
                         // Otherwise, fail
