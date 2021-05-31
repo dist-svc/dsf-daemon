@@ -7,6 +7,7 @@ use structopt::StructOpt;
 
 use async_std::stream;
 use async_std::task::{self, JoinHandle};
+use async_std::channel::bounded as channel;
 
 use futures::channel::mpsc;
 use futures::prelude::*;
