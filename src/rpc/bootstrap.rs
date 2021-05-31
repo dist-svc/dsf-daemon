@@ -102,6 +102,12 @@ impl Dsf {
 
                 // TODO: filter by already connected etc.
 
+                if peers.len() == 0 {
+                    info!("Skipping boostrap, no peers");
+                    *state = BootstrapState::Done;
+                    return Ok(false);
+                }
+
                 info!("Bootstrap start ({} peers)", peers.len());
                 let timeout = Duration::from_millis(200).into();
 

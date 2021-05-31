@@ -103,9 +103,9 @@ impl Dsf {
                 let nodes = nodes
                     .iter()
                     .filter_map(|n| {
-                        // Drop nodes without keys from responses
+                        // Drop unseen or nodes without keys from responses
                         // TODO: is this the desired behaviour?
-                        if n.info().pub_key().is_none() {
+                        if n.info().pub_key().is_none() || n.info().seen().is_none() {
                             None
                         } else {
                             Some((

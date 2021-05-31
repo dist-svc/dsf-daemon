@@ -79,12 +79,12 @@ fn test_manager() {
                 )
             )
             .unwrap(),
-            Response::new(
+            Some(Response::new(
                 id1.clone(),
                 rand::random(),
                 ResponseKind::NoResult,
                 Flags::default()
-            ),
+            )),
         );
     });
 }

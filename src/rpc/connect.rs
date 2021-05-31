@@ -159,7 +159,7 @@ impl Dsf {
 
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Connected(i));
 
-                        done.try_send(resp).unwrap();
+                        let _ = done.try_send(resp);
 
                         *state = ConnectState::Done;
                     }
@@ -171,7 +171,7 @@ impl Dsf {
                             rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
                         );
 
-                        done.try_send(resp).unwrap();
+                        let _ = done.try_send(resp);
 
                         *state = ConnectState::Error;
                     }

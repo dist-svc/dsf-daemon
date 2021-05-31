@@ -143,7 +143,7 @@ impl Dsf {
             }
             NetMessage::Request(req) => {
                 let resp = self.handle_net_req(msg.address, req)?;
-                Some(resp)
+                resp
             }
         };
 
@@ -215,8 +215,8 @@ impl Dsf {
             *msg.flags_mut() |= Flags::SYMMETRIC_MODE;
         }
 
-        debug!("Encoding message: {:?}", msg);
-        debug!("Keys: {:?}", enc_key);
+        trace!("Encoding message: {:?}", msg);
+        trace!("Keys: {:?}", enc_key);
 
         // Encode and sign message
         let n = msg.encode(&enc_key, &mut buff)?;
@@ -309,7 +309,10 @@ impl Dsf {
         let req_id = resp.id;
 
         // Generic net message processing here
-        let peer = self.handle_base(&from, &addr.into(), &resp.common, Some(SystemTime::now()));
+        let peer = match self.handle_base(&from, &addr.into(), &resp.common, Some(SystemTime::now())) {
+            Some(p) => p,
+            None => return Ok(None),
+        };
 
         // Parse out DHT responses
         if let Some(dht_resp) = self.net_to_dht_response(&resp.data) {
@@ -344,7 +347,7 @@ impl Dsf {
         &mut self,
         addr: SocketAddr,
         req: net::Request,
-    ) -> Result<net::Response, DaemonError> {
+    ) -> Result<Option<net::Response>, DaemonError> {
         let own_id = self.id();
 
         let span = span!(Level::DEBUG, "id", "{}", own_id);
@@ -363,7 +366,10 @@ impl Dsf {
         );
 
         // Generic net message processing here
-        let peer = self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now()));
+        let peer = match self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now())) {
+            Some(p) => p,
+            None => return Ok(None),
+        };
 
         // Handle specific DSF and DHT messages
         let mut resp = if let Some(dht_req) = self.net_to_dht_request(&req.data) {
@@ -389,7 +395,7 @@ impl Dsf {
 
         trace!("returning response (to: {:?})\n {:?}", from, &resp);
 
-        Ok(resp)
+        Ok(Some(resp))
     }
 
     /// Handles a base message, updating internal state for the sender
@@ -399,7 +405,7 @@ impl Dsf {
         address: &Address,
         c: &net::Common,
         _seen: Option<SystemTime>,
-    ) -> Peer {
+    ) -> Option<Peer> {
         trace!(
             "[DSF ({:?})] Handling base message from: {:?} address: {:?} public_key: {:?}",
             self.id(),
@@ -407,6 +413,14 @@ impl Dsf {
             address,
             c.public_key
         );
+
+
+        // Skip RX of messages / loops
+        // TODO: may need this to check tunnels for STUN or equivalents... a problem for later
+        if *id == self.id() {
+            warn!("handle_base called for self...");
+            return None;
+        }
 
         // Find or create (and push) peer
         let peer = self.peers().find_or_create(
@@ -430,8 +444,6 @@ impl Dsf {
             p.info.seen = Some(SystemTime::now());
             p.info.received += 1;
         });
-
-        assert!(id != &self.id(), "handle_base called for self...");
 
         trace!(
             "[DSF ({:?})] Peer id: {:?} state: {:?} seen: {:?}",
@@ -460,7 +472,7 @@ impl Dsf {
             }
         }
 
-        peer
+        Some(peer)
     }
 
     /// Handle a DSF type message

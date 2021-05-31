@@ -277,7 +277,7 @@ impl Net {
 
                             if let Err(e) = socket.send_to(&d.data, &d.address).await {
                                 error!("socket send error: {:?}", e);
-                                break;
+                                continue;
                             }
 
                             event!(Level::TRACE, kind="UDP tx compete", address = %address);
