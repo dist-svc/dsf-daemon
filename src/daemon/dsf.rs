@@ -510,7 +510,12 @@ impl Future for Dsf {
             // Attach public key to DHT requests
             req.common.public_key = Some(self.pub_key());
 
-            debug!("Issuing DHT {} request ({}) to {}", req.data, req_id, target.id());
+            debug!(
+                "Issuing DHT {} request ({}) to {}",
+                req.data,
+                req_id,
+                target.id()
+            );
 
             // Add message to internal tracking
             // We drop the RX channel here because this gets intercepted

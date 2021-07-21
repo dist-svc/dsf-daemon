@@ -309,10 +309,11 @@ impl Dsf {
         let req_id = resp.id;
 
         // Generic net message processing here
-        let peer = match self.handle_base(&from, &addr.into(), &resp.common, Some(SystemTime::now())) {
-            Some(p) => p,
-            None => return Ok(None),
-        };
+        let peer =
+            match self.handle_base(&from, &addr.into(), &resp.common, Some(SystemTime::now())) {
+                Some(p) => p,
+                None => return Ok(None),
+            };
 
         // Parse out DHT responses
         if let Some(dht_resp) = self.net_to_dht_response(&resp.data) {
@@ -366,7 +367,8 @@ impl Dsf {
         );
 
         // Generic net message processing here
-        let peer = match self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now())) {
+        let peer = match self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now()))
+        {
             Some(p) => p,
             None => return Ok(None),
         };
@@ -413,7 +415,6 @@ impl Dsf {
             address,
             c.public_key
         );
-
 
         // Skip RX of messages / loops
         // TODO: may need this to check tunnels for STUN or equivalents... a problem for later

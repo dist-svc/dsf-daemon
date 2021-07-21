@@ -5,9 +5,9 @@ use log::{debug, error, info, trace, warn};
 
 use structopt::StructOpt;
 
+use async_std::channel::bounded as channel;
 use async_std::stream;
 use async_std::task::{self, JoinHandle};
-use async_std::channel::bounded as channel;
 
 use futures::channel::mpsc;
 use futures::prelude::*;

@@ -109,7 +109,7 @@ impl Dsf {
                             debug!("Using new primary page");
                             page_version = p.header().index();
                             pages.push(p);
-                        },
+                        }
                         (_, Some(p)) => {
                             debug!("Using existing primary page");
                             page_version = p.header().index();
