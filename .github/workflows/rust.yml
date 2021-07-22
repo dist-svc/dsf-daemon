@@ -79,7 +79,7 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             output: dsfd
-            use_cross: false
+            use_cross: true
           - target: armv7-unknown-linux-gnueabihf 
             os: ubuntu-latest
             output: dsfd
@@ -165,12 +165,12 @@ jobs:
 
     - name: Upload binaries to S3
       run: |
-        s3-util upload dsfd-${{ matrix.target }}-$CI_REF_NAME.tgz target/dsfd-${{ matrix.target }}.tgz
+        s3-util upload --acl=public-read dsfd-${{ matrix.target }}-$CI_REF_NAME.tgz target/dsfd-${{ matrix.target }}.tgz
 
     - name: Upload deb packages to S3
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: |
-        s3-util upload dsfd-${{ matrix.target }}-$CI_REF_NAME.deb "target/${{ matrix.target }}/debian/*.deb"
+        s3-util upload --acl=public-read dsfd-${{ matrix.target }}-$CI_REF_NAME.deb "target/${{ matrix.target }}/debian/*.deb"
       
     - name: Upload assets to release
       if: ${{ startsWith(github.ref, 'refs/tags/v') }}

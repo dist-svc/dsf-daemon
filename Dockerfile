@@ -11,7 +11,7 @@ WORKDIR /work
 COPY ./ /work
 RUN cargo build --release
 
-FROM ${ARCH}ubuntu:latest
+FROM ${ARCH}debian:latest
 
 # Copy binary into container
 COPY --from=0 /work/target/release/dsfd /usr/local/bin/dsfd
