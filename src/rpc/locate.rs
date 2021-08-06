@@ -129,6 +129,7 @@ impl Dsf {
                         };
 
                         // Return info
+                        // TODO: only return updated when _new_ data is returned
                         let info = LocateInfo {
                             origin: false,
                             updated: true,

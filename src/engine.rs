@@ -145,7 +145,7 @@ impl Engine {
         let (n, mut page) = service.publish_primary(&mut buff)?;
         page.raw = Some(buff[..n].to_vec());
 
-        // Store service and page
+        // Store peer service identity for re-use
         store.set_peer_service(&service, &page)?;
 
         let span = span!(Level::DEBUG, "engine", "{}", service.id());

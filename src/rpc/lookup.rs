@@ -60,6 +60,8 @@ impl Dsf {
 
         let (tx, rx) = mpsc::channel(1);
 
+        // TODO: catch self-lookup and return
+
         // Create connect object
         let op = RpcOperation {
             req_id,

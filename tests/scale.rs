@@ -101,7 +101,7 @@ fn scale(n: usize, level: LevelFilter) {
         let bar = ProgressBar::new((daemons.len()) as u64);
         for i in 0..daemons.len() {
             let mut j = random::<usize>() % daemons.len();
-            if i == j {
+            while i == j {
                 j = random::<usize>() % daemons.len();
             }
 

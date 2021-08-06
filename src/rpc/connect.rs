@@ -148,6 +148,8 @@ impl Dsf {
                         }
 
                         // Build connect info
+                        // TODO: matching on addresses here fails in -oh so many- ways...
+                        // lookup by hostname etc., peer addressing needs major work
                         let p = v
                             .iter()
                             .find(|p| p.info().address() == opts.address.into())

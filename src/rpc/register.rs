@@ -103,19 +103,14 @@ impl Dsf {
                 // Generate pages / update service instance
                 // TODO: should be viable to replicate _non hosted_ services, this logic may not support this
                 let _service_info = self.services().update_inst(&id, |s| {
-                    debug!("Generating service page");
-                    match (s.publish(false), s.primary_page.as_ref()) {
-                        (Ok(p), _) => {
-                            debug!("Using new primary page");
-                            page_version = p.header().index();
-                            pages.push(p);
-                        }
-                        (_, Some(p)) => {
-                            debug!("Using existing primary page");
+                    debug!("Fetching/generating service page");
+                    match s.publish(false) {
+                        Ok(p) => {
+                            debug!("Using page index: {}", p.header().index());
                             page_version = p.header().index();
                             pages.push(p.clone());
                         }
-                        (Err(e), _) => {
+                        Err(e) => {
                             error!("Error generating primary page: {:?}", e);
                             return;
                         }

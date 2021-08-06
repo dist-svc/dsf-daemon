@@ -65,15 +65,6 @@ impl ServiceInst {
 
     /// Publish a service, creating a new primary page
     pub(crate) fn publish(&mut self, force_update: bool) -> Result<Page, DsfError> {
-        // Check the private key exists for signing the primary page
-        let _private_key = match self.service.private_key() {
-            Some(s) => s,
-            None => {
-                error!("no service private key (id: {})", self.service.id());
-                return Err(DsfError::NoPrivateKey);
-            }
-        };
-
         // Check if there's an existing page
         if let Some(page) = &self.primary_page {
             let (issued, expiry): (Option<SystemTime>, Option<SystemTime>) = (
@@ -98,6 +89,15 @@ impl ServiceInst {
                 return Ok(page.clone());
             }
         }
+
+        // Check the private key exists for signing the primary page
+        let _private_key = match self.service.private_key() {
+            Some(s) => s,
+            None => {
+                error!("no service private key (id: {})", self.service.id());
+                return Err(DsfError::NoPrivateKey);
+            }
+        };
 
         // Generate actual page
         debug!("Generating new service page");
