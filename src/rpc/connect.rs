@@ -19,7 +19,7 @@ use dsf_core::prelude::*;
 use dsf_rpc::{self as rpc, ConnectInfo, ConnectOptions};
 
 use super::ops::{RpcKind, RpcOperation};
-use crate::core::peers::{Peer, PeerAddress};
+use crate::core::peers::{Peer, PeerAddress, PeerFlags};
 use crate::daemon::Dsf;
 use crate::error::Error as DsfError;
 
@@ -144,6 +144,7 @@ impl Dsf {
                                 i.id(),
                                 PeerAddress::Implicit(i.address()),
                                 i.pub_key(),
+                                PeerFlags::empty(),
                             );
                         }
 

@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use futures::channel::mpsc;
 use futures::prelude::*;
-use log::{debug, error, info, trace};
+use log::{debug, warn, error, info, trace};
 use tracing::{span, Level};
 
 use dsf_core::options::Options;
@@ -107,7 +107,7 @@ impl Dsf {
 
                 // Generate pages / update service instance
                 // TODO: should be viable to replicate _non hosted_ services, this logic may not support this
-                let _service_info = self.services().update_inst(&id, |s| {
+                let service_info = self.services().update_inst(&id, |s| {
                     debug!("Fetching/generating service page");
                     match s.publish(false) {
                         Ok(p) => {
@@ -122,8 +122,13 @@ impl Dsf {
                     };
                 });
 
+                let service_info = match service_info {
+                    Some(v) => v,
+                    None => return Err(DsfError::UnknownService.into()),
+                };
+
                 // Generate replica page unless disabled
-                if !opts.no_replica {
+                let replica_version = if !opts.no_replica {
                     // Check if we have an existing replica
                     let existing = self
                         .services()
@@ -168,11 +173,34 @@ impl Dsf {
                         }
                     };
 
+                    let replica_version = replica_page.header.index;
+
                     pages.push(replica_page);
-                }
+
+                    Some(replica_version)
+                } else {
+                    None
+                };
 
                 debug!("Registering service");
                 trace!("Pages: {:?}", pages);
+
+                if self.peers().seen_count() == 0 {
+                    warn!("No active peers, registration only effects local node");
+
+                    let i = RegisterInfo {
+                        // TODO: fix page and replica versions
+                        page_version: service_info.index as u16,
+                        replica_version,
+                        peers: 0,
+                    };
+
+                    let resp = rpc::Response::new(req_id, rpc::ResponseKind::Registered(i));
+                    done.try_send(resp).unwrap();
+
+                    *state = RegisterState::Done;
+                    return Ok(true)
+                }
 
                 // Store pages
                 let (store, _req_id) = match self.dht_mut().store(id, pages) {

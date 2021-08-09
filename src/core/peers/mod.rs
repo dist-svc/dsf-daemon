@@ -43,7 +43,7 @@ impl PeerManager {
         self.peers.get(id).map(|p| p.clone())
     }
 
-    pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>) -> Peer {
+    pub fn find_or_create(&mut self, id: Id, address: PeerAddress, key: Option<PublicKey>, flags: PeerFlags) -> Peer {
         // Update and return existing peer
         if let Some(p) = self.peers.get_mut(&id) {
             p.info.update_address(address);
@@ -73,7 +73,7 @@ impl PeerManager {
         let info = PeerInfo::new(id.clone(), address, state, index, None);
         let peer = Peer {
             info,
-            flags: PeerFlags::empty(),
+            flags,
         };
 
         self.peers.insert(id.clone(), peer.clone());
@@ -110,6 +110,12 @@ impl PeerManager {
 
     pub fn count(&self) -> usize {
         self.peers.len()
+    }
+
+    pub fn seen_count(&self) -> usize {
+        self.peers.iter()
+            .filter(|(_id, p)| p.info().seen.is_some() && !p.flags.contains(PeerFlags::CONSTRAINED) )
+            .count()
     }
 
     pub fn info(&self, id: &Id) -> Option<PeerInfo> {

@@ -29,6 +29,7 @@ pub enum SubscribeState {
     Locating(Vec<kad::dht::LocateFuture<Id, Peer>>),
     Pending(NetFuture),
     Error(Error),
+    Done,
 }
 
 pub struct SubscribeOp {
@@ -119,6 +120,17 @@ impl Dsf {
                     }
                 };
 
+                if self.peers().seen_count() == 0 {
+                    warn!("No active peers, subscription only effects local node");
+
+                    let resp = rpc::Response::new(req_id, rpc::ResponseKind::Subscribed(vec![]));
+
+                    done.try_send(resp).unwrap();
+
+                    *state = SubscribeState::Done;
+                    return Ok(true)
+                }
+
                 // Search for viable replicas in the database
                 let (query, _) = match self.dht_mut().search(id) {
                     Ok(v) => (v),
@@ -163,7 +175,7 @@ impl Dsf {
                         Ok(false)
                     }
                     Poll::Ready(Err(e)) => {
-                        error!("DHT store error: {:?}", e);
+                        error!("DHT search error: {:?}", e);
 
                         // TODO: propagate error
                         *state = SubscribeState::Error(Error::Unknown);

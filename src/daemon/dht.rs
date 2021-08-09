@@ -10,7 +10,7 @@ use dsf_core::types::{Data, Id, RequestId};
 
 use super::Dsf;
 
-use crate::core::peers::{Peer, PeerAddress};
+use crate::core::peers::{Peer, PeerAddress, PeerFlags};
 use crate::error::Error;
 
 /// Adaptor to convert between DSF and DHT requests/responses
@@ -156,6 +156,7 @@ impl Dsf {
                         id.clone(),
                         PeerAddress::Implicit(addr.clone()),
                         Some(key.clone()),
+                        PeerFlags::empty(),
                     );
 
                     dht_nodes.push((id.clone(), node).into());

@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use std::time::Instant;
 use std::time::{Duration, SystemTime};
 
-use dsf_rpc::{RegisterOptions, ServiceIdentifier, SubscribeOptions};
+use dsf_rpc::{LocateOptions, RegisterOptions, ServiceIdentifier, SubscribeOptions};
 use kad::common::message;
 use log::{debug, error, info, trace, warn};
 
@@ -343,7 +343,7 @@ impl Dsf {
     }
 
     /// Handle a received request message and generate a response
-    pub async fn handle_net_req<T: Sink<net::Response> + Unpin>(
+    pub async fn handle_net_req<T: Sink<net::Response> + Clone + Send + Unpin + 'static>(
         &mut self,
         addr: SocketAddr,
         req: net::Request,
@@ -373,21 +373,33 @@ impl Dsf {
             None => return Ok(()),
         };
 
-        // Handle specific DSF and DHT messages
-        let mut resp = if let Some(dht_req) = self.net_to_dht_request(&req.data) {
+        // Handle specific DHT messages
+        let resp = if let Some(dht_req) = self.net_to_dht_request(&req.data) {
             let dht_resp = self.handle_dht_req(from.clone(), peer, req.id, dht_req)?;
 
             let net_resp = self.dht_to_net_response(dht_resp);
 
-            net::Response::new(own_id, req_id, net_resp, Flags::default())
+            Some(net::Response::new(own_id, req_id, net_resp, Flags::default()))
 
+        // Handle delegated messages
+        } else if req.flags.contains(Flags::CONSTRAINED) 
+                && self.handle_dsf_delegated(&peer, req_id, &req, tx.clone())? {
+            None
+
+        // Handle normal DSF messages
         } else {
             let dsf_resp = self.handle_dsf(from.clone(), peer, req.data)?;
+            Some(net::Response::new(own_id, req_id, dsf_resp, Flags::default()))
+        };
 
-            net::Response::new(own_id, req_id, dsf_resp, Flags::default())
+        // Skip processing if we've already got a response
+        let mut resp = match resp {
+            Some(r) => r,
+            None => return Ok(())
         };
 
         // Generic response processing here
+        // TODO: this should probably be in the dsf tx path rather than here?
 
         if flags.contains(Flags::PUB_KEY_REQUEST) {
             resp.common.public_key = Some(our_pub_key);
@@ -428,11 +440,17 @@ impl Dsf {
             return None;
         }
 
+        let mut peer_flags = PeerFlags::empty();
+        if c.flags.contains(Flags::CONSTRAINED) {
+            peer_flags |= PeerFlags::CONSTRAINED;
+        }
+
         // Find or create (and push) peer
         let peer = self.peers().find_or_create(
             id.clone(),
             PeerAddress::Implicit(*address),
             c.public_key.clone(),
+            peer_flags,
         );
 
         // Update key cache
@@ -561,6 +579,7 @@ impl Dsf {
                 info!("Register request from: {} for service: {}", from, id);
                 // TODO: determine whether we should allow this service to be registered
 
+                // Add to local service registry
                 self.service_register(&id, pages)?;
 
                 info!("Register request for service: {} complete", id);
@@ -571,7 +590,7 @@ impl Dsf {
                 info!("Unegister request from: {} for service: {}", from, id);
                 // TODO: determine whether we should allow this service to be unregistered
 
-                unimplemented!()
+                todo!()
             }
             net::RequestKind::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
@@ -649,41 +668,57 @@ impl Dsf {
 
     fn handle_dsf_delegated<T: 'static + Sink<NetResponse> + Unpin + Send> (
         &mut self,
-        from: Id,
+        peer: &Peer,
         req_id: RequestId,
-        req: &net::RequestKind,
+        req: &net::Request,
         mut tx: T,
     ) -> Result<bool, DaemonError> {
         // TODO: elect whether to accept delegated request
 
         let own_id = self.id();
+        let own_pk = self.pub_key();
+        let needs_pk = req.flags.contains(Flags::PUB_KEY_REQUEST);
 
-        match req {
-            net::RequestKind::Register(service_id, _pages) => {
+        match &req.data {
+            net::RequestKind::Locate(service_id) => {
                 info!(
-                    "Delegated register request from: {} for service: {}",
-                    from, service_id
+                    "Delegated locate request from: {} for service: {}",
+                    peer.id(), service_id
                 );
 
-                let opts = RegisterOptions{
-                    service: ServiceIdentifier::id(service_id.clone()),
-                    no_replica: false,
+                let opts = LocateOptions{
+                    id: service_id.clone(),
+                    local_only: false,
                 };
-                let reg = self.register(opts)?;
+                let service_id = service_id.clone();
+                let loc = self.locate(opts)?;
+
 
                 async_std::task::spawn(async move {
-                    let resp = match reg.await {
-                        Ok(v) => net::ResponseKind::Status(Status::Ok),
+                    let resp = match loc.await {
+                        Ok(v) => {
+                            if let Some(p) = v.page {
+                                info!("Locate ok (index: {})", v.page_version);
+                                net::ResponseKind::ValuesFound(service_id, vec![p])
+                            } else {
+                                error!("Locate failed, no page found");
+                                net::ResponseKind::Status(Status::Failed)
+                            }
+                        },
                         Err(e) => {
-                            error!("Registration failed: {:?}", e);
+                            error!("Locate failed: {:?}", e);
                             net::ResponseKind::Status(Status::Failed)
                         },
                     };
 
-                    let resp = net::Response::new(own_id, req_id, resp, Flags::default());
+                    let mut resp = net::Response::new(own_id, req_id, resp, Flags::default());
+
+                    if needs_pk {
+                        resp.common.public_key = Some(own_pk);
+                    }
 
                     if let Err(_e) = tx.send(resp).await {
-                        error!("Register delegate TX error");
+                        error!("Locate delegate TX error");
                     }
                 });
 
@@ -692,28 +727,79 @@ impl Dsf {
             net::RequestKind::Subscribe(service_id) => {
                 info!(
                     "Delegated subscribe request from: {} for service: {}",
-                    from, service_id
+                    peer.id(), service_id
                 );
 
+                // Add subscriber to tracking
+                self.subscribers()
+                    .update_peer(&service_id, &peer.id(), |inst| {
+                        inst.info.updated = Some(SystemTime::now());
+                        inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
+                    })
+                    .unwrap();
+
+                // Issue subscribe request to replicas
                 let opts = SubscribeOptions{
                     service: ServiceIdentifier::id(service_id.clone()),
 
                 };
                 let sub = self.subscribe(opts)?;
 
+                // Await subscription response
                 async_std::task::spawn(async move {
                     let resp = match sub.await {
-                        Ok(v) => net::ResponseKind::Status(Status::Ok),
+                        Ok(_v) => net::ResponseKind::Status(Status::Ok),
+                        Err(e) => {
+                            error!("Subscription failed: {:?}", e);
+                            net::ResponseKind::Status(Status::Failed)
+                        },
+                    };
+
+                    let mut resp = net::Response::new(own_id, req_id, resp, Flags::default());
+                    if needs_pk {
+                        resp.common.public_key = Some(own_pk);
+                    }
+
+                    if let Err(_e) = tx.send(resp).await {
+                        error!("Subscribe delegate TX error");
+                    }
+                });
+
+                Ok(true)
+            },
+            net::RequestKind::Register(service_id, pages) => {
+                info!(
+                    "Delegated register request from: {} for service: {}",
+                    peer.id(), service_id
+                );
+
+                // Add to local service registry
+                self.service_register(&service_id, pages.clone())?;
+
+                // Perform global registration
+                let opts = RegisterOptions{
+                    service: ServiceIdentifier::id(service_id.clone()),
+                    no_replica: false,
+                };
+                let reg = self.register(opts)?;
+
+                // Task to await registration completion
+                async_std::task::spawn(async move {
+                    let resp = match reg.await {
+                        Ok(_v) => net::ResponseKind::Status(Status::Ok),
                         Err(e) => {
                             error!("Registration failed: {:?}", e);
                             net::ResponseKind::Status(Status::Failed)
                         },
                     };
 
-                    let resp = net::Response::new(own_id, req_id, resp, Flags::default());
+                    let mut resp = net::Response::new(own_id, req_id, resp, Flags::default());
+                    if needs_pk {
+                        resp.common.public_key = Some(own_pk);
+                    }
 
                     if let Err(_e) = tx.send(resp).await {
-                        error!("Subscribe delegate TX error");
+                        error!("Register delegate TX error");
                     }
                 });
 

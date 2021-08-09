@@ -90,6 +90,8 @@ impl Dsf {
                         let i = LocateInfo {
                             origin: true,
                             updated: false,
+                            page_version: service_info.index as u16,
+                            page: self.services().filter(&opts.id, |s| s.primary_page.clone() ).flatten()
                         };
 
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Located(i));
@@ -118,7 +120,7 @@ impl Dsf {
                         debug!("DHT search complete! {:?}", v);
 
                         // Register or update service
-                        let _service_info = match self.service_register(&opts.id, v) {
+                        let service_info = match self.service_register(&opts.id, v) {
                             Ok(i) => i,
                             Err(e) => {
                                 error!("Error registering located service: {:?}", e);
@@ -133,6 +135,8 @@ impl Dsf {
                         let info = LocateInfo {
                             origin: false,
                             updated: true,
+                            page_version: service_info.index as u16,
+                            page: self.services().filter(&opts.id, |s| s.primary_page.clone() ).flatten()
                         };
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Located(info));
                         done.try_send(resp).unwrap();
@@ -145,11 +149,13 @@ impl Dsf {
                         error!("DHT search error: {:?}", e);
 
                         // Check local registry
-                        if let Some(_i) = self.services().find(&opts.id) {
+                        if let Some(i) = self.services().find(&opts.id) {
                             // Return info
                             let info = LocateInfo {
                                 origin: false,
                                 updated: false,
+                                page_version: i.index as u16,
+                                page: self.services().filter(&opts.id, |s| s.primary_page.clone() ).flatten()
                             };
                             let resp = rpc::Response::new(req_id, rpc::ResponseKind::Located(info));
                             done.try_send(resp).unwrap();
