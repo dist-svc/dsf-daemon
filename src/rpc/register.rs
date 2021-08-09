@@ -35,6 +35,8 @@ pub struct RegisterFuture {
     rx: mpsc::Receiver<rpc::Response>,
 }
 
+unsafe impl Send for RegisterFuture {}
+
 impl Future for RegisterFuture {
     type Output = Result<RegisterInfo, DsfError>;
 
@@ -67,7 +69,7 @@ impl Dsf {
         };
 
         // Add to tracking
-        debug!("Adding RPC op {} to tracking", req_id);
+        debug!("Adding RPC op {} (register) to tracking", req_id);
         self.rpc_ops.insert(req_id, op);
 
         Ok(RegisterFuture { rx })
@@ -80,6 +82,9 @@ impl Dsf {
         ctx: &mut Context,
         mut done: mpsc::Sender<rpc::Response>,
     ) -> Result<bool, DsfError> {
+        let span = span!(Level::DEBUG, "register");
+        let _enter = span.enter();
+
         let RegisterOp { opts, state } = register_op;
 
         let id = self.resolve_identifier(&opts.service)?;

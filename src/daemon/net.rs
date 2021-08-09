@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 use std::time::Instant;
 use std::time::{Duration, SystemTime};
 
+use dsf_rpc::{RegisterOptions, ServiceIdentifier, SubscribeOptions};
 use kad::common::message;
 use log::{debug, error, info, trace, warn};
 
@@ -21,7 +22,7 @@ use futures::stream::StreamExt;
 
 use tracing::{span, Level};
 
-use dsf_core::net;
+use dsf_core::net::{self, Status};
 use dsf_core::prelude::*;
 use dsf_core::wire::Container;
 
@@ -133,30 +134,28 @@ impl Dsf {
         };
 
         trace!("Net message: {:?}", decoded);
-        let from = decoded.from();
 
         // Route responses as required internally
-        let resp = match decoded {
+        match decoded {
             NetMessage::Response(resp) => {
-                let resp = self.handle_net_resp(msg.address, resp)?;
-                resp
-            }
+                self.handle_net_resp(msg.address, resp)?;
+            },
             NetMessage::Request(req) => {
-                let resp = self.handle_net_req(msg.address, req)?;
-                resp
-            }
+                let (tx, mut rx) = mpsc::channel(1);
+
+                self.handle_net_req(msg.address, req, tx).await?;
+
+                let a = msg.address.into();
+                let mut o = self.net_sink.clone();
+
+                // Spawn a task to forward completed response to outgoing messages
+                async_std::task::spawn(async move {
+                    if let Some(r) = rx.next().await {
+                        let _ = o.send((a, None, NetMessage::Response(r))).await;
+                    }
+                });
+            },
         };
-
-        // Return response if provided
-        if let Some(r) = resp {
-            // Encode response
-            let d = self
-                .net_encode(Some(&from), net::Message::Response(r))
-                .await?;
-
-            // Short-circuit to respond
-            msg.reply(&d).await?;
-        }
 
         Ok(())
     }
@@ -304,7 +303,7 @@ impl Dsf {
         &mut self,
         addr: SocketAddr,
         resp: net::Response,
-    ) -> Result<Option<net::Response>, DaemonError> {
+    ) -> Result<(), DaemonError> {
         let from = resp.from.clone();
         let req_id = resp.id;
 
@@ -312,14 +311,14 @@ impl Dsf {
         let peer =
             match self.handle_base(&from, &addr.into(), &resp.common, Some(SystemTime::now())) {
                 Some(p) => p,
-                None => return Ok(None),
+                None => return Ok(()),
             };
 
         // Parse out DHT responses
         if let Some(dht_resp) = self.net_to_dht_response(&resp.data) {
             let _ = self.handle_dht_resp(from.clone(), peer, req_id, dht_resp);
 
-            return Ok(None);
+            return Ok(());
         }
 
         // Look for matching requests
@@ -340,15 +339,16 @@ impl Dsf {
 
         // TODO: three-way-ack support?
 
-        Ok(None)
+        Ok(())
     }
 
     /// Handle a received request message and generate a response
-    pub fn handle_net_req(
+    pub async fn handle_net_req<T: Sink<net::Response> + Unpin>(
         &mut self,
         addr: SocketAddr,
         req: net::Request,
-    ) -> Result<Option<net::Response>, DaemonError> {
+        mut tx: T,
+    ) -> Result<(), DaemonError> {
         let own_id = self.id();
 
         let span = span!(Level::DEBUG, "id", "{}", own_id);
@@ -370,7 +370,7 @@ impl Dsf {
         let peer = match self.handle_base(&from, &addr.into(), &req.common, Some(SystemTime::now()))
         {
             Some(p) => p,
-            None => return Ok(None),
+            None => return Ok(()),
         };
 
         // Handle specific DSF and DHT messages
@@ -380,6 +380,7 @@ impl Dsf {
             let net_resp = self.dht_to_net_response(dht_resp);
 
             net::Response::new(own_id, req_id, net_resp, Flags::default())
+
         } else {
             let dsf_resp = self.handle_dsf(from.clone(), peer, req.data)?;
 
@@ -397,7 +398,11 @@ impl Dsf {
 
         trace!("returning response (to: {:?})\n {:?}", from, &resp);
 
-        Ok(Some(resp))
+        if let Err(_e) = tx.send(resp).await {
+            error!("Error forwarding net response");
+        }
+
+        Ok(())
     }
 
     /// Handles a base message, updating internal state for the sender
@@ -639,6 +644,84 @@ impl Dsf {
                 Ok(net::ResponseKind::Status(net::Status::Ok))
             }
             _ => Err(DaemonError::Unimplemented),
+        }
+    }
+
+    fn handle_dsf_delegated<T: 'static + Sink<NetResponse> + Unpin + Send> (
+        &mut self,
+        from: Id,
+        req_id: RequestId,
+        req: &net::RequestKind,
+        mut tx: T,
+    ) -> Result<bool, DaemonError> {
+        // TODO: elect whether to accept delegated request
+
+        let own_id = self.id();
+
+        match req {
+            net::RequestKind::Register(service_id, _pages) => {
+                info!(
+                    "Delegated register request from: {} for service: {}",
+                    from, service_id
+                );
+
+                let opts = RegisterOptions{
+                    service: ServiceIdentifier::id(service_id.clone()),
+                    no_replica: false,
+                };
+                let reg = self.register(opts)?;
+
+                async_std::task::spawn(async move {
+                    let resp = match reg.await {
+                        Ok(v) => net::ResponseKind::Status(Status::Ok),
+                        Err(e) => {
+                            error!("Registration failed: {:?}", e);
+                            net::ResponseKind::Status(Status::Failed)
+                        },
+                    };
+
+                    let resp = net::Response::new(own_id, req_id, resp, Flags::default());
+
+                    if let Err(_e) = tx.send(resp).await {
+                        error!("Register delegate TX error");
+                    }
+                });
+
+                Ok(true)
+            },
+            net::RequestKind::Subscribe(service_id) => {
+                info!(
+                    "Delegated subscribe request from: {} for service: {}",
+                    from, service_id
+                );
+
+                let opts = SubscribeOptions{
+                    service: ServiceIdentifier::id(service_id.clone()),
+
+                };
+                let sub = self.subscribe(opts)?;
+
+                async_std::task::spawn(async move {
+                    let resp = match sub.await {
+                        Ok(v) => net::ResponseKind::Status(Status::Ok),
+                        Err(e) => {
+                            error!("Registration failed: {:?}", e);
+                            net::ResponseKind::Status(Status::Failed)
+                        },
+                    };
+
+                    let resp = net::Response::new(own_id, req_id, resp, Flags::default());
+
+                    if let Err(_e) = tx.send(resp).await {
+                        error!("Subscribe delegate TX error");
+                    }
+                });
+
+                Ok(true)
+            },
+            _ => {
+                Ok(false)
+            }
         }
     }
 }

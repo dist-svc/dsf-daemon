@@ -64,10 +64,13 @@ pub struct Dsf {
 
     store: Store,
 
+    /// Tracking for RPC operations
     pub(crate) rpc_ops: HashMap<u64, RpcOperation>,
 
+    /// Tracking for network operations (collections of requests with retries etc.)
     pub(crate) net_ops: HashMap<u16, NetOp>,
 
+    /// Tracking for individual outgoing network requests
     pub(crate) net_requests: HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>,
 
     pub(crate) net_sink: mpsc::Sender<(Address, Option<Id>, NetMessage)>,

@@ -40,145 +40,50 @@ pub struct SubscribeFuture {
     rx: mpsc::Receiver<rpc::Response>,
 }
 
+unsafe impl Send for SubscribeFuture {}
+
+impl Future for SubscribeFuture {
+    type Output = Result<Vec<SubscriptionInfo>, DsfError>;
+
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+        let resp = match self.rx.poll_next_unpin(ctx) {
+            Poll::Ready(Some(r)) => r,
+            _ => return Poll::Pending,
+        };
+
+        match resp.kind() {
+            rpc::ResponseKind::Subscribed(r) => Poll::Ready(Ok(r)),
+            rpc::ResponseKind::Error(e) => Poll::Ready(Err(e.into())),
+            _ => Poll::Pending,
+        }
+    }
+}
+
 impl Dsf {
     // Subscribe to data from a given service
-    pub async fn subscribe(
+    pub fn subscribe(
         &mut self,
         options: SubscribeOptions,
-    ) -> Result<Vec<SubscriptionInfo>, Error> {
+    ) -> Result<SubscribeFuture, Error> {
         let span = span!(Level::DEBUG, "subscribe");
         let _enter = span.enter();
 
-        info!("Subscribe: {:?}", &options.service);
+        let req_id = rand::random();
 
-        let id = match self.resolve_identifier(&options.service) {
-            Ok(id) => id,
-            Err(e) => return Err(e),
+        let (tx, rx) = mpsc::channel(1);
+
+        // Create connect object
+        let op = RpcOperation {
+            req_id,
+            kind: RpcKind::subscribe(options),
+            done: tx,
         };
 
-        let own_id = self.id();
+        // Add to tracking
+        debug!("Adding RPC op {} (subscribe) to tracking", req_id);
+        self.rpc_ops.insert(req_id, op);
 
-        // Fetch the known service from the service list
-        let _service_info = match self.services().find(&id) {
-            Some(s) => s,
-            None => {
-                // Only known services can be registered
-                error!("unknown service (id: {})", id);
-                return Err(Error::UnknownService);
-            }
-        };
-
-        debug!("Service: {:?}", id);
-
-        // TODO: query for replicas from the distributed database?
-
-        // Fetch known replicas
-        let replicas = self.replicas().find(&id);
-
-        // Search for peer information for viable replicas
-        let mut searches = Vec::with_capacity(replicas.len());
-        for inst in replicas.iter() {
-            let (locate, _req_id) = match self.dht_mut().locate(inst.info.peer_id.clone()) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Error starting DHT locate: {:?}", e);
-                    return Err(Error::Unknown);
-                }
-            };
-
-            searches.push(locate);
-        }
-
-        info!("Searching for viable replicas");
-
-        // Execute searches
-        let mut search_responses = join_all(searches).await;
-
-        // Filter successful responses
-        let replicas: Vec<_> = search_responses.drain(..).filter_map(|r| r.ok()).collect();
-        info!(
-            "Searches complete, found {} viable replicas",
-            replicas.len()
-        );
-
-        // Fetch addresses from viable replicas
-        // TODO: limited subset of replicas
-        let peers: Vec<_> = replicas
-            .iter()
-            .filter(|_v| true)
-            .map(|v| v.info().clone())
-            .collect();
-
-        // Issue subscription requests
-        let req = net::Request::new(
-            self.id(),
-            rand::random(),
-            net::RequestKind::Subscribe(id.clone()),
-            Flags::default(),
-        );
-        info!("Sending subscribe messages to {} peers", replicas.len());
-
-        let subscribe_responses = self.net_op(peers, req).await;
-
-        let mut subscription_info = vec![];
-
-        for (_peer_id, response) in &subscribe_responses {
-            match response.data {
-                net::ResponseKind::Status(net::Status::Ok)
-                | net::ResponseKind::ValuesFound(_, _) => {
-                    debug!(
-                        "[DSF ({:?})] Subscription ack from: {:?}",
-                        own_id, response.from
-                    );
-
-                    // Update replica status
-                    self.replicas()
-                        .update_replica(&id, &response.from, |r| {
-                            r.info.active = true;
-                        })
-                        .unwrap();
-
-                    subscription_info.push(SubscriptionInfo {
-                        kind: SubscriptionKind::Peer(response.from.clone()),
-                        service_id: id.clone(),
-                        updated: Some(SystemTime::now()),
-                        expiry: None,
-                    });
-                }
-                net::ResponseKind::Status(net::Status::InvalidRequest) => {
-                    debug!(
-                        "[DSF ({:?})] Subscription denied from: {:?}",
-                        own_id, response.from
-                    );
-                }
-                _ => {
-                    warn!(
-                        "[DSF ({:?})] Unhandled response from: {:?}",
-                        own_id, response.from
-                    );
-                }
-            }
-        }
-
-        if subscription_info.len() > 0 {
-            info!(
-                "[DSF ({:?})] Subscription complete, updating service state",
-                own_id
-            );
-            self.services().update_inst(&id, |s| {
-                if s.state == ServiceState::Located {
-                    s.state = ServiceState::Subscribed;
-                }
-            });
-        } else {
-            warn!(
-                "[DSF ({:?})] Subscription failed, no viable replicas found",
-                own_id
-            );
-            return Err(Error::Core(CoreError::NoReplicasFound));
-        }
-
-        Ok(subscription_info)
+        Ok(SubscribeFuture { rx })
     }
 
     pub fn poll_rpc_subscribe(

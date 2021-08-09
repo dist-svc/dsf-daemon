@@ -9,6 +9,7 @@ use log::{debug, error, info, trace, warn};
 use async_std::task;
 
 use futures::channel::mpsc;
+use futures::StreamExt;
 
 use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 
@@ -68,17 +69,22 @@ fn test_manager() {
     task::block_on(async {
         info!("Responds to pings");
 
+        let (tx, mut rx) = mpsc::channel(1);
+
+        dsf.handle_net_req(
+            a2,
+            Request::new(
+                s2.id(),
+                rand::random(),
+                RequestKind::Ping,
+                Flags::ADDRESS_REQUEST
+            ),
+            tx,
+        )
+        .await.unwrap();
+
         assert_eq!(
-            dsf.handle_net_req(
-                a2,
-                Request::new(
-                    s2.id(),
-                    rand::random(),
-                    RequestKind::Ping,
-                    Flags::ADDRESS_REQUEST
-                )
-            )
-            .unwrap(),
+            rx.next().await,
             Some(Response::new(
                 id1.clone(),
                 rand::random(),

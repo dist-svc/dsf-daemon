@@ -237,7 +237,7 @@ impl Net {
                             let (n, address) = match res {
                                 Ok(v) => v,
                                 Err(e) => {
-                                    error!("recieve error: {:?}", e);
+                                    error!("receive error: {:?}", e);
                                     break
                                 },
                             };
