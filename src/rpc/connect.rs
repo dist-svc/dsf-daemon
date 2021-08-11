@@ -167,7 +167,7 @@ impl Dsf {
                         *state = ConnectState::Done;
                     }
                     Poll::Ready(Err(e)) => {
-                        error!("DHT connect error: {:?}", e);
+                        warn!("DHT connect error: {:?}", e);
 
                         let resp = rpc::Response::new(
                             req_id,

@@ -146,11 +146,17 @@ impl Dsf {
             SubscribeState::Searching(search) => {
                 match search.poll_unpin(ctx) {
                     Poll::Ready(Ok(v)) => {
-                        debug!("DHT search complete! {} replicas found", v.len());
+                        debug!("DHT search complete! {} pages found", v.len());
                         trace!("{:?}", v);
 
-                        // TODO: Update located replicas
-                        // Though maybe this happens in the rx handle?
+                        // Update located replicas
+                        // TODO: perhaps this should happen in the rx handle?
+                        for p in &v {
+                            // TODO: check other page fields here (id etc.)
+                            if let PageInfo::Secondary(s) = &p.info {
+                                self.replicas().create_or_update(&id, &s.peer_id, p);
+                            }
+                        }
 
                         // Fetch peers for viable replicas
                         let replicas = self.replicas().find(&id);
@@ -160,8 +166,10 @@ impl Dsf {
                         // TODO: Skip lookup if no known peers
 
                         // Lookup (unknown) peers
+                        let our_id = self.id();
                         let lookups: Vec<_> = replica_peers
                             .iter()
+                            .filter(|peer_id| *peer_id != &our_id )
                             .filter_map(|peer_id| match self.dht_mut().locate(peer_id.clone()) {
                                 Ok(v) => Some(v.0),
                                 Err(e) => {
@@ -200,7 +208,7 @@ impl Dsf {
                     lookups.remove(*i);
                 }
 
-                if completed.len() == 0 {
+                if lookups.len() == 0 {
                     debug!("Subscribe peer lookup complete");
 
                     // Create subscription request
@@ -243,6 +251,14 @@ impl Dsf {
                                 net::ResponseKind::Status(s) if *s == net::Status::Ok => {
                                     Some(SubscriptionInfo {
                                         service_id: id.clone(),
+                                        kind: SubscriptionKind::Peer(peer_id.clone()),
+                                        updated: Some(SystemTime::now()),
+                                        expiry: None,
+                                    })
+                                },
+                                net::ResponseKind::ValuesFound(service_id, _pages) => {
+                                    Some(SubscriptionInfo {
+                                        service_id: service_id.clone(),
                                         kind: SubscriptionKind::Peer(peer_id.clone()),
                                         updated: Some(SystemTime::now()),
                                         expiry: None,
