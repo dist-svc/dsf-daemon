@@ -12,7 +12,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 
 use dsf_core::net;
-use dsf_core::service::publisher::DataOptions;
+use dsf_core::service::DataOptions;
 use dsf_rpc::{self as rpc, DataInfo, PublishInfo, PushOptions};
 
 use super::ops::*;

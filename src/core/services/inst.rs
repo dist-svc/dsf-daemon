@@ -8,8 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use dsf_core::options::Options;
 use dsf_core::prelude::*;
-use dsf_core::service::publisher::SecondaryOptions;
-use dsf_core::service::{Publisher, Subscriber};
+use dsf_core::service::{Publisher, Subscriber, SecondaryOptions};
 
 use dsf_rpc::service::{ServiceInfo, ServiceState};
 
@@ -51,7 +50,6 @@ impl ServiceInst {
             last_updated: self.last_updated,
             primary_page: self.primary_page.as_ref().map(|v| v.signature()).flatten(),
             replica_page: self.replica_page.as_ref().map(|v| v.signature()).flatten(),
-            body: self.primary_page.as_ref().map(|p| p.body().clone()).into(),
             public_key: service.public_key(),
             private_key: service.private_key(),
             secret_key: service.secret_key(),

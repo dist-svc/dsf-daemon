@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 
 use log::{debug, error, info, trace};
 
-use dsf_core::{page::Page, types::Id, Keys};
+use dsf_core::{page::Page, types::Id, keys::Keys};
 
 pub use dsf_rpc::data::DataInfo;
 use dsf_rpc::{PageBounds, TimeBounds};

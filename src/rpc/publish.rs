@@ -12,7 +12,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 
 use dsf_core::net;
-use dsf_core::service::publisher::{DataOptions, Publisher};
+use dsf_core::service::{Publisher, DataOptions};
 use dsf_rpc::{self as rpc, DataInfo, PublishInfo, PublishOptions};
 
 use crate::core::peers::Peer;

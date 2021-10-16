@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 
-use dsf_core::{prelude::*, KeySource};
+use dsf_core::{prelude::*, keys::KeySource};
 
 use super::{Store, StoreError};
 

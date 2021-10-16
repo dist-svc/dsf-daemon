@@ -448,8 +448,8 @@ impl Dsf {
     }
 }
 
-impl dsf_core::KeySource for Dsf {
-    fn keys(&self, id: &Id) -> Option<dsf_core::Keys> {
+impl dsf_core::keys::KeySource for Dsf {
+    fn keys(&self, id: &Id) -> Option<dsf_core::keys::Keys> {
         // Check key cache for matching keys
         if let Some(keys) = self.key_cache.get(id) {
             return Some(keys.clone());
