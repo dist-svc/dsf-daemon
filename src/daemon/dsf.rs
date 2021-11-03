@@ -450,6 +450,11 @@ impl Dsf {
 
 impl dsf_core::keys::KeySource for Dsf {
     fn keys(&self, id: &Id) -> Option<dsf_core::keys::Keys> {
+        // Short circuit if looking for our own keys
+        if *id == self.id() {
+            return Some(self.service.keys());
+        }
+
         // Check key cache for matching keys
         if let Some(keys) = self.key_cache.get(id) {
             return Some(keys.clone());
@@ -458,18 +463,21 @@ impl dsf_core::keys::KeySource for Dsf {
         // Find public key from source
         let (pub_key, sec_key) = if let Some(s) = self.services.find(id) {
             (Some(s.public_key), s.secret_key)
+
         } else if let Some(p) = self.peers.find(id) {
             if let PeerState::Known(pk) = p.state() {
                 (Some(pk), None)
             } else {
                 (None, None)
             }
+            
         } else if let Some(e) = self.dht.nodetable().contains(id) {
             if let PeerState::Known(pk) = e.info().state() {
                 (Some(pk), None)
             } else {
                 (None, None)
             }
+
         } else {
             (None, None)
         };
@@ -548,7 +556,13 @@ impl Future for Dsf {
 
         // Poll on internal DHT
         // TODO: handle errors?
-        let _ = self.dht_mut().update();
+        match self.dht_mut().update() {
+            Ok(true) => ctx.waker().clone().wake(),
+            Err(e) => {
+                error!("DHT error: {:?}", e);
+            },
+            _ => (),
+        }
 
         // TODO: poll on internal state / messages
 

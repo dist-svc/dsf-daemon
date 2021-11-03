@@ -271,7 +271,8 @@ impl Engine {
                                 error!("error sending ougoing network message: {:?}", e);
                             }
                         } else {
-                            error!("engine::net_out_rx returned None");
+                            warn!("engine::net_out channel closed");
+                            return Err(Error::Closed)
                         }
                     },
                     _exit = net_exit_rx.next().fuse() => {

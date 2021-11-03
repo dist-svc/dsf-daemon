@@ -190,7 +190,8 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
                 svc_id = Some(p.id().clone());
                 Some(p.id().clone())
             }
-            PageInfo::Secondary(sec) => Some(sec.peer_id.clone()),
+            PageInfo::Secondary(s) => Some(s.peer_id.clone()),
+            PageInfo::Tertiary(t) => Some(t.service_id.clone()),
             PageInfo::Data(_) => None,
         };
 
@@ -198,7 +199,11 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
             map.insert(id, p);
         }
     }
+
     // If there is no primary page, drop secondary pages
+    // TODO: rethink / re-add this because it doesn't work for secondary 
+    // or tertiary pages...
+    #[cfg(nope)]
     if svc_id.is_none() {
         return vec![];
     }

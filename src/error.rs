@@ -21,6 +21,7 @@ pub enum Error {
     UnknownService,
     NoReplicasFound,
     NoPrivateKey,
+    Closed,
 }
 
 impl From<NetError> for Error {

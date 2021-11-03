@@ -12,6 +12,7 @@ use futures::channel::mpsc;
 use futures::prelude::*;
 
 use kad::prelude::*;
+use kad::common::Entry;
 
 use dsf_core::net;
 use dsf_core::prelude::*;
@@ -26,6 +27,7 @@ use crate::error::Error as DsfError;
 pub enum ConnectState {
     Init,
     Pending(kad::dht::ConnectFuture<Id, Peer>),
+    Registering(Vec<Entry<Id, Peer>>, kad::dht::StoreFuture<Id, Peer>),
     Done,
     Error,
 }
@@ -128,6 +130,7 @@ impl Dsf {
                     .unwrap();
 
                 *state = ConnectState::Pending(connect);
+                ctx.waker().clone().wake();
 
                 Ok(false)
             }
@@ -148,6 +151,44 @@ impl Dsf {
                             );
                         }
 
+                        // Publish peer page to closest N peers
+
+                        let mut buff = vec![0u8; 1024];
+                        let (n, mut primary_page) = self.primary(&mut buff).unwrap();
+                        primary_page.raw = Some(buff[..n].to_vec());
+
+                        let our_id = self.id();
+                        let (store, _req_id) = match self.dht_mut().store_peers(our_id, vec![primary_page], v.iter()) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!("DHT store error: {:?}", e);
+                                return Err(DsfError::Unknown);
+                            }
+                        };
+
+                        *state = ConnectState::Registering(v, store);
+                        ctx.waker().clone().wake();
+                    }
+                    Poll::Ready(Err(e)) => {
+                        warn!("DHT connect error: {:?}", e);
+
+                        let resp = rpc::Response::new(
+                            req_id,
+                            rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
+                        );
+
+                        let _ = done.try_send(resp);
+
+                        *state = ConnectState::Error;
+                        ctx.waker().clone().wake();
+                    }
+                    _ => (),
+                }
+                Ok(false)
+            }
+            ConnectState::Registering(v, store) => {
+                match store.poll_unpin(ctx) {
+                    Poll::Ready(Ok(_s)) => {
                         // Build connect info
                         // TODO: matching on addresses here fails in -oh so many- ways...
                         // lookup by hostname etc., peer addressing needs major work
@@ -165,22 +206,27 @@ impl Dsf {
                         let _ = done.try_send(resp);
 
                         *state = ConnectState::Done;
-                    }
+                        ctx.waker().clone().wake();
+
+                        Ok(true)
+                    },
                     Poll::Ready(Err(e)) => {
-                        warn!("DHT connect error: {:?}", e);
+                        error!("DHT store error: {:?}", e);
 
                         let resp = rpc::Response::new(
                             req_id,
                             rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
                         );
 
-                        let _ = done.try_send(resp);
+                        done.try_send(resp).unwrap();
 
                         *state = ConnectState::Error;
+                        ctx.waker().clone().wake();
+
+                        Ok(true)
                     }
-                    _ => (),
+                    _ => Ok(false),
                 }
-                Ok(false)
             }
             ConnectState::Done => Ok(true),
             ConnectState::Error => Ok(true),

@@ -116,7 +116,7 @@ version = "2.0.0"
 tempdir = "0.3.7"
 rr-mux = "0.10.1"
 rand = "0.7.3"
-indicatif = "0.13.0"
+indicatif = "0.16.2"
 dsf-client = "0.2.0"
 
 

@@ -6,7 +6,9 @@ use rand::random;
 
 use async_std::task;
 
-use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
+use tracing_subscriber::{FmtSubscriber};
+use tracing_subscriber::filter::{LevelFilter, EnvFilter};
+
 
 use indicatif::ProgressBar;
 use tempdir::TempDir;
@@ -22,6 +24,12 @@ fn smol_scale() {
 
 #[test]
 #[ignore]
+fn med_scale() {
+    scale(20, LevelFilter::INFO);
+}
+
+#[test]
+#[ignore]
 fn large_scale() {
     scale(100, LevelFilter::WARN);
 }
@@ -30,7 +38,9 @@ fn scale(n: usize, level: LevelFilter) {
     let d = TempDir::new("dsf-scale").unwrap();
     let d = d.path().to_str().unwrap().to_string();
 
-    let _ = FmtSubscriber::builder().with_max_level(level).try_init();
+    let filter = EnvFilter::from_default_env()
+        .add_directive(level.into());
+    let _ = FmtSubscriber::builder().with_env_filter(filter).try_init();
 
     let mut daemons = vec![];
     let mut ids = vec![];
@@ -46,8 +56,8 @@ fn scale(n: usize, level: LevelFilter) {
         )];
 
         // Create instances
-        info!("Creating {} virtual daemon instances", n);
-        let bar = ProgressBar::new(n as u64);
+        println!("Creating {} virtual daemon instances", n);
+        let bar = ProgressBar::new(n as u64).with_message("Creating daemons");
         for i in 0..n {
             let c = config.with_suffix(i);
             let c1 = c.clone();
@@ -81,8 +91,8 @@ fn scale(n: usize, level: LevelFilter) {
 
         let base_addr = daemons[0].1;
 
-        info!("Connecting daemons via {}", d);
-        let bar = ProgressBar::new((daemons.len() - 1) as u64);
+        println!("Connecting daemons via {}", d);
+        let bar = ProgressBar::new((daemons.len() - 1) as u64).with_prefix("Connecting peers");
         for (_id, _addr, client, _handle) in &mut daemons[1usize..] {
             client
                 .connect(rpc::ConnectOptions {
@@ -97,7 +107,7 @@ fn scale(n: usize, level: LevelFilter) {
         bar.finish();
         info!("Daemons connected");
 
-        info!("Attempting peer searches");
+        println!("Attempting peer searches");
         let bar = ProgressBar::new((daemons.len()) as u64);
         for i in 0..daemons.len() {
             let mut j = random::<usize>() % daemons.len();
@@ -105,8 +115,10 @@ fn scale(n: usize, level: LevelFilter) {
                 j = random::<usize>() % daemons.len();
             }
 
-            let (_id, _addr, client, _handle) = &mut daemons[i];
+            let (client_id, _addr, client, _handle) = &mut daemons[i];
             let id = ids[j].clone();
+
+            info!("FindNode from: {} for: {}", client_id, id);
 
             client
                 .find(rpc::peer::SearchOptions { id, timeout: None })
