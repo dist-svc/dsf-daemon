@@ -142,7 +142,7 @@ impl ServiceInst {
         let opts = SecondaryOptions {
             page_kind: PageKind::Replica.into(),
             version: version,
-            public_options: vec![Options::public_key(peer_service.public_key())],
+            public_options: &[Options::public_key(peer_service.public_key())],
             ..Default::default()
         };
 

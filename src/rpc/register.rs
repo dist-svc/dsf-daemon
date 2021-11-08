@@ -149,7 +149,7 @@ impl Dsf {
                             let opts = SecondaryOptions {
                                 page_kind: PageKind::Replica.into(),
                                 version: last_version + 1,
-                                public_options: vec![Options::public_key(
+                                public_options: &[Options::public_key(
                                     self.service().public_key(),
                                 )],
                                 ..Default::default()
