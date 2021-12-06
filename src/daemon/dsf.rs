@@ -1,5 +1,6 @@
 use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::time::{Duration, SystemTime};
 
 use std::future::Future;
@@ -183,7 +184,9 @@ impl Dsf {
         buff: T,
     ) -> Result<(usize, Page), Error> {
         // TODO: this should generate a peer page / contain peer contact info
-        self.service.publish_primary(buff).map_err(|e| e.into())
+        let (n, c) = self.service.publish_primary(Default::default(), buff).map_err(Error::Core)?;
+        let p = Page::try_from(c)?;
+        Ok((n, p))
     }
 
     /// Store pages in the database at the provided ID

@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
@@ -99,15 +100,14 @@ impl ServiceInst {
 
         // Generate actual page
         debug!("Generating new service page");
-        let mut buff = vec![0u8; 1024];
-        let (n, mut primary_page) = self.service.publish_primary(&mut buff).unwrap();
-        primary_page.raw = Some(buff[..n].to_vec());
+        let (n, container) = self.service.publish_primary_buff(Default::default()).unwrap();
+        let pp = Page::try_from(container).unwrap();
 
         // Update local page version
-        self.primary_page = Some(primary_page.clone());
+        self.primary_page = Some(pp.clone());
         self.changed = true;
 
-        Ok(primary_page)
+        Ok(pp)
     }
 
     /// Replicate a service, creating a new replica page
@@ -145,18 +145,17 @@ impl ServiceInst {
             public_options: &[Options::public_key(peer_service.public_key())],
             ..Default::default()
         };
-
-        let mut buff = vec![0u8; 1024];
-        let (n, mut replica_page) = peer_service
-            .publish_secondary(&self.service.id(), opts, &mut buff)
+        let (_n, container) = peer_service
+            .publish_secondary_buff(&self.service.id(), opts)
             .unwrap();
-        replica_page.raw = Some(buff[..n].to_vec());
+
+        let rp = Page::try_from(container).unwrap();
 
         // Update local replica page
-        self.replica_page = Some(replica_page.clone());
+        self.replica_page = Some(rp.clone());
         self.changed = true;
 
-        Ok(replica_page)
+        Ok(rp)
     }
 
     /// Apply an updated service page

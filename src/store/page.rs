@@ -98,11 +98,13 @@ impl Store {
 #[cfg(test)]
 mod test {
     extern crate tracing_subscriber;
+    use std::convert::TryFrom;
+
     use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 
     use super::Store;
 
-    use dsf_core::service::{Publisher, Service};
+    use dsf_core::{service::{Publisher, Service}, prelude::Page};
 
     #[test]
     fn store_page_inst() {
@@ -118,10 +120,9 @@ mod test {
         let mut s = Service::default();
         let keys = s.keys();
 
-        let mut buff = vec![0u8; 1024];
-        let (n, mut page) = s.publish_primary(&mut buff).expect("Error creating page");
-        let sig = page.signature.clone().unwrap();
-        page.raw = Some(buff[..n].to_vec());
+        let (_n, c) = s.publish_primary_buff( Default::default()).expect("Error creating page");
+        let sig = c.signature();
+        let page = Page::try_from(c).unwrap();
 
         // Check no matching service exists
         assert_eq!(None, store.load_page(&sig, &keys).unwrap());

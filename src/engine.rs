@@ -1,6 +1,8 @@
+use std::convert::TryFrom;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
+use dsf_core::prelude::Page;
 use log::{debug, error, info, trace, warn};
 
 use structopt::StructOpt;
@@ -141,9 +143,11 @@ impl Engine {
         };
 
         // Generate updated peer page
-        let mut buff = vec![0u8; 1025];
-        let (n, mut page) = service.publish_primary(&mut buff)?;
-        page.raw = Some(buff[..n].to_vec());
+        let buff = vec![0u8; 1025];
+        let (n, c) = service.publish_primary(Default::default(), buff)?;
+
+        let mut page = Page::try_from(c.clone())?;
+        page.raw = Some(c.raw().to_vec());
 
         // Store peer service identity for re-use
         store.set_peer_service(&service, &page)?;

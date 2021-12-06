@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -157,19 +158,20 @@ impl Dsf {
 
                             // Encode / sign page so this is valid for future propagation
                             let mut buff = vec![0u8; 1024];
-                            let (n, mut replica_page) = self
+                            let (n, mut c) = self
                                 .service()
-                                .publish_secondary(&id, opts, &mut buff)
+                                .publish_secondary(&id, opts, buff)
                                 .unwrap();
-                            replica_page.raw = Some(buff[..n].to_vec());
+                            let mut rp = Page::try_from(c.clone())?;
+                            rp.raw = Some(c.raw().to_vec());
 
                             // Update service instance
                             self.services().update_inst(&id, |s| {
-                                s.replica_page = Some(replica_page.clone());
+                                s.replica_page = Some(rp.clone());
                                 s.changed = true;
                             });
 
-                            replica_page
+                            rp
                         }
                     };
 

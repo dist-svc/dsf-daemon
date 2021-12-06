@@ -191,7 +191,7 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
                 Some(p.id().clone())
             }
             PageInfo::Secondary(s) => Some(s.peer_id.clone()),
-            PageInfo::Tertiary(t) => Some(t.service_id.clone()),
+            PageInfo::Tertiary(t) => Some(t.target_id.clone()),
             PageInfo::Data(_) => None,
         };
 

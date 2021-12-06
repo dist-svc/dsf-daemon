@@ -125,8 +125,8 @@ impl Dsf {
 
                 // Setup publishing object
                 let body = match &opts.data {
-                    Some(d) => Body::Cleartext(d.clone()),
-                    None => Body::None,
+                    Some(d) => &d[..],
+                    None => &[],
                 };
                 let data_options = DataOptions {
                     data_kind: opts.kind.into(),
@@ -141,10 +141,8 @@ impl Dsf {
                     let opts = data_options.clone();
 
                     info!("Generating data page");
-                    let mut r = s.service.publish_data(opts, &mut buff).unwrap();
-
-                    r.1.raw = Some(buff[..r.0].to_vec());
-                    page = Some(r.1);
+                    let (n, c) = s.service.publish_data(opts, &mut buff).unwrap();
+                    page = Some(Page::try_from(c).unwrap());
                 });
 
                 let page = page.unwrap();

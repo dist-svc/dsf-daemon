@@ -2,7 +2,7 @@ use async_std::task;
 
 use futures::prelude::*;
 
-use log::{error, info};
+use log::{info};
 
 use structopt::StructOpt;
 

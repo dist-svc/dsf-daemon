@@ -198,7 +198,7 @@ impl Dsf {
         mut msg: net::Message,
     ) -> Result<Bytes, DaemonError> {
         // Encode response
-        let mut buff = vec![0u8; 4096];
+        let buff = vec![0u8; 4096];
 
         // Fetch cached keys if available, otherwise use service keys
         let (enc_key, sym) =
@@ -217,10 +217,12 @@ impl Dsf {
         trace!("Encoding message: {:?}", msg);
         trace!("Keys: {:?}", enc_key);
 
-        // Encode and sign message
-        let n = msg.encode(&enc_key, &mut buff)?;
+        let c = match &msg {
+            net::Message::Request(req) => self.service().encode_request(req, &enc_key, buff)?,
+            net::Message::Response(resp) => self.service().encode_response(resp, &enc_key, buff)?,
+        };
 
-        Ok(Bytes::from((&buff[..n]).to_vec()))
+        Ok(Bytes::from(c.raw().to_vec()))
     }
 
     pub fn net_op(&mut self, peers: Vec<Peer>, req: net::Request) -> NetFuture {

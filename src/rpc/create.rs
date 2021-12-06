@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -123,9 +124,12 @@ impl Dsf {
                 *id = Some(service.id());
 
                 debug!("Generating service page");
-                let mut buff = vec![0u8; 1024];
-                let (n, mut primary_page) = service.publish_primary(&mut buff).unwrap();
-                primary_page.raw = Some(buff[..n].to_vec());
+                // TODO: revisit this
+                let buff = vec![0u8; 1024];
+                let (_n, c) = service.publish_primary(Default::default(), buff).unwrap();
+                let primary_page = Page::try_from(c).unwrap();
+
+                //primary_page.raw = Some(buff[..n].to_vec());
 
                 // Register service in local database
                 debug!("Storing service information");
