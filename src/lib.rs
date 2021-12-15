@@ -2,6 +2,8 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 
+extern crate std;
+
 #[macro_use]
 extern crate diesel;
 

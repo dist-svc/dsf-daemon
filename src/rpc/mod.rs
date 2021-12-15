@@ -46,6 +46,9 @@ pub mod subscribe;
 // Bootstrap daemon connectivity
 pub mod bootstrap;
 
+// Search using nameservices
+pub mod search;
+
 // Debug commands
 pub mod debug;
 

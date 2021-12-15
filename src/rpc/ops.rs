@@ -1,4 +1,9 @@
+use futures::Future;
 use futures::channel::mpsc;
+
+
+use dsf_core::prelude::{Page, Id, DsfError as CoreError, Service};
+use dsf_core::types::CryptoHash;
 
 use dsf_rpc::*;
 
@@ -103,5 +108,71 @@ impl RpcKind {
             opts,
             state: BootstrapState::Init,
         })
+    }
+}
+
+/// Basic engine operation, used to construct higher-level functions
+pub enum Op {
+    DhtGet(Id),
+    DhtPut(Vec<Page>),
+
+    ServiceGet(Id),
+
+    ServiceUpdate(Id, UpdateFn)
+}
+
+impl core::fmt::Debug for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DhtGet(arg0) => f.debug_tuple("DhtGet").field(arg0).finish(),
+            Self::DhtPut(arg0) => f.debug_tuple("DhtPut").field(arg0).finish(),
+            Self::ServiceGet(arg0) => f.debug_tuple("ServiceGet").field(arg0).finish(),
+            Self::ServiceUpdate(arg0, _arg1) => f.debug_tuple("ServiceUpdate").field(arg0).finish(),
+        }
+    }
+}
+
+pub type UpdateFn = Box<dyn Fn(&mut Service) -> Result<Res, CoreError> + Send + 'static>;
+
+/// Basic engine response, used to construct higher-level functions
+#[derive(Clone, PartialEq, Debug)]
+pub enum Res {
+    Pages(Vec<Page>),
+    Service(Service),
+}
+
+#[async_trait::async_trait]
+pub trait Engine: Sync + Send {
+    type Output: Future<Output=Result<Res, CoreError>> + Send;
+
+    /// Base execute function, non-blocking, returns a future result
+    fn exec(&self, op: Op) -> Self::Output;
+
+    /// Search for pages in the DHT
+    async fn dht_get(&self, id: Id) -> Result<Vec<Page>, CoreError> {
+        match self.exec(Op::DhtGet(id)).await? {
+            Res::Pages(p) => Ok(p),
+            _ => Err(CoreError::Unknown),
+        }
+    }
+
+    /// Store pages in the DHT
+    async fn dht_put(&self, pages: Vec<Page>) -> Result<Vec<Page>, CoreError> {
+        match self.exec(Op::DhtPut(pages)).await? {
+            Res::Pages(p) => Ok(p),
+            _ => Err(CoreError::Unknown),
+        }
+    }
+
+    /// Resolve a service by index or id
+    async fn service_get(&self, service: Id) -> Result<Service, CoreError> {
+        match self.exec(Op::ServiceGet(service)).await? {
+            Res::Service(s) => Ok(s),
+            _ => Err(CoreError::Unknown),
+        }
+    }
+
+    async fn service_update(&self, service: Id, f: UpdateFn) -> Result<Res, CoreError> {
+        self.exec(Op::ServiceUpdate(service, f)).await
     }
 }
