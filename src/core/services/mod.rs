@@ -89,6 +89,16 @@ impl ServiceManager {
         Some(service.info())
     }
 
+    /// Fetch a copy of a stored service
+    pub fn find_copy(&self, id: &Id) -> Option<Service> {
+        let inst = match self.services.get(id) {
+            Some(v) => v,
+            None => return None,
+        };
+
+        Some(inst.service.clone())
+    }
+
     /// Fetch a service by local index
     pub fn index(&self, index: usize) -> Option<ServiceInfo> {
         self.services

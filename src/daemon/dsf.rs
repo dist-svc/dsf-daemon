@@ -1,3 +1,4 @@
+use crate::rpc::{Op};
 use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -28,7 +29,7 @@ use crate::core::services::{ServiceInfo, ServiceManager, ServiceState};
 use crate::core::subscribers::SubscriberManager;
 
 use super::net::NetOp;
-use crate::rpc::ops::RpcOperation;
+use crate::rpc::ops::{RpcOperation, RpcKind};
 
 use crate::error::Error;
 use crate::store::Store;
@@ -64,6 +65,11 @@ pub struct Dsf {
     dht_source: mpsc::Receiver<(RequestId, DhtEntry<Id, Peer>, DhtRequest<Id, Page>)>,
 
     store: Store,
+
+    /// RPC request channel
+    pub(crate) op_rx: mpsc::UnboundedReceiver<Op>,
+    pub(crate) op_tx: mpsc::UnboundedSender<Op>,
+    pub(crate) ops: HashMap<u64, Op>,
 
     /// Tracking for RPC operations
     pub(crate) rpc_ops: HashMap<u64, RpcOperation>,
@@ -106,6 +112,8 @@ impl Dsf {
         let (dht_sink, dht_source) = mpsc::channel(100);
         let dht = Dht::<Id, Peer, Data, RequestId>::standard(id, config.dht, dht_sink);
 
+        let (op_tx, op_rx) = mpsc::unbounded();
+
         // Create DSF object
         let s = Self {
             service,
@@ -122,6 +130,7 @@ impl Dsf {
 
             store,
 
+            op_tx, op_rx, ops: HashMap::new(),
             rpc_ops: HashMap::new(),
 
             net_sink,

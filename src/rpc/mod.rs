@@ -1,5 +1,6 @@
 use std::task::{Context, Poll};
 
+use async_std::channel::Receiver;
 use log::{debug, error, info};
 use tracing::{span, Level};
 
@@ -9,6 +10,7 @@ use futures::prelude::*;
 use dsf_core::prelude::*;
 use dsf_rpc::*;
 
+use crate::core::peers::Peer;
 use crate::daemon::Dsf;
 use crate::error::{CoreError, Error};
 
@@ -288,6 +290,180 @@ impl Dsf {
                 error!("no peer matching index: {}", index);
                 Err(Error::Core(CoreError::UnknownPeer))
             }
+        }
+    }
+
+    pub(crate) fn exec(&self) -> ExecHandle {
+        ExecHandle{
+            req_id: rand::random(),
+            tx: self.op_tx.clone(),
+        }
+    }
+
+    pub fn poll_exec(&mut self, ctx: &mut Context) -> Result<(), Error> {
+        // Check for incoming / new operations
+        if let Poll::Ready(Some(mut op)) = self.op_rx.poll_next_unpin(ctx) {
+            debug!("New op request: {:?}", op);
+
+            let op_id = op.req_id;
+
+            match op.kind {
+                OpKind::ServiceResolve(i) => {
+                    let r = self.resolve_identifier(&i).map(|id| self.services().find_copy(&id).unwrap() )
+                        .map(|s| Ok(Res::Service(s)) ).unwrap_or(Err(CoreError::NotFound));
+
+                    if let Err(e) = op.done.try_send(r) {
+                        error!("Failed to send operation response: {:?}", e);
+                    };
+                },
+                OpKind::ServiceGet(id) => {
+                    let r =  self.services().find_copy(&id)
+                        .map(|s| Ok(Res::Service(s)) ).unwrap_or(Err(CoreError::NotFound));
+
+                    if let Err(e) = op.done.try_send(r) {
+                        error!("Failed to send operation response: {:?}", e);
+                    };
+                },
+                OpKind::ServiceUpdate(id, f) => {
+                    let r = self.services().with(&id, |inst| f(&mut inst.service) )
+                        .unwrap_or(Err(CoreError::NotFound));
+
+                    if let Err(e) = op.done.try_send(r) {
+                        error!("Failed to send operation response: {:?}", e);
+                    }
+                },
+                OpKind::DhtGet(ref id) => {
+                    match self.dht_mut().search(id.clone()) {
+                        Ok((s, _id)) => {
+                            op.state = OpState::DhtGet(s);
+                            self.ops.insert(op_id, op);
+                        },
+                        Err(e) => {
+                            error!("Failed to create search operation: {:?}", e);
+                        }
+                    }
+                },
+                OpKind::DhtPut(ref id, ref pages) => {
+                    match self.dht_mut().store(id.clone(), pages.clone()) {
+                        Ok((p, _id)) => {
+                            op.state = OpState::DhtPut(p);
+                            self.ops.insert(op_id, op);
+                        },
+                        Err(e) => {
+                            error!("Failed to create search operation: {:?}", e);
+                        }
+                    }
+                },
+                _ => unimplemented!()
+            }
+        }
+
+        // Poll on currently executing operations
+        let mut ops_done = vec![];
+        for (op_id, Op{state, done, ..}) in self.ops.iter_mut() {
+
+            if let Poll::Ready(r) = state.poll_unpin(ctx) {
+                debug!("Op: {} complete with result: {:?}", op_id, r);
+                
+                if let Err(e) = done.try_send(r) {
+                    error!("Error sending result to op: {}", op_id);
+                }
+
+                ops_done.push(*op_id);
+            }
+        }
+
+        // Remove complete operations
+        for op_id in &ops_done {
+            let _ = self.ops.remove(op_id);
+        }
+
+
+        Ok(())
+    }
+}
+
+pub struct ExecHandle {
+    req_id: u64,
+    tx: mpsc::UnboundedSender<Op>,
+}
+
+#[derive(Debug)]
+pub struct Op {
+    req_id: u64,
+    kind: OpKind,
+    done: mpsc::Sender<Result<Res, CoreError>>,
+    state: OpState,
+}
+
+enum OpState {
+    None,
+    DhtGet(kad::dht::SearchFuture<Page>),
+    DhtPut(kad::dht::StoreFuture<Id, Peer>),
+}
+
+impl Future for OpState {
+    type Output = Result<Res, CoreError>;
+
+    fn poll(self: std::pin::Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+        let r = match self.get_mut() {
+            OpState::None => unreachable!(),
+            OpState::DhtGet(get) => {
+                match get.poll_unpin(ctx) {
+                    Poll::Ready(Ok(pages)) =>  Ok(Res::Pages(pages)),
+                    Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
+                    _ => return Poll::Pending,
+                }
+            },
+            OpState::DhtPut(put) => {
+                match put.poll_unpin(ctx) {
+                    Poll::Ready(Ok(peers)) => {
+                        let peers = peers.iter().map(|e| e.info().clone() ).collect();
+                        Ok(Res::Peers(peers))
+                    },
+                    Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
+                    _ => return Poll::Pending,
+                }
+            },
+        };
+
+        Poll::Ready(r)
+    }
+}
+
+impl core::fmt::Debug for OpState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "None"),
+            Self::DhtGet(_) => f.debug_tuple("DhtGet").finish(),
+            Self::DhtPut(_) => f.debug_tuple("DhtPut").finish(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Engine for ExecHandle {
+    async fn exec(&self, kind: OpKind) -> Result<Res, CoreError>{
+        let (done_tx, mut done_rx) = mpsc::channel(1);
+        let mut tx = self.tx.clone();
+
+        let req = Op {
+            req_id: self.req_id,
+            kind,
+            done: done_tx,
+            state: OpState::None,
+        };
+
+        if let Err(_e) = tx.send(req).await {
+            // TODO: Cancelled
+            return Err(CoreError::Unknown)
+        }
+
+        match done_rx.next().await {
+            Some(Ok(r)) => Ok(r),
+            Some(Err(e)) => Err(e),
+            // TODO: Cancelled
+            None => Err(CoreError::Unknown),
         }
     }
 }

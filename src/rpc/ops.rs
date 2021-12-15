@@ -7,6 +7,7 @@ use dsf_core::types::CryptoHash;
 
 use dsf_rpc::*;
 
+use crate::core::peers::Peer;
 use crate::error::Error;
 
 use super::connect::{ConnectOp, ConnectState};
@@ -112,22 +113,23 @@ impl RpcKind {
 }
 
 /// Basic engine operation, used to construct higher-level functions
-pub enum Op {
+pub enum OpKind {
     DhtGet(Id),
-    DhtPut(Vec<Page>),
+    DhtPut(Id, Vec<Page>),
 
+    ServiceResolve(ServiceIdentifier),
     ServiceGet(Id),
-
     ServiceUpdate(Id, UpdateFn)
 }
 
-impl core::fmt::Debug for Op {
+impl core::fmt::Debug for OpKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DhtGet(arg0) => f.debug_tuple("DhtGet").field(arg0).finish(),
-            Self::DhtPut(arg0) => f.debug_tuple("DhtPut").field(arg0).finish(),
-            Self::ServiceGet(arg0) => f.debug_tuple("ServiceGet").field(arg0).finish(),
-            Self::ServiceUpdate(arg0, _arg1) => f.debug_tuple("ServiceUpdate").field(arg0).finish(),
+            Self::DhtGet(id) => f.debug_tuple("DhtGet").field(id).finish(),
+            Self::DhtPut(id, pages) => f.debug_tuple("DhtPut").field(id).field(pages).finish(),
+            Self::ServiceResolve(arg0) => f.debug_tuple("ServiceResolve").field(arg0).finish(),
+            Self::ServiceGet(id) => f.debug_tuple("ServiceGet").field(id).finish(),
+            Self::ServiceUpdate(id, _f) => f.debug_tuple("ServiceUpdate").field(id).finish(),
         }
     }
 }
@@ -137,42 +139,54 @@ pub type UpdateFn = Box<dyn Fn(&mut Service) -> Result<Res, CoreError> + Send + 
 /// Basic engine response, used to construct higher-level functions
 #[derive(Clone, PartialEq, Debug)]
 pub enum Res {
-    Pages(Vec<Page>),
+    Id(Id),
     Service(Service),
+    Pages(Vec<Page>),
+    Peers(Vec<Peer>),
+    Ids(Vec<Id>,)
 }
 
 #[async_trait::async_trait]
 pub trait Engine: Sync + Send {
-    type Output: Future<Output=Result<Res, CoreError>> + Send;
+    //type Output: Future<Output=Result<Res, CoreError>> + Send;
 
     /// Base execute function, non-blocking, returns a future result
-    fn exec(&self, op: Op) -> Self::Output;
+    async fn exec(&self, op: OpKind) -> Result<Res, CoreError>;
 
     /// Search for pages in the DHT
     async fn dht_get(&self, id: Id) -> Result<Vec<Page>, CoreError> {
-        match self.exec(Op::DhtGet(id)).await? {
+        match self.exec(OpKind::DhtGet(id)).await? {
             Res::Pages(p) => Ok(p),
             _ => Err(CoreError::Unknown),
         }
     }
 
     /// Store pages in the DHT
-    async fn dht_put(&self, pages: Vec<Page>) -> Result<Vec<Page>, CoreError> {
-        match self.exec(Op::DhtPut(pages)).await? {
-            Res::Pages(p) => Ok(p),
+    async fn dht_put(&self, id: Id, pages: Vec<Page>) -> Result<Vec<Id>, CoreError> {
+        match self.exec(OpKind::DhtPut(id, pages)).await? {
+            Res::Ids(p) => Ok(p),
             _ => Err(CoreError::Unknown),
         }
     }
 
-    /// Resolve a service by index or id
-    async fn service_get(&self, service: Id) -> Result<Service, CoreError> {
-        match self.exec(Op::ServiceGet(service)).await? {
+    /// Resolve a service index to ID
+    async fn service_resolve(&self, identifier: ServiceIdentifier) -> Result<Service, CoreError> {
+        match self.exec(OpKind::ServiceResolve(identifier)).await? {
             Res::Service(s) => Ok(s),
             _ => Err(CoreError::Unknown),
         }
     }
 
+    /// Fetch a service object by ID
+    async fn service_get(&self, service: Id) -> Result<Service, CoreError> {
+        match self.exec(OpKind::ServiceGet(service)).await? {
+            Res::Service(s) => Ok(s),
+            _ => Err(CoreError::Unknown),
+        }
+    }
+
+    /// Execute an update function on a mutable service instance
     async fn service_update(&self, service: Id, f: UpdateFn) -> Result<Res, CoreError> {
-        self.exec(Op::ServiceUpdate(service, f)).await
+        self.exec(OpKind::ServiceUpdate(service, f)).await
     }
 }

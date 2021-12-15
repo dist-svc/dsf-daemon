@@ -18,7 +18,7 @@ use crate::daemon::Dsf;
 use crate::error::Error;
 use crate::rpc::ops::Res;
 
-use super::ops::{RpcKind, Op, Engine};
+use super::ops::{RpcKind, OpKind, Engine};
 
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ pub enum SearchFilter {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct SearchOptions {
     /// NameServer filter / selection
-    pub ns: Option<Id>,
+    pub ns: Option<ServiceIdentifier>,
 
     /// Name to search for
     pub search: SearchFilter,
@@ -41,10 +41,10 @@ pub struct SearchOptions {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct RegisterOptions {
     /// NameServer filter / selection
-    pub ns: Option<Id>,
+    pub ns: Option<ServiceIdentifier>,
 
     /// Service for registration
-    pub target: Id,
+    pub target: ServiceIdentifier,
 }
 
 
@@ -66,7 +66,7 @@ impl <T: Engine> NameService for T {
         // Resolve nameserver using provided options
         let ns = if let Some(service) = opts.ns {
             // Lookup by ID or index
-            self.service_get(service).await
+            self.service_resolve(service).await
         } else {
             // Lookup by service prefix
             todo!()
@@ -167,7 +167,7 @@ impl <T: Engine> NameService for T {
         // Resolve nameserver using provided options
         let ns = if let Some(service) = &opts.ns {
             // Lookup by ID or index
-            self.service_get(service.clone()).await
+            self.service_resolve(service.clone()).await
         } else {
             // Lookup by name prefix if provided?
             todo!()
@@ -190,7 +190,7 @@ impl <T: Engine> NameService for T {
         debug!("Locating target for register: {:?}", opts);
 
         // Lookup service for registering
-        let t = match self.service_get(opts.target).await {
+        let t = match self.service_resolve(opts.target).await {
             Ok(s) => s,
             Err(e) => {
                 error!("No matching target service found: {:?}", e);
@@ -232,11 +232,13 @@ impl <T: Engine> NameService for T {
         };
 
         // Publish pages to database
-        if let Err(e) = self.dht_put(pages).await {
-            error!("Failed to publish pages to DHT: {:?}", e);
-            return Err(e.into());
+        for p in pages {
+            if let Err(e) = self.dht_put(p.id.clone(), vec![p]).await {
+                error!("Failed to publish pages to DHT: {:?}", e);
+                return Err(e.into());
+            }
         }
-
+        
         // TODO: return result
 
         Ok(())
@@ -269,7 +271,7 @@ mod test {
         pub expect: VecDeque<Expect>,
     }
 
-    type Expect = Box<dyn Fn(Op, &mut Service, &mut Service)->Result<Res, CoreError> + Send + 'static>;
+    type Expect = Box<dyn Fn(OpKind, &mut Service, &mut Service)->Result<Res, CoreError> + Send + 'static>;
 
     impl MockEngine {
         pub fn setup() -> (Self, Id, Id) {
@@ -305,10 +307,9 @@ mod test {
         }
     }
 
+    #[async_trait::async_trait]
     impl Engine for MockEngine {
-        type Output = future::Ready<Result<Res, CoreError>>;
-
-        fn exec(&self, op: Op) -> Self::Output {
+        async fn exec(&self, op: OpKind) -> Result<Res, CoreError> {
             let mut i = self.inner.lock().unwrap();
 
             let Inner{ref mut ns, ref mut target, ref mut expect} = *i;
@@ -316,10 +317,9 @@ mod test {
             debug!("Exec op: {:?}", op);
 
             match expect.pop_front() {
-                Some(f) => future::ready(f(op, ns, target)),
+                Some(f) => f(op, ns, target),
                 None => panic!("No remaining expectations"),
             }
-            
         }
     }
 
@@ -331,28 +331,28 @@ mod test {
             // Lookup NS
             Box::new(|op, ns, _t| {
                 match op {
-                    Op::ServiceGet(id) if id == ns.id() => Ok(Res::Service(ns.clone())),
+                    OpKind::ServiceResolve(ServiceIdentifier{id, ..}) if id == Some(ns.id()) => Ok(Res::Service(ns.clone())),
                     _ => panic!("Unexpected operation: {:?}, expected get {}", op, ns.id()),
                 }
             }),
             // Lookup target
             Box::new(|op, _ns, t| {
                 match op {
-                    Op::ServiceGet(id) if id == t.id() => Ok(Res::Service(t.clone())),
+                    OpKind::ServiceResolve(ServiceIdentifier{id, ..}) if id == Some(t.id()) => Ok(Res::Service(t.clone())),
                     _ => panic!("Unexpected operation: {:?}, expected get {}", op, t.id()),
                 }
             }),
             // Attempt NS registration
             Box::new(|op, ns, _t| {
                 match op {
-                    Op::ServiceUpdate(id, f) if id == ns.id() => f(ns),
+                    OpKind::ServiceUpdate(id, f) if id == ns.id() => f(ns),
                     _ => panic!("Unexpected operation: {:?}, expected update {}", op, ns.id()),
                 }
             }),
             // Publish pages to DHT
             Box::new(|op, ns, t| {
                 match op {
-                    Op::DhtPut(pages) => {
+                    OpKind::DhtPut(_id, pages) => {
                         // Check tertiary page info
                         let p = &pages[0];
                         let n = t.public_options().iter().name().unwrap();
@@ -361,14 +361,14 @@ mod test {
                         assert_eq!(p.info, PageInfo::Tertiary(Tertiary{target_id: t.id() }));
                         assert_eq!(p.public_options().iter().peer_id(), Some(ns.id()));
 
-                        Ok(Res::Pages(pages))
+                        Ok(Res::Ids(vec![]))
                     },
                     _ => panic!("Unexpected operation: {:?}, expected update {}", op, ns.id()),
                 }
             }),
         ]);
 
-        let _r = e.register(RegisterOptions{ns: Some(ns_id), target: target_id }).await.unwrap();
+        let _r = e.register(RegisterOptions{ns: Some(ServiceIdentifier::id(ns_id)), target: ServiceIdentifier::id(target_id) }).await.unwrap();
     }
 
     #[async_std::test]
@@ -391,27 +391,27 @@ mod test {
             // Lookup NS
             Box::new(|op, ns, _t| {
                 match op {
-                    Op::ServiceGet(id) if id == ns.id() => Ok(Res::Service(ns.clone())),
+                    OpKind::ServiceResolve(ServiceIdentifier{id, ..}) if id == Some(ns.id()) => Ok(Res::Service(ns.clone())),
                     _ => panic!("Unexpected operation: {:?}, expected get {}", op, ns.id()),
                 }
             }),
             // Lookup tertiary pages in dht
             Box::new(move |op, ns, _t| {
                 match op {
-                    Op::DhtGet(_id) => Ok(Res::Pages(vec![tertiary.clone()])),
+                    OpKind::DhtGet(_id) => Ok(Res::Pages(vec![tertiary.clone()])),
                     _ => panic!("Unexpected operation: {:?}, expected update {}", op, ns.id()),
                 }
             }),
             // Lookup primary pages in dht
             Box::new(move |op, ns, _t| {
                 match op {
-                    Op::DhtGet(id) if id == target_id => Ok(Res::Pages(vec![primary.clone()])),
+                    OpKind::DhtGet(id) if id == target_id => Ok(Res::Pages(vec![primary.clone()])),
                     _ => panic!("Unexpected operation: {:?}, expected update {}", op, ns.id()),
                 }
             }),
         ]);
 
-        let r = e.search(SearchOptions{ns: Some(ns_id), search: SearchFilter::Name(name.value) }).await.unwrap();
+        let r = e.search(SearchOptions{ns: Some(ServiceIdentifier::id(ns_id)), search: SearchFilter::Name(name.value) }).await.unwrap();
 
         assert_eq!(&r, &[p]);
     }
