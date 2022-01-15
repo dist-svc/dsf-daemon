@@ -566,6 +566,9 @@ impl Future for Dsf {
         // TODO: handle errors?
         let _ = self.poll_rpc(ctx);
 
+        // Poll on internal base operations
+        let _ = self.poll_exec(ctx);
+
         // Poll on internal DHT
         // TODO: handle errors?
         match self.dht_mut().update() {

@@ -53,7 +53,7 @@ fn test_manager() {
 
     let (a2, s2) = (
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 0, 3)), 8112),
-        ServiceBuilder::default().build().unwrap(),
+        ServiceBuilder::<Body>::default().build().unwrap(),
     );
     let (a3, s3) = (
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 0, 3)), 8113),

@@ -130,7 +130,7 @@ impl Dsf {
                 };
                 let data_options = DataOptions {
                     data_kind: opts.kind.into(),
-                    body,
+                    body: Some(body),
                     ..Default::default()
                 };
 
