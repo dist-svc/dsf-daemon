@@ -208,7 +208,7 @@ impl Dsf {
         let _enter = span.enter();
 
         // Pre-sign new pages so encoding works
-        // TODO: this should not need to be here
+        // TODO: this should not be needed as pages are will be signed on creation
         let mut pages = pages.clone();
         for p in &mut pages {
             // We can only sign our own pages...
@@ -216,17 +216,10 @@ impl Dsf {
                 continue;
             }
             // And we don't need to worry if they're already signed
-            if let Some(_s) = p.signature() {
+            if p.signature().is_none() || p.raw().is_none() {
+                warn!("Attempted to store unsigned page");
                 continue;
             }
-
-            let mut b = Base::from(&*p);
-            let mut buff = vec![0u8; 4096];
-
-            let enc_keys = self.service().keys();
-            let _n = b.encode(Some(&enc_keys), &mut buff).unwrap();
-
-            p.set_signature(b.signature().clone().unwrap());
         }
 
         let (store, _req_id) = match self.dht.store(id.clone().into(), pages) {

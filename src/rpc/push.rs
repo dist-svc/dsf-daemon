@@ -3,6 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use dsf_core::wire::Container;
 use futures::channel::mpsc;
 use futures::prelude::*;
 
@@ -107,7 +108,7 @@ impl Dsf {
                 };
 
                 // Parse out / validate incoming data
-                let (base, _n) = match Base::parse(&opts.data, self) {
+                let base = match Container::parse(&opts.data, self) {
                     Ok(v) => v,
                     Err(e) => {
                         error!("Invalid data for push");

@@ -2,6 +2,8 @@
 //! 
 //! 
 
+use std::convert::TryFrom;
+
 use futures::{Future, future, FutureExt};
 use log::{debug, error, warn};
 use serde::{Serialize, Deserialize};
@@ -218,7 +220,7 @@ impl <T: Engine> NameService for T {
                 };
 
                 // Push created pages to vector
-                if let Some(p) = p {
+                if let Some(Ok(p)) = p.map(Page::try_from) {
                     pages.push(p);
                 }
             }
@@ -383,7 +385,7 @@ mod test {
             let name = t.public_options().iter().name().unwrap();
             let tertiary = ns.publish_tertiary::<256, _>(t.id(), Default::default(), &name).unwrap();
 
-            (name, Page::try_from(primary).unwrap(), tertiary)
+            (name, Page::try_from(primary).unwrap(), Page::try_from(tertiary).unwrap())
         });
         let p = primary.clone();
 
