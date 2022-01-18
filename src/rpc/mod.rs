@@ -133,7 +133,7 @@ impl Dsf {
                             None => Some(ResponseKind::None),
                         }
                     }
-                    Err(e) => Some(ResponseKind::None),
+                    Err(_e) => Some(ResponseKind::None),
                 }
             }
             RequestKind::Data(DataCommands::List(data::ListOptions {
@@ -354,7 +354,6 @@ impl Dsf {
                         }
                     }
                 },
-                _ => unimplemented!()
             }
         }
 
@@ -365,7 +364,7 @@ impl Dsf {
             if let Poll::Ready(r) = state.poll_unpin(ctx) {
                 debug!("Op: {} complete with result: {:?}", op_id, r);
                 
-                if let Err(e) = done.try_send(r) {
+                if let Err(_e) = done.try_send(r) {
                     error!("Error sending result to op: {}", op_id);
                 }
 

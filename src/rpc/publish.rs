@@ -100,7 +100,7 @@ impl Dsf {
                     }
                 };
 
-                let mut services = self.services();
+                let services = self.services();
                 // Fetch the known service from the service list
                 let service_info = match services.find(&id) {
                     Some(s) => s,
@@ -141,13 +141,13 @@ impl Dsf {
                     let opts = data_options.clone();
 
                     info!("Generating data page");
-                    let (n, c) = s.service.publish_data(opts, &mut buff).unwrap();
+                    let (_n, c) = s.service.publish_data(opts, &mut buff).unwrap();
                     page = Some(Page::try_from(c).unwrap());
                 });
 
                 let page = page.unwrap();
 
-                let info = PublishInfo {
+                let _info = PublishInfo {
                     index: page.header().index(),
                 };
 
@@ -198,10 +198,10 @@ impl Dsf {
             PublishState::Pending(op) => {
                 // Poll on network operation completion
                 match op.poll_unpin(ctx) {
-                    Poll::Ready(d) => {
+                    Poll::Ready(_d) => {
                         debug!("Publish requests complete");
 
-                        // TODO: fix this to be real publish info
+                        // TODO: fix this to be real publish info (use _d)
                         let i = PublishInfo { index: 0 };
 
                         // TODO: send completion

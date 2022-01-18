@@ -74,12 +74,13 @@ impl Dsf {
         Ok(PushFuture { rx })
     }
 
+    // TODO: implement this
     pub fn poll_rpc_push(
         &mut self,
-        req_id: u64,
+        _req_id: u64,
         register_op: &mut PushOp,
-        ctx: &mut Context,
-        mut done: mpsc::Sender<rpc::Response>,
+        _ctx: &mut Context,
+        mut _done: mpsc::Sender<rpc::Response>,
     ) -> Result<bool, DsfError> {
         let PushOp { opts, state } = register_op;
 
@@ -97,7 +98,7 @@ impl Dsf {
                 debug!("Starting push operation");
 
                 // Fetch the known service from the service list
-                let service_info = match self.services().find(&id) {
+                let _service_info = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
@@ -108,7 +109,7 @@ impl Dsf {
                 };
 
                 // Parse out / validate incoming data
-                let base = match Container::parse(&opts.data, self) {
+                let _base = match Container::parse(&opts.data, self) {
                     Ok(v) => v,
                     Err(e) => {
                         error!("Invalid data for push");
@@ -123,7 +124,7 @@ impl Dsf {
 
                 Ok(false)
             }
-            PushState::Pending(req) => Ok(false),
+            PushState::Pending(_req) => Ok(false),
             _ => Ok(true),
         }
     }

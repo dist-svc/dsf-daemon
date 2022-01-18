@@ -100,7 +100,7 @@ impl ServiceInst {
 
         // Generate actual page
         debug!("Generating new service page");
-        let (n, container) = self.service.publish_primary_buff(Default::default()).unwrap();
+        let (_n, container) = self.service.publish_primary_buff(Default::default()).unwrap();
         let pp = Page::try_from(container).unwrap();
 
         // Update local page version

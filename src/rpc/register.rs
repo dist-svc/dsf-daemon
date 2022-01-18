@@ -157,8 +157,8 @@ impl Dsf {
                             };
 
                             // Encode / sign page so this is valid for future propagation
-                            let mut buff = vec![0u8; 1024];
-                            let (n, mut c) = self
+                            let buff = vec![0u8; 1024];
+                            let (_n, c) = self
                                 .service()
                                 .publish_secondary(&id, opts, buff)
                                 .unwrap();
@@ -251,6 +251,7 @@ impl Dsf {
                             req_id,
                             rpc::ResponseKind::Error(dsf_core::error::Error::Unknown),
                         );
+                        done.try_send(resp).unwrap();
 
                         *state = RegisterState::Error;
 

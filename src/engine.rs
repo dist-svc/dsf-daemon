@@ -144,7 +144,7 @@ impl Engine {
 
         // Generate updated peer page
         let buff = vec![0u8; 1025];
-        let (n, c) = service.publish_primary(Default::default(), buff)?;
+        let (_n, c) = service.publish_primary(Default::default(), buff)?;
 
         let mut page = Page::try_from(c.clone())?;
         page.raw = Some(c.raw().to_vec());
