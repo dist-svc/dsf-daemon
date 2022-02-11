@@ -3,7 +3,8 @@ use std::convert::TryFrom;
 
 use log::{debug, error, info, trace};
 
-use dsf_core::{page::Page, types::Id, keys::Keys};
+use dsf_core::types::{ImmutableData, Id};
+use dsf_core::{keys::Keys, wire::Container};
 
 pub use dsf_rpc::data::DataInfo;
 use dsf_rpc::{PageBounds, TimeBounds};
@@ -17,11 +18,11 @@ pub struct DataManager {
 
 pub struct DataInst {
     pub info: DataInfo,
-    pub page: Page,
+    pub page: Container,
 }
 
-impl From<Page> for DataInst {
-    fn from(page: Page) -> Self {
+impl From<Container> for DataInst {
+    fn from(page: Container) -> Self {
         let info = DataInfo::try_from(&page).unwrap();
         DataInst { info, page }
     }
@@ -78,7 +79,7 @@ impl DataManager {
     }
 
     /// Store data for a given service
-    pub fn store_data(&self, info: &DataInfo, page: &Page) -> Result<(), Error> {
+    pub fn store_data<T: ImmutableData>(&self, info: &DataInfo, page: &Container<T>) -> Result<(), Error> {
         // Store data object
         #[cfg(feature = "store")]
         self.store.save_data(info)?;

@@ -139,7 +139,7 @@ impl Dsf {
                     let last_version = existing.as_ref().map(|p| p.header().index()).unwrap_or(0);
 
                     let replica_page = match existing {
-                        Some(p) if p.valid() => {
+                        Some(p) if !p.expired() => {
                             debug!("Using existing replica page");
                             p
                         }
@@ -158,16 +158,14 @@ impl Dsf {
 
                             // Encode / sign page so this is valid for future propagation
                             let buff = vec![0u8; 1024];
-                            let (_n, c) = self
+                            let (_n, rp) = self
                                 .service()
                                 .publish_secondary(&id, opts, buff)
                                 .unwrap();
-                            let mut rp = Page::try_from(c.clone())?;
-                            rp.raw = Some(c.raw().to_vec());
 
                             // Update service instance
                             self.services().update_inst(&id, |s| {
-                                s.replica_page = Some(rp.clone());
+                                s.replica_page = Some(rp.to_owned());
                                 s.changed = true;
                             });
 
@@ -175,8 +173,7 @@ impl Dsf {
                         }
                     };
 
-                    let replica_version = replica_page.header.index;
-
+                    let replica_version = replica_page.header().index();
                     pages.push(replica_page);
 
                     Some(replica_version)

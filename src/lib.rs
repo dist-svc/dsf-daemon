@@ -35,3 +35,13 @@ pub mod store;
 pub mod engine;
 
 pub mod plugins;
+
+#[cfg(test)]
+mod tests {
+    use ctor::ctor;
+
+    #[ctor]
+    fn init_color_backtrace() {
+        color_backtrace::install();
+    }
+}

@@ -1,8 +1,9 @@
+use dsf_core::wire::Container;
 use futures::Future;
 use futures::channel::mpsc;
 
 
-use dsf_core::prelude::{Page, Id, DsfError as CoreError, Service};
+use dsf_core::prelude::{Id, DsfError as CoreError, Service};
 use dsf_core::types::CryptoHash;
 
 use dsf_rpc::*;
@@ -115,7 +116,7 @@ impl RpcKind {
 /// Basic engine operation, used to construct higher-level functions
 pub enum OpKind {
     DhtGet(Id),
-    DhtPut(Id, Vec<Page>),
+    DhtPut(Id, Vec<Container>),
 
     ServiceResolve(ServiceIdentifier),
     ServiceGet(Id),
@@ -141,7 +142,7 @@ pub type UpdateFn = Box<dyn Fn(&mut Service) -> Result<Res, CoreError> + Send + 
 pub enum Res {
     Id(Id),
     Service(Service),
-    Pages(Vec<Page>),
+    Pages(Vec<Container>),
     Peers(Vec<Peer>),
     Ids(Vec<Id>,)
 }
@@ -154,7 +155,7 @@ pub trait Engine: Sync + Send {
     async fn exec(&self, op: OpKind) -> Result<Res, CoreError>;
 
     /// Search for pages in the DHT
-    async fn dht_get(&self, id: Id) -> Result<Vec<Page>, CoreError> {
+    async fn dht_get(&self, id: Id) -> Result<Vec<Container>, CoreError> {
         match self.exec(OpKind::DhtGet(id)).await? {
             Res::Pages(p) => Ok(p),
             _ => Err(CoreError::Unknown),
@@ -162,7 +163,7 @@ pub trait Engine: Sync + Send {
     }
 
     /// Store pages in the DHT
-    async fn dht_put(&self, id: Id, pages: Vec<Page>) -> Result<Vec<Id>, CoreError> {
+    async fn dht_put(&self, id: Id, pages: Vec<Container>) -> Result<Vec<Id>, CoreError> {
         match self.exec(OpKind::DhtPut(id, pages)).await? {
             Res::Ids(p) => Ok(p),
             _ => Err(CoreError::Unknown),

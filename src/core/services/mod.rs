@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
+use dsf_core::wire::Container;
 use log::{debug, error, info, trace};
 
 use dsf_core::options::Options;
@@ -45,7 +46,7 @@ impl ServiceManager {
     pub fn register(
         &mut self,
         service: Service,
-        primary_page: &Page,
+        primary_page: &Container,
         state: ServiceState,
         updated: Option<SystemTime>,
     ) -> Result<ServiceInfo, DsfError> {
@@ -182,7 +183,7 @@ impl ServiceManager {
         }
     }
 
-    pub fn validate_pages(&mut self, id: &Id, pages: &[Page]) -> Result<(), DsfError> {
+    pub fn validate_pages(&mut self, id: &Id, pages: &[Container]) -> Result<(), DsfError> {
         let service_inst = match self.services.get_mut(id) {
             Some(s) => s,
             None => return Err(DsfError::UnknownService),

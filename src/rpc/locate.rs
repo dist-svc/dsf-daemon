@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::SystemTime;
 
+use dsf_core::wire::Container;
 use futures::channel::mpsc;
 use futures::prelude::*;
 
@@ -22,7 +23,7 @@ use super::ops::*;
 
 pub enum LocateState {
     Init,
-    Pending(kad::dht::SearchFuture<Page>),
+    Pending(kad::dht::SearchFuture<Container>),
     Done,
     Error,
 }

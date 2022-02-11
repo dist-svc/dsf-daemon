@@ -1,22 +1,25 @@
 use crate::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryFrom};
 use std::time::SystemTime;
 
+use dsf_core::options::Filters;
 use log::{debug, error, trace};
 
-use dsf_core::prelude::*;
+use dsf_core::{prelude::*, wire::Container};
 use dsf_rpc::replica::ReplicaInfo;
 
 #[derive(Clone, Debug)]
 pub struct ReplicaInst {
     pub info: ReplicaInfo,
-    pub page: Page,
+    pub page: Container,
 }
 
-impl From<Page> for ReplicaInst {
-    fn from(page: Page) -> Self {
+impl TryFrom<Container> for ReplicaInst {
+    type Error = DsfError;
+
+    fn try_from(page: Container) -> Result<Self, Self::Error> {
         // Replica pages are _always_ secondary types
-        let peer_id = match page.info() {
+        let peer_id = match page.info()? {
             PageInfo::Secondary(s) => s.peer_id.clone(),
             _ => unimplemented!(),
         };
@@ -24,18 +27,18 @@ impl From<Page> for ReplicaInst {
         let info = ReplicaInfo {
             peer_id,
 
-            version: page.header.index(),
-            page_id: page.id.clone(),
+            version: page.header().index(),
+            page_id: page.id(),
 
             //peer: None,
-            issued: page.issued().unwrap().into(),
-            expiry: page.expiry().map(|v| v.into()),
+            issued: page.public_options_iter().issued().unwrap().into(),
+            expiry: page.public_options_iter().expiry().map(|v| v.into()),
             updated: SystemTime::now(),
 
             active: false,
         };
 
-        Self { page, info }
+        Ok(Self { page, info })
     }
 }
 
@@ -59,17 +62,19 @@ impl ReplicaManager {
     }
 
     /// Create or update a given replica instance
-    pub fn create_or_update(&mut self, service_id: &Id, peer_id: &Id, page: &Page) {
+    pub fn create_or_update(&mut self, service_id: &Id, peer_id: &Id, page: &Container) -> Result<(), DsfError> {
         let replicas = self.replicas.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 
         match replica {
-            Some(r) => *r = ReplicaInst::from(page.clone()),
+            Some(r) => *r = ReplicaInst::try_from(page.to_owned())?,
             None => {
-                let r = ReplicaInst::from(page.clone());
+                let r = ReplicaInst::try_from(page.to_owned())?;
                 replicas.push(r);
             }
         }
+
+        Ok(())
     }
 
     /// Update a specified replica

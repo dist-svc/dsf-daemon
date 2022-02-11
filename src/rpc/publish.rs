@@ -3,6 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use dsf_core::wire::Container;
 use futures::channel::mpsc;
 use futures::prelude::*;
 
@@ -134,7 +135,7 @@ impl Dsf {
                     ..Default::default()
                 };
 
-                let mut page: Option<Page> = None;
+                let mut page: Option<Container> = None;
 
                 services.update_inst(&id, |s| {
                     let mut buff = vec![0u8; 1024];
@@ -142,7 +143,7 @@ impl Dsf {
 
                     info!("Generating data page");
                     let (_n, c) = s.service.publish_data(opts, &mut buff).unwrap();
-                    page = Some(Page::try_from(c).unwrap());
+                    page = Some(c.to_owned());
                 });
 
                 let page = page.unwrap();

@@ -4,11 +4,12 @@
 
 use std::convert::TryFrom;
 
+use dsf_core::wire::Container;
 use futures::{Future, future, FutureExt};
 use log::{debug, error, warn};
 use serde::{Serialize, Deserialize};
 
-use dsf_core::prelude::{Page, Options, PageInfo};
+use dsf_core::prelude::{Options, PageInfo};
 use dsf_core::types::{Id, CryptoHash, Flags};
 use dsf_core::error::{Error as CoreError};
 use dsf_core::service::Registry;
@@ -53,7 +54,7 @@ pub struct RegisterOptions {
 
 #[async_trait::async_trait]
 pub trait NameService {
-    async fn search(&self, opts: SearchOptions) -> Result<Vec<Page>, Error>;
+    async fn search(&self, opts: SearchOptions) -> Result<Vec<Container>, Error>;
 
     async fn register(&self, opts: RegisterOptions) -> Result<(), Error>;
 }
@@ -61,7 +62,7 @@ pub trait NameService {
 #[async_trait::async_trait]
 impl <T: Engine> NameService for T {
     /// Search for a matching service using the provided (or relevant) nameserver
-    async fn search(&self, opts: SearchOptions) -> Result<Vec<Page>, Error> {
+    async fn search(&self, opts: SearchOptions) -> Result<Vec<Container>, Error> {
 
         debug!("Locating nameservice for search: {:?}", opts);
         
@@ -111,16 +112,14 @@ impl <T: Engine> NameService for T {
         let matches = pages.iter().filter_map(|p| {
             // Check page is of tertiary kind
             let i = match p.info() {
-                PageInfo::Tertiary(t) => t,
+                Ok(PageInfo::Tertiary(t)) => t,
                 _ => return None,
             };
-            
-            // Check page matches nameserver
-            let peer_id = p.public_options().iter().peer_id();
-            match peer_id {
-                Some(peer_id) if peer_id == ns.id() => (),
-                _ => return None,
-            };
+
+            // Check page issuer matches nameserver ID
+            if i.peer_id != ns.id() {
+                return None
+            }
 
             // TODO: check response matches query
 
@@ -146,7 +145,7 @@ impl <T: Engine> NameService for T {
             // Fetch primary page
             let primary_page = match pages.iter().find(|p| {
                 let h = p.header();
-                h.kind().is_page() && !h.flags().contains(Flags::SECONDARY) && p.id() == &m.target_id
+                h.kind().is_page() && !h.flags().contains(Flags::SECONDARY) && p.id() == m.target_id
             }) {
                 Some(p) => p.clone(),
                 None => {
@@ -220,8 +219,8 @@ impl <T: Engine> NameService for T {
                 };
 
                 // Push created pages to vector
-                if let Some(Ok(p)) = p.map(Page::try_from) {
-                    pages.push(p);
+                if let Some(p) = p {
+                    pages.push(p.to_owned());
                 }
             }
 
@@ -235,7 +234,7 @@ impl <T: Engine> NameService for T {
 
         // Publish pages to database
         for p in pages {
-            if let Err(e) = self.dht_put(p.id.clone(), vec![p]).await {
+            if let Err(e) = self.dht_put(p.id(), vec![p]).await {
                 error!("Failed to publish pages to DHT: {:?}", e);
                 return Err(e.into());
             }
@@ -359,9 +358,8 @@ mod test {
                         let p = &pages[0];
                         let n = t.public_options().iter().name().unwrap();
 
-                        assert_eq!(p.id, ns.resolve(&n).unwrap());
-                        assert_eq!(p.info, PageInfo::Tertiary(Tertiary{target_id: t.id() }));
-                        assert_eq!(p.public_options().iter().peer_id(), Some(ns.id()));
+                        assert_eq!(p.id(), ns.resolve(&n).unwrap());
+                        assert_eq!(p.info(), Ok(PageInfo::Tertiary(Tertiary{target_id: t.id(), peer_id: ns.id() })));
 
                         Ok(Res::Ids(vec![]))
                     },
@@ -385,7 +383,7 @@ mod test {
             let name = t.public_options().iter().name().unwrap();
             let tertiary = ns.publish_tertiary::<256, _>(t.id(), Default::default(), &name).unwrap();
 
-            (name, Page::try_from(primary).unwrap(), Page::try_from(tertiary).unwrap())
+            (name, primary.to_owned(), tertiary.to_owned())
         });
         let p = primary.clone();
 

@@ -2,12 +2,13 @@ use std::convert::TryFrom;
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
+use dsf_core::wire::Container;
 use log::{debug, error, warn};
 
 use diesel::Queryable;
 use serde::{Deserialize, Serialize};
 
-use dsf_core::options::Options;
+use dsf_core::options::{Options, Filters};
 use dsf_core::prelude::*;
 use dsf_core::service::{Publisher, Subscriber, SecondaryOptions};
 
@@ -23,10 +24,10 @@ pub struct ServiceInst {
 
     // TODO: this isn't really optional / should always exist?
     #[serde(skip)]
-    pub(crate) primary_page: Option<Page>,
+    pub(crate) primary_page: Option<Container>,
 
     #[serde(skip)]
-    pub(crate) replica_page: Option<Page>,
+    pub(crate) replica_page: Option<Container>,
 
     #[serde(skip)]
     pub(crate) changed: bool,
@@ -49,8 +50,8 @@ impl ServiceInst {
             index: self.index,
             state: self.state,
             last_updated: self.last_updated,
-            primary_page: self.primary_page.as_ref().map(|v| v.signature()).flatten(),
-            replica_page: self.replica_page.as_ref().map(|v| v.signature()).flatten(),
+            primary_page: self.primary_page.as_ref().map(|v| v.signature()),
+            replica_page: self.replica_page.as_ref().map(|v| v.signature()),
             public_key: service.public_key(),
             private_key: service.private_key(),
             secret_key: service.secret_key(),
@@ -63,12 +64,12 @@ impl ServiceInst {
     }
 
     /// Publish a service, creating a new primary page
-    pub(crate) fn publish(&mut self, force_update: bool) -> Result<Page, DsfError> {
+    pub(crate) fn publish(&mut self, force_update: bool) -> Result<Container, DsfError> {
         // Check if there's an existing page
         if let Some(page) = &self.primary_page {
             let (issued, expiry): (Option<SystemTime>, Option<SystemTime>) = (
-                page.issued().map(|v| v.into()),
-                page.expiry().map(|v| v.into()),
+                page.public_options_iter().issued().map(|v| v.into()),
+                page.public_options_iter().expiry().map(|v| v.into()),
             );
 
             // Fetch expiry time
@@ -101,13 +102,12 @@ impl ServiceInst {
         // Generate actual page
         debug!("Generating new service page");
         let (_n, container) = self.service.publish_primary_buff(Default::default()).unwrap();
-        let pp = Page::try_from(container).unwrap();
 
         // Update local page version
-        self.primary_page = Some(pp.clone());
+        self.primary_page = Some(container.to_owned());
         self.changed = true;
 
-        Ok(pp)
+        Ok(container.to_owned())
     }
 
     /// Replicate a service, creating a new replica page
@@ -115,14 +115,14 @@ impl ServiceInst {
         &mut self,
         peer_service: &mut Service,
         force_update: bool,
-    ) -> Result<Page, DsfError> {
+    ) -> Result<Container, DsfError> {
         let mut version = 0;
 
         // Check if there's an existing page
         if let Some(page) = &self.replica_page {
             let (issued, expiry): (Option<SystemTime>, Option<SystemTime>) = (
-                page.issued().map(|v| v.into()),
-                page.expiry().map(|v| v.into()),
+                page.public_options_iter().issued().map(|v| v.into()),
+                page.public_options_iter().expiry().map(|v| v.into()),
             );
 
             // Fetch expiry time
@@ -149,17 +149,15 @@ impl ServiceInst {
             .publish_secondary_buff(&self.service.id(), opts)
             .unwrap();
 
-        let rp = Page::try_from(container).unwrap();
-
         // Update local replica page
-        self.replica_page = Some(rp.clone());
+        self.replica_page = Some(container.to_owned());
         self.changed = true;
 
-        Ok(rp)
+        Ok(container.to_owned())
     }
 
     /// Apply an updated service page
-    pub(crate) fn apply_update(&mut self, page: &Page) -> Result<bool, DsfError> {
+    pub(crate) fn apply_update(&mut self, page: &Container) -> Result<bool, DsfError> {
         let changed = self.service.apply_primary(page)?;
 
         // TODO: mark update required

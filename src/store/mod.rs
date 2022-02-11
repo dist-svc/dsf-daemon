@@ -1,6 +1,8 @@
 use std::str::FromStr;
 use std::time::SystemTime;
 
+use dsf_core::types::ImmutableData;
+use dsf_core::wire::Container;
 use log::{debug, error, warn};
 
 use diesel::dsl::sql_query;
@@ -207,15 +209,15 @@ impl Store {
         Ok(Some(service))
     }
 
-    pub fn set_peer_service(&self, service: &Service, page: &Page) -> Result<(), StoreError> {
+    pub fn set_peer_service<T: ImmutableData>(&self, service: &Service, page: &Container<T>) -> Result<(), StoreError> {
         use crate::store::schema::identity::dsl::*;
 
         let pub_key = public_key.eq(service.public_key().to_string());
         let pri_key = service.private_key().map(|v| private_key.eq(v.to_string()));
         let sec_key = service.secret_key().map(|v| secret_key.eq(v.to_string()));
-        let sig = page.signature.as_ref().map(|v| last_page.eq(v.to_string()));
+        let sig = last_page.eq(page.signature().to_string());
 
-        let p_sig = page.signature.as_ref().unwrap();
+        let p_sig = page.signature();
 
         let keys = Keys::new(service.public_key());
 

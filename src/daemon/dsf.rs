@@ -8,6 +8,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
+use dsf_core::wire::Container;
 use log::{debug, error, info, trace, warn};
 use tracing::{span, Level};
 
@@ -62,7 +63,7 @@ pub struct Dsf {
     /// Distributed Database
     dht: Dht<Id, Peer, Data, RequestId>,
 
-    dht_source: mpsc::Receiver<(RequestId, DhtEntry<Id, Peer>, DhtRequest<Id, Page>)>,
+    dht_source: mpsc::Receiver<(RequestId, DhtEntry<Id, Peer>, DhtRequest<Id, Container>)>,
 
     store: Store,
 
@@ -191,18 +192,17 @@ impl Dsf {
     pub(crate) fn primary<T: AsRef<[u8]> + AsMut<[u8]>>(
         &mut self,
         buff: T,
-    ) -> Result<(usize, Page), Error> {
+    ) -> Result<(usize, Container<T>), Error> {
         // TODO: this should generate a peer page / contain peer contact info
         let (n, c) = self.service.publish_primary(Default::default(), buff).map_err(Error::Core)?;
-        let p = Page::try_from(c)?;
-        Ok((n, p))
+        Ok((n, c))
     }
 
     /// Store pages in the database at the provided ID
     pub fn store(
         &mut self,
         id: &Id,
-        pages: Vec<Page>,
+        pages: Vec<Container>,
     ) -> Result<kad::dht::StoreFuture<Id, Peer>, Error> {
         let span = span!(Level::DEBUG, "store", "{}", self.id());
         let _enter = span.enter();
@@ -212,14 +212,11 @@ impl Dsf {
         let mut pages = pages.clone();
         for p in &mut pages {
             // We can only sign our own pages...
-            if p.id() != &self.id() {
+            if p.id() != self.id() {
                 continue;
             }
-            // And we don't need to worry if they're already signed
-            if p.signature().is_none() || p.raw().is_none() {
-                warn!("Attempted to store unsigned page");
-                continue;
-            }
+
+            // TODO: ensure page is signed / verifiable
         }
 
         let (store, _req_id) = match self.dht.store(id.clone().into(), pages) {
@@ -234,7 +231,7 @@ impl Dsf {
     }
 
     /// Search for pages in the database at the provided ID
-    pub async fn search(&mut self, id: &Id) -> Result<Vec<Page>, Error> {
+    pub async fn search(&mut self, id: &Id) -> Result<Vec<Container>, Error> {
         let span = span!(Level::DEBUG, "search", "{}", self.id());
         let _enter = span.enter();
 
@@ -364,21 +361,21 @@ impl Dsf {
         None
     }
 
-    pub fn service_register(&mut self, id: &Id, pages: Vec<Page>) -> Result<ServiceInfo, Error> {
+    pub fn service_register(&mut self, id: &Id, pages: Vec<Container>) -> Result<ServiceInfo, Error> {
         debug!("Registering service: {}", id);
 
         debug!("found {} pages", pages.len());
         // Fetch primary page
         let primary_page = match pages.iter().find(|p| {
             let h = p.header();
-            h.kind().is_page() && !h.flags().contains(Flags::SECONDARY) && p.id() == id
+            h.kind().is_page() && !h.flags().contains(Flags::SECONDARY) && &p.id() == id
         }) {
             Some(p) => p.clone(),
             None => return Err(Error::NotFound),
         };
 
         // Fetch replica pages
-        let replicas: Vec<(Id, &Page)> = pages
+        let replicas: Vec<(Id, &Container)> = pages
             .iter()
             .filter(|p| {
                 let h = p.header();
@@ -388,8 +385,8 @@ impl Dsf {
                     && h.kind() == PageKind::Replica.into()
             })
             .filter_map(|p| {
-                let peer_id = match p.info().peer_id() {
-                    Some(v) => v,
+                let peer_id = match p.info().map(|i| i.peer_id()) {
+                    Ok(Some(v)) => v,
                     _ => return None,
                 };
 
@@ -399,7 +396,7 @@ impl Dsf {
 
         debug!("found {} replicas", replicas.len());
 
-        if primary_page.id() == id {
+        if &primary_page.id() == id {
             debug!("Registering service for matching peer");
         }
 
@@ -565,6 +562,7 @@ impl Future for Dsf {
         // Poll on internal DHT
         // TODO: handle errors?
         match self.dht_mut().update() {
+            // TODO: DHT appears to always be triggering a wake?!
             Ok(true) => ctx.waker().clone().wake(),
             Err(e) => {
                 error!("DHT error: {:?}", e);

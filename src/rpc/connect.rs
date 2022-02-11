@@ -155,10 +155,9 @@ impl Dsf {
 
                         let mut buff = vec![0u8; 1024];
                         let (n, mut primary_page) = self.primary(&mut buff).unwrap();
-                        primary_page.raw = Some(buff[..n].to_vec());
 
                         let our_id = self.id();
-                        let (store, _req_id) = match self.dht_mut().store_peers(our_id, vec![primary_page], v.iter()) {
+                        let (store, _req_id) = match self.dht_mut().store_peers(our_id, vec![primary_page.to_owned()], v.iter()) {
                             Ok(r) => r,
                             Err(e) => {
                                 error!("DHT store error: {:?}", e);

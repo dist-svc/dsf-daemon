@@ -2,6 +2,7 @@ use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::time::SystemTime;
 
+use dsf_rpc::QosPriority;
 use log::{debug, error, trace};
 
 use futures::channel::mpsc;
@@ -90,6 +91,7 @@ impl SubscriberManager {
 
                     updated: Some(SystemTime::now()),
                     expiry: None,
+                    qos: QosPriority::None,
                 },
             };
 
@@ -132,6 +134,7 @@ impl SubscriberManager {
 
                     updated: Some(SystemTime::now()),
                     expiry: None,
+                    qos: QosPriority::None,
                 },
             };
 

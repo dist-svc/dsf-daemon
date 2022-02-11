@@ -8,6 +8,7 @@ use futures::future::join_all;
 use futures::prelude::*;
 
 use log::{debug, error, info, trace, warn};
+use rpc::QosPriority;
 use tracing::{span, Level};
 
 use dsf_core::error::Error as CoreError;
@@ -153,7 +154,7 @@ impl Dsf {
                         // TODO: perhaps this should happen in the rx handle?
                         for p in &v {
                             // TODO: check other page fields here (id etc.)
-                            if let PageInfo::Secondary(s) = &p.info {
+                            if let PageInfo::Secondary(s) = &p.info()? {
                                 self.replicas().create_or_update(&id, &s.peer_id, p);
                             }
                         }
@@ -254,6 +255,7 @@ impl Dsf {
                                         kind: SubscriptionKind::Peer(peer_id.clone()),
                                         updated: Some(SystemTime::now()),
                                         expiry: None,
+                                        qos: QosPriority::None,
                                     })
                                 },
                                 net::ResponseKind::ValuesFound(service_id, _pages) => {
@@ -262,6 +264,7 @@ impl Dsf {
                                         kind: SubscriptionKind::Peer(peer_id.clone()),
                                         updated: Some(SystemTime::now()),
                                         expiry: None,
+                                        qos: QosPriority::None,
                                     })
                                 }
                                 _ => None,

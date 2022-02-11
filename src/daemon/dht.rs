@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use dsf_core::wire::Container;
 use kad::prelude::*;
 
 use futures::channel::mpsc;
@@ -175,7 +176,7 @@ impl Dsf {
 }
 
 /// Reducer function reduces pages stored in the database
-pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
+pub(crate) fn dht_reducer(pages: &[Container]) -> Vec<Container> {
     // Build sorted array for filtering
     let mut ordered: Vec<_> = pages.iter().collect();
     ordered.sort_by_key(|p| p.header().index());
@@ -186,13 +187,14 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
     let mut svc_id = None;
     for p in ordered {
         let id = match p.info() {
-            PageInfo::Primary(_pri) => {
+            Ok(PageInfo::Primary(_pri)) => {
                 svc_id = Some(p.id().clone());
                 Some(p.id().clone())
             }
-            PageInfo::Secondary(s) => Some(s.peer_id.clone()),
-            PageInfo::Tertiary(t) => Some(t.target_id.clone()),
-            PageInfo::Data(_) => None,
+            Ok(PageInfo::Secondary(s)) => Some(s.peer_id.clone()),
+            Ok(PageInfo::Tertiary(t)) => Some(t.target_id.clone()),
+            Ok(PageInfo::Data(_)) => None,
+            _ => continue,
         };
 
         if let Some(id) = id {
@@ -216,7 +218,7 @@ pub(crate) fn dht_reducer(pages: &[Page]) -> Vec<Page> {
     let id: Id = svc_id.unwrap();
 
     map.iter()
-        .filter(|(_k, p)| p.id() == &id)
+        .filter(|(_k, p)| p.id() == id)
         .map(|(_k, p)| (*p).clone())
         .collect()
 }

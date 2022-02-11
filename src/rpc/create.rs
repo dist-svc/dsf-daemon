@@ -126,8 +126,7 @@ impl Dsf {
                 debug!("Generating service page");
                 // TODO: revisit this
                 let buff = vec![0u8; 1024];
-                let (_n, c) = service.publish_primary(Default::default(), buff).unwrap();
-                let primary_page = Page::try_from(c).unwrap();
+                let (_n, primary_page) = service.publish_primary(Default::default(), buff).unwrap();
 
                 //primary_page.raw = Some(buff[..n].to_vec());
 

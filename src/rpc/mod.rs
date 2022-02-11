@@ -1,6 +1,7 @@
 use std::task::{Context, Poll};
 
 use async_std::channel::Receiver;
+use dsf_core::wire::Container;
 use log::{debug, error, info};
 use tracing::{span, Level};
 
@@ -397,7 +398,7 @@ pub struct Op {
 
 enum OpState {
     None,
-    DhtGet(kad::dht::SearchFuture<Page>),
+    DhtGet(kad::dht::SearchFuture<Container>),
     DhtPut(kad::dht::StoreFuture<Id, Peer>),
 }
 
