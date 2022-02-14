@@ -115,22 +115,27 @@ impl RpcKind {
 
 /// Basic engine operation, used to construct higher-level functions
 pub enum OpKind {
-    DhtGet(Id),
+    DhtSearch(Id),
+    DhtLocate(Id),
     DhtPut(Id, Vec<Container>),
 
     ServiceResolve(ServiceIdentifier),
     ServiceGet(Id),
-    ServiceUpdate(Id, UpdateFn)
+    ServiceUpdate(Id, UpdateFn),
+
+    PeerGet(Id),
 }
 
 impl core::fmt::Debug for OpKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DhtGet(id) => f.debug_tuple("DhtGet").field(id).finish(),
+            Self::DhtLocate(id) => f.debug_tuple("DhtLocate").field(id).finish(),
+            Self::DhtSearch(id) => f.debug_tuple("DhtSearch").field(id).finish(),
             Self::DhtPut(id, pages) => f.debug_tuple("DhtPut").field(id).field(pages).finish(),
             Self::ServiceResolve(arg0) => f.debug_tuple("ServiceResolve").field(arg0).finish(),
             Self::ServiceGet(id) => f.debug_tuple("ServiceGet").field(id).finish(),
             Self::ServiceUpdate(id, _f) => f.debug_tuple("ServiceUpdate").field(id).finish(),
+            Self::PeerGet(id) => f.debug_tuple("PeerGet").field(id).finish(),
         }
     }
 }
@@ -142,6 +147,7 @@ pub type UpdateFn = Box<dyn Fn(&mut Service) -> Result<Res, CoreError> + Send + 
 pub enum Res {
     Id(Id),
     Service(Service),
+    ServiceInfo(ServiceInfo),
     Pages(Vec<Container>),
     Peers(Vec<Peer>),
     Ids(Vec<Id>,)
@@ -154,9 +160,18 @@ pub trait Engine: Sync + Send {
     /// Base execute function, non-blocking, returns a future result
     async fn exec(&self, op: OpKind) -> Result<Res, CoreError>;
 
+    /// Lookup a peer using the DHT
+    async fn dht_locate(&self, id: Id) -> Result<Peer, CoreError> {
+        match self.exec(OpKind::DhtLocate(id)).await? {
+            Res::Peers(p) if p.len() > 0 => Ok(p[0].clone()),
+            Res::Peers(_) => Err(CoreError::NotFound),
+            _ => Err(CoreError::Unknown),
+        }
+    }
+
     /// Search for pages in the DHT
-    async fn dht_get(&self, id: Id) -> Result<Vec<Container>, CoreError> {
-        match self.exec(OpKind::DhtGet(id)).await? {
+    async fn dht_search(&self, id: Id) -> Result<Vec<Container>, CoreError> {
+        match self.exec(OpKind::DhtSearch(id)).await? {
             Res::Pages(p) => Ok(p),
             _ => Err(CoreError::Unknown),
         }
@@ -170,6 +185,15 @@ pub trait Engine: Sync + Send {
         }
     }
 
+    /// Fetch peer information
+    async fn peer_get(&self, id: Id) -> Result<Peer, CoreError> {
+        match self.exec(OpKind::PeerGet(id)).await? {
+            Res::Peers(p) if p.len() == 1 => Ok(p[0].clone()),
+            _ => Err(CoreError::Unknown),
+        }
+    }
+
+
     /// Resolve a service index to ID
     async fn service_resolve(&self, identifier: ServiceIdentifier) -> Result<Service, CoreError> {
         match self.exec(OpKind::ServiceResolve(identifier)).await? {
@@ -179,9 +203,9 @@ pub trait Engine: Sync + Send {
     }
 
     /// Fetch a service object by ID
-    async fn service_get(&self, service: Id) -> Result<Service, CoreError> {
+    async fn service_get(&self, service: Id) -> Result<ServiceInfo, CoreError> {
         match self.exec(OpKind::ServiceGet(service)).await? {
-            Res::Service(s) => Ok(s),
+            Res::ServiceInfo(s) => Ok(s),
             _ => Err(CoreError::Unknown),
         }
     }

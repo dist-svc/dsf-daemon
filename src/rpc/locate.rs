@@ -184,3 +184,79 @@ impl Dsf {
         }
     }
 }
+
+
+#[async_trait::async_trait]
+pub trait ServiceRegistry {
+    /// Lookup a peer
+    async fn service_locate(&self, options: LocateOptions) -> Result<LocateInfo, DsfError>;
+}
+
+#[async_trait::async_trait]
+impl <T: Engine> ServiceRegistry for T {
+    async fn service_locate(&self, opts: LocateOptions) -> Result<LocateInfo, DsfError> {
+        info!("Locating service: {:?}", opts);
+
+        // Check for existing / local information
+        let local = self.service_get(opts.id.clone()).await.map(|i| {
+            LocateInfo {
+                origin: i.origin,
+                updated: false,
+                page_version: i.index as u16,
+                // TODO: fetch related page
+                page: None,
+            }
+        });
+
+        // Short-circuit for owned services
+        match &local {
+            Ok(i) if i.origin => return Ok(i.clone()),
+            _ => (),
+        }
+
+        // Otherwise, lookup via DHT
+        let pages = match self.dht_search(opts.id.clone()).await {
+            Ok(p) => p,
+            Err(e) => {
+                error!("DHT search failed: {:?}", e);
+                return Err(e.into())
+            },
+        };
+
+        debug!("Found pages: {:?}", pages);
+
+        // Fetch primary page
+        let primary_page = pages.iter().find(|p| {
+            let h = p.header();
+            h.kind().is_page() && !h.flags().contains(Flags::SECONDARY) && &p.id() == &opts.id
+        });
+        
+        // If the search failed and it's available, return the local information
+        let primary_page = match (primary_page, local) {
+            (Some(p), _) => p.clone(),
+            (None, Ok(l)) => return Ok(l),
+            _ => return Err(DsfError::NotFound),
+        };
+
+        // Register or update service
+        let pri = primary_page.clone();
+        self.service_update(opts.id.clone(), Box::new(move |svc| {
+            svc.apply_primary(&pri).map(|_| Res::Id(svc.id()))
+        })).await?;
+
+        // TODO: update replicas
+
+
+        // Return info
+        // TODO: only return updated when _new_ data is returned
+        let i = self.service_get(opts.id.clone()).await.unwrap();
+        let info = LocateInfo {
+            origin: i.origin,
+            updated: true,
+            page_version: i.index as u16,
+            page: Some(primary_page),
+        };
+
+        Ok(info)
+    }
+}

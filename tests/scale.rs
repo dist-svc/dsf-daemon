@@ -23,7 +23,7 @@ fn smol_scale() {
 }
 
 #[test]
-#[ignore]
+//#[ignore]
 fn med_scale() {
     scale(20, LevelFilter::INFO);
 }

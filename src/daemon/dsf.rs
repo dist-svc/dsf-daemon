@@ -575,7 +575,7 @@ impl Future for Dsf {
         // Manage waking
         // TODO: propagate this, in a better manner
 
-        // Always wake (terrible for CPU use)
+        // Always wake (terrible for CPU use but helps response times)
         //ctx.waker().clone().wake();
 
         // Store waker

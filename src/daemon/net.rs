@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use std::time::Instant;
 use std::time::{Duration, SystemTime};
 
-use dsf_rpc::{LocateOptions, RegisterOptions, ServiceIdentifier, SubscribeOptions};
+use dsf_rpc::{LocateOptions, RegisterOptions, ServiceIdentifier, SubscribeOptions, QosPriority};
 use kad::common::message;
 use log::{debug, error, info, trace, warn};
 
@@ -737,6 +737,10 @@ impl Dsf {
                     .update_peer(&service_id, &peer.id(), |inst| {
                         inst.info.updated = Some(SystemTime::now());
                         inst.info.expiry = Some(SystemTime::now().add(Duration::from_secs(3600)));
+                        // Set QOS latency priority if flag is provided
+                        if req.flags.contains(Flags::QOS_PRIO_LATENCY) {
+                            inst.info.qos = QosPriority::Latency;
+                        }
                     })
                     .unwrap();
 

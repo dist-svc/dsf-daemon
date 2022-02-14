@@ -2,7 +2,8 @@ use std::task::{Context, Poll};
 
 use async_std::channel::Receiver;
 use dsf_core::wire::Container;
-use log::{debug, error, info};
+use kad::store::Datastore;
+use log::{debug, warn, error, info};
 use tracing::{span, Level};
 
 use futures::channel::mpsc;
@@ -14,6 +15,8 @@ use dsf_rpc::*;
 use crate::core::peers::Peer;
 use crate::daemon::Dsf;
 use crate::error::{CoreError, Error};
+use crate::rpc::lookup::PeerRegistry;
+use crate::rpc::search::NameService;
 
 // Generic / shared operation types
 pub mod ops;
@@ -163,7 +166,24 @@ impl Dsf {
         // Otherwise queue up request for async execution
         let kind = match req.kind() {
             RequestKind::Peer(PeerCommands::Connect(opts)) => RpcKind::connect(opts),
-            RequestKind::Peer(PeerCommands::Search(opts)) => RpcKind::lookup(opts),
+            //RequestKind::Peer(PeerCommands::Search(opts)) => RpcKind::lookup(opts),
+            //#[cfg(nope)]
+            RequestKind::Peer(PeerCommands::Search(opts)) => {
+                let mut exec = self.exec();
+                async_std::task::spawn(async move {
+                    debug!("Starting async lookup");
+                    let i = match exec.peer_lookup(opts).await {
+                        Ok(p) => ResponseKind::Peer(p),
+                        Err(e) => ResponseKind::Error(e),
+                    };
+                    warn!("Async peer lookup result: {:?}", i);
+                    if let Err(e) = done.clone().try_send(Response::new(req_id, i)) {
+                        error!("Failed to send RPC response: {:?}", e);
+                    }
+                });
+
+                return Ok(())
+            },
             RequestKind::Service(ServiceCommands::Create(opts)) => RpcKind::create(opts),
             RequestKind::Service(ServiceCommands::Register(opts)) => RpcKind::register(opts),
             RequestKind::Service(ServiceCommands::Locate(opts)) => RpcKind::locate(opts),
@@ -171,6 +191,36 @@ impl Dsf {
             RequestKind::Data(DataCommands::Publish(opts)) => RpcKind::publish(opts),
             //RequestKind::Data(DataCommands::Query(options)) => unimplemented!(),
             //RequestKind::Debug(DebugCommands::Update) => self.update(true).await.map(|_| ResponseKind::None)?,
+            RequestKind::Ns(NsCommands::Register(opts)) => {
+                let exec = self.exec();
+                async_std::task::spawn(async move {
+                    debug!("Starting async ns register");
+                    let i = match exec.ns_register(opts).await {
+                        Ok(i) => ResponseKind::Ns(i),
+                        Err(e) => ResponseKind::Error(e),
+                    };
+                    warn!("Async ns register result: {:?}", i);
+                    if let Err(e) = done.clone().try_send(Response::new(req_id, i)) {
+                        error!("Failed to send RPC response: {:?}", e);
+                    }
+                });
+                return Ok(());
+            },
+            RequestKind::Ns(NsCommands::Search(opts)) => {
+                let exec = self.exec();
+                async_std::task::spawn(async move {
+                    debug!("Starting async ns search");
+                    let i = match exec.ns_search(opts).await {
+                        Ok(p) => ResponseKind::Pages(p),
+                        Err(e) => ResponseKind::Error(e),
+                    };
+                    warn!("Async ns search result: {:?}", i);
+                    if let Err(e) = done.clone().try_send(Response::new(req_id, i)) {
+                        error!("Failed to send RPC response: {:?}", e);
+                    }
+                });
+                return Ok(());
+            },
             RequestKind::Debug(DebugCommands::Bootstrap) => RpcKind::bootstrap(()),
             _ => {
                 error!("RPC operation {:?} unimplemented", req.kind());
@@ -333,10 +383,21 @@ impl Dsf {
                         error!("Failed to send operation response: {:?}", e);
                     }
                 },
-                OpKind::DhtGet(ref id) => {
+                OpKind::DhtLocate(ref id) => {
+                    match self.dht_mut().locate(id.clone()) {
+                        Ok((s, _id)) => {
+                            op.state = OpState::DhtLocate(s);
+                            self.ops.insert(op_id, op);
+                        },
+                        Err(e) => {
+                            error!("Failed to create search operation: {:?}", e);
+                        }
+                    }
+                },
+                OpKind::DhtSearch(ref id) => {
                     match self.dht_mut().search(id.clone()) {
                         Ok((s, _id)) => {
-                            op.state = OpState::DhtGet(s);
+                            op.state = OpState::DhtSearch(s);
                             self.ops.insert(op_id, op);
                         },
                         Err(e) => {
@@ -354,6 +415,15 @@ impl Dsf {
                             error!("Failed to create search operation: {:?}", e);
                         }
                     }
+                },
+                OpKind::PeerGet(ref id) => {
+                    let r = self.peers().find(id)
+                        .map(|p| Ok(Res::Peers(vec![p])) )
+                        .unwrap_or(Err(CoreError::NotFound));
+                    
+                    if let Err(e) = op.done.try_send(r) {
+                        error!("Failed to send operation response: {:?}", e);
+                    };
                 },
             }
         }
@@ -398,7 +468,8 @@ pub struct Op {
 
 enum OpState {
     None,
-    DhtGet(kad::dht::SearchFuture<Container>),
+    DhtLocate(kad::dht::LocateFuture<Id, Peer>),
+    DhtSearch(kad::dht::SearchFuture<Container>),
     DhtPut(kad::dht::StoreFuture<Id, Peer>),
 }
 
@@ -408,7 +479,14 @@ impl Future for OpState {
     fn poll(self: std::pin::Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let r = match self.get_mut() {
             OpState::None => unreachable!(),
-            OpState::DhtGet(get) => {
+            OpState::DhtLocate(locate) => {
+                match locate.poll_unpin(ctx) {
+                    Poll::Ready(Ok(peer)) =>  Ok(Res::Peers(vec![peer.info().clone()])),
+                    Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
+                    _ => return Poll::Pending,
+                }
+            },
+            OpState::DhtSearch(get) => {
                 match get.poll_unpin(ctx) {
                     Poll::Ready(Ok(pages)) =>  Ok(Res::Pages(pages)),
                     Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
@@ -435,7 +513,8 @@ impl core::fmt::Debug for OpState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::None => write!(f, "None"),
-            Self::DhtGet(_) => f.debug_tuple("DhtGet").finish(),
+            Self::DhtLocate(_) => f.debug_tuple("DhtLocate").finish(),
+            Self::DhtSearch(_) => f.debug_tuple("DhtSearch").finish(),
             Self::DhtPut(_) => f.debug_tuple("DhtPut").finish(),
         }
     }
@@ -456,6 +535,7 @@ impl Engine for ExecHandle {
 
         if let Err(_e) = tx.send(req).await {
             // TODO: Cancelled
+            error!("RPC exec channel closed");
             return Err(CoreError::Unknown)
         }
 
@@ -463,7 +543,10 @@ impl Engine for ExecHandle {
             Some(Ok(r)) => Ok(r),
             Some(Err(e)) => Err(e),
             // TODO: Cancelled
-            None => Err(CoreError::Unknown),
+            None => {
+                warn!("RPC response channel closed");
+                Err(CoreError::Unknown)
+            },
         }
     }
 }

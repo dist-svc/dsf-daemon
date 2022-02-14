@@ -3,6 +3,7 @@ use std::time::SystemTime;
 
 use dsf_core::types::ImmutableData;
 use dsf_core::wire::Container;
+use dsf_rpc::{PeerInfo, ServiceInfo};
 use log::{debug, error, warn};
 
 use diesel::dsl::sql_query;
@@ -40,20 +41,38 @@ fn from_dt(n: &NaiveDateTime) -> SystemTime {
     dt.into()
 }
 
-#[cfg(nope)]
-pub trait Base<Item> {
-    // Store an item
-    fn save(&self, item: &Item) -> Result<(), StoreError>;
+#[async_trait::async_trait]
+pub trait DataStore {
+    /// Store a peer, updating the object if existing
+    fn peer_update(&self, info: &PeerInfo) -> Result<(), StoreError>{ todo!() }
 
-    // Find an item or items by associated service
-    fn find(&self, service_id: &Id) -> Result<Vec<Item>, StoreError>;
+    /// Fetch a peer by ID
+    fn peer_get(&self, id: &Id) -> Result<PeerInfo, StoreError>{ todo!() }
 
-    // Load all items
-    fn load(&self) -> Result<Vec<Item>, StoreError>;
+    /// Delete a peer by ID
+    fn peer_del(&self, id: &Id) -> Result<(), StoreError>{ todo!() }
 
-    // Delete an item
-    fn delete(&self, item: &Item) -> Result<(), StoreError>;
+
+    /// Store a service, updating the object if existing
+    fn service_update(&self, info: &ServiceInfo) -> Result<(), StoreError>{ todo!() }
+
+    /// Fetch a service by ID
+    fn service_get(&self, id: &Id) -> Result<ServiceInfo, StoreError>{ todo!() }
+
+    /// Delete a service by ID
+    fn service_del(&self, id: &Id) -> Result<(), StoreError>{ todo!() }
+
+
+    /// Store an object, linked to a service ID and signature
+    fn object_put<T: ImmutableData>(&self, id: &Id, sig: &Signature, page: Container<T>) -> Result<(), StoreError>{ todo!() }
+
+    /// Fetch an object by signature
+    fn object_get(&self, sig: &Signature) -> Result<Container, StoreError>{ todo!() }
+
+    /// Delete an object by signature
+    fn object_del(&self, sig: &Signature) -> Result<(), StoreError>{ todo!() }
 }
+
 
 impl Store {
     /// Create or connect to a store with the provided filename

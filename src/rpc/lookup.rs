@@ -55,7 +55,7 @@ impl Future for LookupFuture {
 
 impl Dsf {
     /// Look-up a peer via the database
-    pub fn lookup(&mut self, options: LookupOptions) -> Result<LookupFuture, Error> {
+    pub fn lookup2(&mut self, options: LookupOptions) -> Result<LookupFuture, Error> {
         let req_id = rand::random();
 
         let (tx, rx) = mpsc::channel(1);
@@ -136,5 +136,35 @@ impl Dsf {
             }
             _ => Ok(true),
         }
+    }
+}
+
+#[async_trait::async_trait]
+pub trait PeerRegistry {
+    /// Lookup a peer
+    async fn peer_lookup(&mut self, options: LookupOptions) -> Result<PeerInfo, DsfError>;
+}
+
+#[async_trait::async_trait]
+impl <T: Engine> PeerRegistry for T {
+    async fn peer_lookup(&mut self, options: LookupOptions) -> Result<PeerInfo, DsfError> {
+        debug!("Performing peer lookup by ID: {}", options.id);
+
+        // TODO: Check local storage for existing peer info
+
+        // Lookup via DHT
+        let peer = match self.dht_locate(options.id.clone()).await {
+            Ok(p) => p,
+            Err(e) => {
+                error!("DHT lookup failed: {:?}", e);
+                return Err(e.into())
+            },
+        };
+
+        debug!("Located peer: {:?}", peer);
+
+        // TODO: what if we explicitly updated the local peer and store here rather than implicitly through the DHT?
+
+        Ok(peer.info)
     }
 }

@@ -93,6 +93,10 @@ impl Dsf {
             CreateState::Init => {
                 info!("Creating service: {:?}", opts);
                 let mut sb = ServiceBuilder::generic();
+                
+                if let Some(kind) = opts.page_kind {
+                    sb = sb.kind(kind);
+                }
 
                 // Attach a body if provided
                 if let Some(body) = &opts.body {
@@ -100,6 +104,10 @@ impl Dsf {
                 } else {
                     sb = sb.body(Body::None);
                 }
+
+                // Append supplied public and private options
+                sb = sb.public_options(opts.public_options.clone());
+                sb = sb.private_options(opts.private_options.clone());
 
                 // Append addresses as private options
                 sb = sb.private_options(
@@ -154,7 +162,16 @@ impl Dsf {
                     *state = CreateState::Pending(store);
                     Ok(false)
                 } else {
+                    // Return info for newly created service
+                    let info = self
+                            .services()
+                            .update_inst(id.as_ref().unwrap(), |s| () ).unwrap();
+
+                    let resp = rpc::Response::new(req_id, rpc::ResponseKind::Service(info));
+                    done.try_send(resp).unwrap();
+
                     *state = CreateState::Done;
+
                     Ok(false)
                 }
             }
