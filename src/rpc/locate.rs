@@ -198,26 +198,40 @@ impl <T: Engine> ServiceRegistry for T {
         info!("Locating service: {:?}", opts);
 
         // Check for existing / local information
-        let local = self.service_get(opts.id.clone()).await.map(|i| {
-            LocateInfo {
-                origin: i.origin,
-                updated: false,
-                page_version: i.index as u16,
-                // TODO: fetch related page
-                page: None,
-            }
-        });
+        let local = self.service_get(opts.id.clone()).await;
+        let local = match local {
+            Ok(i) => {
+
+                let page = match i.primary_page {
+                    Some(sig) => Some(self.object_get(opts.id.clone(), sig).await?),
+                    None => None,
+                };
+
+                Some(LocateInfo {
+                    origin: i.origin,
+                    updated: false,
+                    page_version: i.index as u16,
+                    page,
+                })
+            },
+            _ => None,
+        };
 
         // Short-circuit for owned services
         match &local {
-            Ok(i) if i.origin => return Ok(i.clone()),
+            Some(i) if i.origin => return Ok(i.clone()),
             _ => (),
         }
 
         // Otherwise, lookup via DHT
-        let pages = match self.dht_search(opts.id.clone()).await {
-            Ok(p) => p,
-            Err(e) => {
+        let pages = self.dht_search(opts.id.clone()).await;
+        let pages = match (pages, &local) {
+            (Ok(p), _) => p,
+            (_, Some(i)) => {
+                warn!("DHT search failed, using local service info");
+                return Ok(i.clone());
+            }
+            (Err(e), _) => {
                 error!("DHT search failed: {:?}", e);
                 return Err(e.into())
             },
@@ -225,36 +239,27 @@ impl <T: Engine> ServiceRegistry for T {
 
         debug!("Found pages: {:?}", pages);
 
-        // Fetch primary page
-        let primary_page = pages.iter().find(|p| {
-            let h = p.header();
-            h.kind().is_page() && !h.flags().contains(Flags::SECONDARY) && &p.id() == &opts.id
-        });
-        
-        // If the search failed and it's available, return the local information
-        let primary_page = match (primary_page, local) {
-            (Some(p), _) => p.clone(),
-            (None, Ok(l)) => return Ok(l),
-            _ => return Err(DsfError::NotFound),
+        debug!("Registering service {}", opts.id);
+
+        // Register new service
+        let i = self.service_register(opts.id.clone(), pages).await?;
+
+        debug!("Registered: {:?}", i);
+
+        let primary_page = match i.primary_page {
+            Some(sig) => Some(self.object_get(opts.id.clone(), sig).await?),
+            None => None,
         };
 
-        // Register or update service
-        let pri = primary_page.clone();
-        self.service_update(opts.id.clone(), Box::new(move |svc| {
-            svc.apply_primary(&pri).map(|_| Res::Id(svc.id()))
-        })).await?;
-
-        // TODO: update replicas
-
+        debug!("Found page: {:?}", primary_page);
 
         // Return info
-        // TODO: only return updated when _new_ data is returned
-        let i = self.service_get(opts.id.clone()).await.unwrap();
         let info = LocateInfo {
             origin: i.origin,
             updated: true,
             page_version: i.index as u16,
-            page: Some(primary_page),
+            // TODO: fetch related page
+            page: primary_page,
         };
 
         Ok(info)

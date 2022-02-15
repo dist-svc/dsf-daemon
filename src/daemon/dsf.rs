@@ -83,7 +83,7 @@ pub struct Dsf {
 
     pub(crate) net_sink: mpsc::Sender<(Address, Option<Id>, NetMessage)>,
     //pub(crate) net_source: Arc<Mutex<mpsc::Receiver<(Address, NetMessage)>>>,
-    waker: Option<Waker>,
+    pub(crate) waker: Option<Waker>,
 
     pub(super) key_cache: HashMap<Id, Keys>,
 }

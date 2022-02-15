@@ -197,8 +197,20 @@ impl Dsf {
 
                         Ok(false)
                     }
+                    Poll::Ready(Err(kad::prelude::DhtError::NoPeers)) => {
+                        warn!("No peers for registration");
+
+                        let info = self.services().update_inst(id.as_ref().unwrap(), |s| () ).unwrap();
+
+                        let resp = rpc::Response::new(req_id, rpc::ResponseKind::Service(info));
+                        done.try_send(resp).unwrap();
+
+                        *state = CreateState::Done;
+
+                        Ok(false)
+                    },
                     Poll::Ready(Err(e)) => {
-                        error!("DHT store error: {:?}", e);
+                        warn!("DHT store error: {:?}", e);
 
                         let resp = rpc::Response::new(
                             req_id,

@@ -4,7 +4,7 @@ use futures::channel::mpsc;
 
 
 use dsf_core::prelude::{Id, DsfError as CoreError, Service};
-use dsf_core::types::CryptoHash;
+use dsf_core::types::{CryptoHash, Signature};
 
 use dsf_rpc::*;
 
@@ -121,9 +121,12 @@ pub enum OpKind {
 
     ServiceResolve(ServiceIdentifier),
     ServiceGet(Id),
+    ServiceCreate(Id, Vec<Container>),
     ServiceUpdate(Id, UpdateFn),
 
     PeerGet(Id),
+
+    ObjectGet(Id, Signature),
 }
 
 impl core::fmt::Debug for OpKind {
@@ -132,10 +135,15 @@ impl core::fmt::Debug for OpKind {
             Self::DhtLocate(id) => f.debug_tuple("DhtLocate").field(id).finish(),
             Self::DhtSearch(id) => f.debug_tuple("DhtSearch").field(id).finish(),
             Self::DhtPut(id, pages) => f.debug_tuple("DhtPut").field(id).field(pages).finish(),
+            
             Self::ServiceResolve(arg0) => f.debug_tuple("ServiceResolve").field(arg0).finish(),
             Self::ServiceGet(id) => f.debug_tuple("ServiceGet").field(id).finish(),
+            Self::ServiceCreate(id, _pages) => f.debug_tuple("ServiceCreate").field(id).finish(),
             Self::ServiceUpdate(id, _f) => f.debug_tuple("ServiceUpdate").field(id).finish(),
+            
             Self::PeerGet(id) => f.debug_tuple("PeerGet").field(id).finish(),
+
+            Self::ObjectGet(id, sig) => f.debug_tuple("ObjectGet").field(id).field(sig).finish(),
         }
     }
 }
@@ -185,6 +193,7 @@ pub trait Engine: Sync + Send {
         }
     }
 
+
     /// Fetch peer information
     async fn peer_get(&self, id: Id) -> Result<Peer, CoreError> {
         match self.exec(OpKind::PeerGet(id)).await? {
@@ -210,8 +219,24 @@ pub trait Engine: Sync + Send {
         }
     }
 
+    /// Register a newly discovered service from the provided pages
+    async fn service_register(&self, service: Id, pages: Vec<Container>) -> Result<ServiceInfo, CoreError> {
+        match self.exec(OpKind::ServiceCreate(service, pages)).await? {
+            Res::ServiceInfo(s) => Ok(s),
+            _ => Err(CoreError::Unknown),
+        }
+    }
+
     /// Execute an update function on a mutable service instance
     async fn service_update(&self, service: Id, f: UpdateFn) -> Result<Res, CoreError> {
         self.exec(OpKind::ServiceUpdate(service, f)).await
+    }
+
+    /// Fetch an object with the specified signature
+    async fn object_get(&self, service: Id, sig: Signature) -> Result<Container, CoreError> {
+        match self.exec(OpKind::ObjectGet(service, sig)).await? {
+            Res::Pages(p) if p.len() == 1 => Ok(p[0].clone()),
+            _ => Err(CoreError::NotFound),
+        }
     }
 }

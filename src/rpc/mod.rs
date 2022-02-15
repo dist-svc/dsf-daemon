@@ -63,6 +63,10 @@ impl Dsf {
     pub fn start_rpc(&mut self, req: Request, done: RpcSender) -> Result<(), Error> {
         let req_id = req.req_id();
 
+        if let Some(waker) = self.waker.as_ref() {
+            waker.clone().wake();
+        }
+
         // Respond to non-async RPC requests immediately
         let resp = match req.kind() {
             RequestKind::Status => {
@@ -170,6 +174,7 @@ impl Dsf {
             //#[cfg(nope)]
             RequestKind::Peer(PeerCommands::Search(opts)) => {
                 let mut exec = self.exec();
+
                 async_std::task::spawn(async move {
                     debug!("Starting async lookup");
                     let i = match exec.peer_lookup(opts).await {
@@ -180,6 +185,7 @@ impl Dsf {
                     if let Err(e) = done.clone().try_send(Response::new(req_id, i)) {
                         error!("Failed to send RPC response: {:?}", e);
                     }
+                    warn!("Async response sent");
                 });
 
                 return Ok(())
@@ -203,6 +209,7 @@ impl Dsf {
                     if let Err(e) = done.clone().try_send(Response::new(req_id, i)) {
                         error!("Failed to send RPC response: {:?}", e);
                     }
+                        warn!("Async ns register response sent");
                 });
                 return Ok(());
             },
@@ -218,6 +225,7 @@ impl Dsf {
                     if let Err(e) = done.clone().try_send(Response::new(req_id, i)) {
                         error!("Failed to send RPC response: {:?}", e);
                     }
+                        warn!("Async ns search response sent");
                 });
                 return Ok(());
             },
@@ -348,6 +356,7 @@ impl Dsf {
         ExecHandle{
             req_id: rand::random(),
             tx: self.op_tx.clone(),
+            waker: self.waker.as_ref().map(|w| w.clone()),
         }
     }
 
@@ -374,6 +383,16 @@ impl Dsf {
                     if let Err(e) = op.done.try_send(r) {
                         error!("Failed to send operation response: {:?}", e);
                     };
+                },
+                OpKind::ServiceCreate(id, pages) => {
+                    let r = self.service_register(&id, pages)
+                        .map(|i| Ok(Res::ServiceInfo(i)))
+                        // TODO: fix this error type
+                        .unwrap_or(Err(CoreError::Unknown));
+
+                    if let Err(e) = op.done.try_send(r) {
+                        error!("Failed to send operation response: {:?}", e);
+                    }
                 },
                 OpKind::ServiceUpdate(id, f) => {
                     let r = self.services().with(&id, |inst| f(&mut inst.service) )
@@ -425,6 +444,35 @@ impl Dsf {
                         error!("Failed to send operation response: {:?}", e);
                     };
                 },
+                OpKind::ObjectGet(ref id, sig) => {
+                    let mut page = None;
+
+                    // Attempt to fetch from services in memory
+                    match self.services().with(id, |s| s.primary_page.clone() ).flatten() {
+                        Some(p) if p.signature() == sig => page = Some(p),
+                        _ => (),
+                    }
+                    match self.services().with(id, |s| s.replica_page.clone() ).flatten() {
+                        Some(p) if p.signature() == sig => page = Some(p),
+                        _ => (),
+                    }
+
+                    // Otherwise fallback to db
+                    if page.is_none() {
+                        todo!("Implement store object fetch");
+                        //let o = self.store.
+                    }
+
+                    // And return the response object
+                    let r = match page {
+                        Some(p) => Ok(Res::Pages(vec![p])),
+                        _ => Err(CoreError::NotFound),
+                    };
+                    if let Err(e) = op.done.try_send(r) {
+                        error!("Failed to send operation response: {:?}", e);
+                    };
+                },
+                
             }
         }
 
@@ -456,14 +504,24 @@ impl Dsf {
 pub struct ExecHandle {
     req_id: u64,
     tx: mpsc::UnboundedSender<Op>,
+    waker: Option<core::task::Waker>,
 }
 
-#[derive(Debug)]
 pub struct Op {
     req_id: u64,
     kind: OpKind,
     done: mpsc::Sender<Result<Res, CoreError>>,
     state: OpState,
+}
+
+impl core::fmt::Debug for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Op")
+            .field("req_id", &self.req_id)
+            .field("kind", &self.kind)
+            .field("state", &self.state)
+            .finish()
+    }
 }
 
 enum OpState {
@@ -533,12 +591,19 @@ impl Engine for ExecHandle {
             state: OpState::None,
         };
 
+        // Add message to operation queue
         if let Err(_e) = tx.send(req).await {
             // TODO: Cancelled
             error!("RPC exec channel closed");
             return Err(CoreError::Unknown)
         }
 
+        // Trigger waker if available (not sure why this isn't happening automatically..?)
+        if let Some(waker) = self.waker.as_ref() {
+            waker.clone().wake();
+        }
+
+        // Await response message
         match done_rx.next().await {
             Some(Ok(r)) => Ok(r),
             Some(Err(e)) => Err(e),

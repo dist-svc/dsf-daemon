@@ -224,7 +224,7 @@ impl Engine {
 
         // Create periodic timer
         let mut update_timer = stream::interval(Duration::from_secs(30));
-        let mut tick_timer = stream::interval(Duration::from_secs(1));
+        let mut tick_timer = stream::interval(Duration::from_millis(200));
 
         let (mut net_in_tx, mut net_in_rx) = mpsc::channel(1000);
         let (mut net_out_tx, mut net_out_rx) = mpsc::channel(1000);
