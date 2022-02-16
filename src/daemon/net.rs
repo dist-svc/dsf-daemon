@@ -506,11 +506,11 @@ impl Dsf {
         &mut self,
         from: Id,
         peer: Peer,
-        req: net::RequestKind,
-    ) -> Result<net::ResponseKind, DaemonError> {
+        req: net::RequestBody,
+    ) -> Result<net::ResponseBody, DaemonError> {
         match req {
-            net::RequestKind::Hello => Ok(net::ResponseKind::Status(net::Status::Ok)),
-            net::RequestKind::Subscribe(service_id) => {
+            net::RequestBody::Hello => Ok(net::ResponseBody::Status(net::Status::Ok)),
+            net::RequestBody::Subscribe(service_id) => {
                 info!(
                     "Subscribe request from: {} for service: {}",
                     from, service_id
@@ -520,7 +520,7 @@ impl Dsf {
                     None => {
                         // Only known services can be subscribed
                         error!("no service found (id: {})", service_id);
-                        return Ok(net::ResponseKind::Status(net::Status::InvalidRequest));
+                        return Ok(net::ResponseBody::Status(net::Status::InvalidRequest));
                     }
                 };
 
@@ -548,9 +548,9 @@ impl Dsf {
                     })
                     .unwrap();
 
-                Ok(net::ResponseKind::ValuesFound(service_id, pages))
+                Ok(net::ResponseBody::ValuesFound(service_id, pages))
             }
-            net::RequestKind::Unsubscribe(service_id) => {
+            net::RequestBody::Unsubscribe(service_id) => {
                 info!(
                     "Unsubscribe request from: {} for service: {}",
                     from, service_id
@@ -558,16 +558,16 @@ impl Dsf {
 
                 self.subscribers().remove(&service_id, &peer.id()).unwrap();
 
-                Ok(net::ResponseKind::Status(net::Status::Ok))
+                Ok(net::ResponseBody::Status(net::Status::Ok))
             }
-            net::RequestKind::Query(id) => {
+            net::RequestBody::Query(id) => {
                 info!("Query request from: {} for service: {}", from, id);
                 let _service = match self.services().find(&id) {
                     Some(s) => s,
                     None => {
                         // Only known services can be registered
                         error!("no service found (id: {})", id);
-                        return Ok(net::ResponseKind::Status(net::Status::InvalidRequest));
+                        return Ok(net::ResponseBody::Status(net::Status::InvalidRequest));
                     }
                 };
 
@@ -577,7 +577,7 @@ impl Dsf {
 
                 Err(DaemonError::Unimplemented)
             }
-            net::RequestKind::Register(id, pages) => {
+            net::RequestBody::Register(id, pages) => {
                 info!("Register request from: {} for service: {}", from, id);
                 // TODO: determine whether we should allow this service to be registered
 
@@ -586,15 +586,15 @@ impl Dsf {
 
                 info!("Register request for service: {} complete", id);
 
-                Ok(net::ResponseKind::Status(net::Status::Ok))
+                Ok(net::ResponseBody::Status(net::Status::Ok))
             }
-            net::RequestKind::Unregister(id) => {
+            net::RequestBody::Unregister(id) => {
                 info!("Unegister request from: {} for service: {}", from, id);
                 // TODO: determine whether we should allow this service to be unregistered
 
                 todo!()
             }
-            net::RequestKind::PushData(id, data) => {
+            net::RequestBody::PushData(id, data) => {
                 info!("Data push from: {} for service: {}", from, id);
 
                 // TODO: why find _then_ validate_pages, duplicated ops?!
@@ -603,14 +603,14 @@ impl Dsf {
                     None => {
                         // Only known services can be registered
                         error!("no service found (id: {})", id);
-                        return Ok(net::ResponseKind::Status(net::Status::InvalidRequest));
+                        return Ok(net::ResponseBody::Status(net::Status::InvalidRequest));
                     }
                 };
 
                 // Validate incoming data prior to processing
                 if let Err(e) = self.services().validate_pages(&id, &data) {
                     error!("Invalid data for service: {} ({:?})", id, e);
-                    return Ok(net::ResponseKind::Status(net::Status::InvalidRequest));
+                    return Ok(net::ResponseBody::Status(net::Status::InvalidRequest));
                 }
 
                 // Pick out service pages
@@ -637,7 +637,7 @@ impl Dsf {
                 let req = net::Request::new(
                     self.id(),
                     req_id,
-                    net::RequestKind::PushData(id.clone(), data),
+                    net::RequestBody::PushData(id.clone(), data),
                     Flags::default(),
                 );
 
@@ -662,7 +662,7 @@ impl Dsf {
 
                 info!("Data push complete");
 
-                Ok(net::ResponseKind::Status(net::Status::Ok))
+                Ok(net::ResponseBody::Status(net::Status::Ok))
             }
             _ => Err(DaemonError::Unimplemented),
         }
@@ -682,7 +682,7 @@ impl Dsf {
         let needs_pk = req.flags.contains(Flags::PUB_KEY_REQUEST);
 
         match &req.data {
-            net::RequestKind::Locate(service_id) => {
+            net::RequestBody::Locate(service_id) => {
                 info!(
                     "Delegated locate request from: {} for service: {}",
                     peer.id(), service_id
@@ -701,15 +701,15 @@ impl Dsf {
                         Ok(v) => {
                             if let Some(p) = v.page {
                                 info!("Locate ok (index: {})", v.page_version);
-                                net::ResponseKind::ValuesFound(service_id, vec![p])
+                                net::ResponseBody::ValuesFound(service_id, vec![p])
                             } else {
                                 error!("Locate failed, no page found");
-                                net::ResponseKind::Status(Status::Failed)
+                                net::ResponseBody::Status(Status::Failed)
                             }
                         },
                         Err(e) => {
                             error!("Locate failed: {:?}", e);
-                            net::ResponseKind::Status(Status::Failed)
+                            net::ResponseBody::Status(Status::Failed)
                         },
                     };
 
@@ -726,7 +726,7 @@ impl Dsf {
 
                 Ok(true)
             },
-            net::RequestKind::Subscribe(service_id) => {
+            net::RequestBody::Subscribe(service_id) => {
                 info!(
                     "Delegated subscribe request from: {} for service: {}",
                     peer.id(), service_id
@@ -754,10 +754,10 @@ impl Dsf {
                 // Await subscription response
                 async_std::task::spawn(async move {
                     let resp = match sub.await {
-                        Ok(_v) => net::ResponseKind::Status(Status::Ok),
+                        Ok(_v) => net::ResponseBody::Status(Status::Ok),
                         Err(e) => {
                             error!("Subscription failed: {:?}", e);
-                            net::ResponseKind::Status(Status::Failed)
+                            net::ResponseBody::Status(Status::Failed)
                         },
                     };
 
@@ -773,7 +773,7 @@ impl Dsf {
 
                 Ok(true)
             },
-            net::RequestKind::Register(service_id, pages) => {
+            net::RequestBody::Register(service_id, pages) => {
                 info!(
                     "Delegated register request from: {} for service: {}",
                     peer.id(), service_id
@@ -792,10 +792,10 @@ impl Dsf {
                 // Task to await registration completion
                 async_std::task::spawn(async move {
                     let resp = match reg.await {
-                        Ok(_v) => net::ResponseKind::Status(Status::Ok),
+                        Ok(_v) => net::ResponseBody::Status(Status::Ok),
                         Err(e) => {
                             error!("Registration failed: {:?}", e);
-                            net::ResponseKind::Status(Status::Failed)
+                            net::ResponseBody::Status(Status::Failed)
                         },
                     };
 

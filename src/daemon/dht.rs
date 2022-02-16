@@ -1,11 +1,13 @@
 use std::collections::HashMap;
+use std::collections::hash_map::RandomState;
+use std::iter::FromIterator;
 
 use dsf_core::wire::Container;
 use kad::prelude::*;
 
 use futures::channel::mpsc;
 
-use dsf_core::net::{RequestKind, ResponseKind};
+use dsf_core::net::{RequestBody, ResponseBody};
 use dsf_core::prelude::*;
 use dsf_core::types::{Data, Id, RequestId};
 
@@ -67,30 +69,30 @@ impl Dsf {
 
     pub(crate) fn is_dht_req(msg: &NetRequest) -> bool {
         match msg.data {
-            RequestKind::Ping
-            | RequestKind::Store(_, _)
-            | RequestKind::FindValue(_)
-            | RequestKind::FindNode(_) => true,
+            RequestBody::Ping
+            | RequestBody::Store(_, _)
+            | RequestBody::FindValue(_)
+            | RequestBody::FindNode(_) => true,
             _ => false,
         }
     }
 
     pub(crate) fn is_dht_resp(msg: &NetResponse) -> bool {
         match msg.data {
-            ResponseKind::NoResult
-            | ResponseKind::NodesFound(_, _)
-            | ResponseKind::ValuesFound(_, _) => true,
+            ResponseBody::NoResult
+            | ResponseBody::NodesFound(_, _)
+            | ResponseBody::ValuesFound(_, _) => true,
             _ => false,
         }
     }
 
-    pub(crate) fn dht_to_net_request(&mut self, req: DhtRequest<Id, Data>) -> NetRequestKind {
+    pub(crate) fn dht_to_net_request(&mut self, req: DhtRequest<Id, Data>) -> NetRequestBody {
         match req {
-            DhtRequest::Ping => RequestKind::Ping,
-            DhtRequest::FindNode(id) => RequestKind::FindNode(Id::from(id.clone())),
-            DhtRequest::FindValue(id) => RequestKind::FindValue(Id::from(id.clone())),
+            DhtRequest::Ping => RequestBody::Ping,
+            DhtRequest::FindNode(id) => RequestBody::FindNode(Id::from(id.clone())),
+            DhtRequest::FindValue(id) => RequestBody::FindValue(Id::from(id.clone())),
             DhtRequest::Store(id, values) => {
-                RequestKind::Store(Id::from(id.clone()), values.to_vec())
+                RequestBody::Store(Id::from(id.clone()), values.to_vec())
             }
         }
     }
@@ -98,7 +100,7 @@ impl Dsf {
     pub(crate) fn dht_to_net_response(
         &mut self,
         resp: DhtResponse<Id, Peer, Data>,
-    ) -> NetResponseKind {
+    ) -> NetResponseBody {
         match resp {
             DhtResponse::NodesFound(id, nodes) => {
                 let nodes = nodes
@@ -118,24 +120,24 @@ impl Dsf {
                     })
                     .collect();
 
-                ResponseKind::NodesFound(Id::from(id.clone()), nodes)
+                ResponseBody::NodesFound(Id::from(id.clone()), nodes)
             }
             DhtResponse::ValuesFound(id, values) => {
-                ResponseKind::ValuesFound(Id::from(id.clone()), values.to_vec())
+                ResponseBody::ValuesFound(Id::from(id.clone()), values.to_vec())
             }
-            DhtResponse::NoResult => ResponseKind::NoResult,
+            DhtResponse::NoResult => ResponseBody::NoResult,
         }
     }
 
     pub(crate) fn net_to_dht_request(
         &mut self,
-        req: &NetRequestKind,
+        req: &NetRequestBody,
     ) -> Option<DhtRequest<Id, Data>> {
         match req {
-            RequestKind::Ping => Some(DhtRequest::Ping),
-            RequestKind::FindNode(id) => Some(DhtRequest::FindNode(Id::into(id.clone()))),
-            RequestKind::FindValue(id) => Some(DhtRequest::FindValue(Id::into(id.clone()))),
-            RequestKind::Store(id, values) => {
+            RequestBody::Ping => Some(DhtRequest::Ping),
+            RequestBody::FindNode(id) => Some(DhtRequest::FindNode(Id::into(id.clone()))),
+            RequestBody::FindValue(id) => Some(DhtRequest::FindValue(Id::into(id.clone()))),
+            RequestBody::Store(id, values) => {
                 Some(DhtRequest::Store(Id::into(id.clone()), values.to_vec()))
             }
             _ => None,
@@ -144,11 +146,11 @@ impl Dsf {
 
     pub(crate) fn net_to_dht_response(
         &mut self,
-        resp: &NetResponseKind,
+        resp: &NetResponseBody,
     ) -> Option<DhtResponse<Id, Peer, Data>> {
         // TODO: fix peers:new here peers:new
         match resp {
-            ResponseKind::NodesFound(id, nodes) => {
+            ResponseBody::NodesFound(id, nodes) => {
                 let mut dht_nodes = Vec::with_capacity(nodes.len());
 
                 for (id, addr, key) in nodes {
@@ -165,60 +167,176 @@ impl Dsf {
 
                 Some(DhtResponse::NodesFound(Id::into(id.clone()), dht_nodes))
             }
-            ResponseKind::ValuesFound(id, values) => Some(DhtResponse::ValuesFound(
+            ResponseBody::ValuesFound(id, values) => Some(DhtResponse::ValuesFound(
                 Id::into(id.clone()),
                 values.to_vec(),
             )),
-            ResponseKind::NoResult => Some(DhtResponse::NoResult),
+            ResponseBody::NoResult => Some(DhtResponse::NoResult),
             _ => None,
         }
     }
 }
 
 /// Reducer function reduces pages stored in the database
-pub(crate) fn dht_reducer(pages: &[Container]) -> Vec<Container> {
+pub(crate) fn dht_reducer(id: &Id, pages: &[Container]) -> Vec<Container> {
     // Build sorted array for filtering
     let mut ordered: Vec<_> = pages.iter().collect();
     ordered.sort_by_key(|p| p.header().index());
-    ordered.reverse();
 
-    // Place pages into a map to dedup on ID
-    let mut map = HashMap::new();
-    let mut svc_id = None;
-    for p in ordered {
-        let id = match p.info() {
-            Ok(PageInfo::Primary(_pri)) => {
-                svc_id = Some(p.id().clone());
-                Some(p.id().clone())
-            }
-            Ok(PageInfo::Secondary(s)) => Some(s.peer_id.clone()),
-            Ok(PageInfo::Tertiary(t)) => Some(t.target_id.clone()),
-            Ok(PageInfo::Data(_)) => None,
-            _ => continue,
-        };
+    let mut filtered = vec![];
 
-        if let Some(id) = id {
-            map.insert(id, p);
+    // Select the latest primary page
+    // TODO: how to enable explicit version resets?
+
+    let mut index = 0;
+    let mut primary = None;
+
+    for c in &ordered {
+        let h = c.header();
+        match c.info() {
+            Ok(PageInfo::Primary(_)) if &c.id() == id && h.index() > index => primary = Some(c.clone()),
+            _ => (),
         }
     }
 
-    // If there is no primary page, drop secondary pages
-    // TODO: rethink / re-add this because it doesn't work for secondary 
-    // or tertiary pages...
-    #[cfg(nope)]
-    if svc_id.is_none() {
-        return vec![];
+    if let Some(pri) = primary {
+        filtered.push(pri.clone());
     }
 
-    // TODO: should we be checking page sigs here or earlier?
+
+    // Reduce secondary pages by peer_id (via a hashmap to get only the latest value)
+    let secondaries = ordered.iter().filter_map(|c| {
+        match c.info() {
+            Ok(PageInfo::Secondary(s)) if &c.id() == id => Some((s.peer_id, c.clone())),
+            _ => None, 
+        }
+    });
+    let mut map = HashMap::<_, _, RandomState>::from_iter(secondaries);
+    filtered.extend(map.drain().map(|(_k, v)| v.clone() ) );
+
+    // TODO: if there is no primary page, can we reject secondary pages?
+
+
+    // Reduce tertiary pages by publisher (via a hashmap to leave only the latest value)
+    let tertiary = ordered.iter().filter_map(|c| {
+        match c.info() {
+            Ok(PageInfo::ServiceLink(s)) if &c.id() == id => Some((s.peer_id, c.clone())),
+            Ok(PageInfo::BlockLink(s)) if &c.id() == id => Some((s.peer_id, c.clone())),
+
+            _ => None, 
+        }
+    });
+    let mut map = HashMap::<_, _, RandomState>::from_iter(tertiary);
+    filtered.extend(map.drain().map(|(_k, v)| v.clone() ));
+
+
+    // TODO: should we be checking page sigs here or can we depend on these being validated earlier?
     // pretty sure it should be earlier...
 
-    // Convert map to array, and remove any invalid pages
-    // TODO: this currently removes all pages :-/
-    let id: Id = svc_id.unwrap();
+    // TODO: we could also check publish / expiry times are valid and reasonable here
+    // Secondary and tertiary pages _must_ contain issued / expiry times
+    // Primary pages... are somewhat more difficult, eviction will need to be tracked based on when they are stored
 
-    map.iter()
-        .filter(|(_k, p)| p.id() == id)
-        .map(|(_k, p)| (*p).clone())
-        .collect()
+    filtered
+}
+
+#[cfg(test)]
+mod test {
+    use std::{time::{SystemTime, Duration}, ops::Add};
+
+    use dsf_core::{prelude::*, service::{TertiaryOptions, Registry}, options::Name, types::DateTime};
+    use super::*;
+
+    fn setup() -> Service {
+        ServiceBuilder::generic().build().expect("Failed to build service")
+    }
+
+    #[test]
+    fn test_reduce_primary() {
+        let mut svc = setup();
+
+        let (_, p1) = svc.publish_primary_buff(Default::default()).unwrap();
+        let (_, p2) = svc.publish_primary_buff(Default::default()).unwrap();
+
+        let r = dht_reducer(&svc.id(), &[p1.to_owned(), p2.to_owned()]);
+        assert_eq!(r, vec![p2.to_owned()]);
+    }
+
+    #[test]
+    fn test_reduce_secondary() {
+        let mut svc = setup();
+        let mut peer1 = setup();
+        let mut peer2 = setup();
+
+        let (_, svc_page) = svc.publish_primary_buff(Default::default()).unwrap();
+
+        let (_, p1a) = peer1.publish_secondary_buff(&svc.id(), Default::default()).unwrap();
+        let (_, p1b) = peer1.publish_secondary_buff(&svc.id(), Default::default()).unwrap();
+
+        let (_, p2a) = peer2.publish_secondary_buff(&svc.id(), Default::default()).unwrap();
+        let (_, p2b) = peer2.publish_secondary_buff(&svc.id(), Default::default()).unwrap();
+
+        let pages = vec![
+            svc_page.to_owned(),
+            p1a.to_owned(),
+            p1b.to_owned(),
+            p2a.to_owned(),
+            p2b.to_owned(),
+        ];
+
+        let mut r = dht_reducer(&svc.id(), &pages);
+
+        let mut e = vec![
+            svc_page.to_owned(),
+            p1b.to_owned(),
+            p2b.to_owned(),
+        ];
+
+        r.sort_by_key(|p| p.signature() );
+        e.sort_by_key(|p| p.signature() );
+
+        assert_eq!(r, e);
+    }
+
+    #[test]
+    fn test_reduce_tertiary() {
+
+        let mut ns1 = setup();
+        let mut ns2 = setup();
+
+        let name = Name::new("test-name");
+        let id = ns1.resolve(&name).unwrap();
+
+
+        let mut tertiary_opts = TertiaryOptions{
+            index: 0,
+            issued: DateTime::now(),
+            expiry: DateTime::now().add(Duration::from_secs(60 * 60)),
+        };
+
+        // Generate two pages
+        let (_, t1a) = ns1.publish_tertiary_buff::<256, _>(id.clone().into(), tertiary_opts.clone(), &name).unwrap();
+
+        tertiary_opts.index = 1;
+        let (_, t1b) = ns1.publish_tertiary_buff::<256, _>(id.clone().into(), tertiary_opts.clone(), &name).unwrap();
+
+        let pages = vec![
+            t1a.to_owned(),
+            t1b.to_owned(),
+        ];
+
+        // Reduce should leave only the _later_ tertiary page
+        // TODO: could sort by time equally as well as index?
+        let mut r = dht_reducer(&id, &pages);
+
+        let mut e = vec![
+            t1b.to_owned(),
+        ];
+
+        r.sort_by_key(|p| p.signature() );
+        e.sort_by_key(|p| p.signature() );
+
+        assert_eq!(r, e);
+    }
+
 }

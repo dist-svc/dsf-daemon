@@ -216,7 +216,7 @@ impl Dsf {
                     let req = net::Request::new(
                         self.id(),
                         rand::random(),
-                        net::RequestKind::Subscribe(id.clone()),
+                        net::RequestBody::Subscribe(id.clone()),
                         Flags::default(),
                     );
 
@@ -249,7 +249,7 @@ impl Dsf {
                         let subs: Vec<_> = d
                             .iter()
                             .filter_map(|(peer_id, resp)| match &resp.data {
-                                net::ResponseKind::Status(s) if *s == net::Status::Ok => {
+                                net::ResponseBody::Status(s) if *s == net::Status::Ok => {
                                     Some(SubscriptionInfo {
                                         service_id: id.clone(),
                                         kind: SubscriptionKind::Peer(peer_id.clone()),
@@ -258,7 +258,7 @@ impl Dsf {
                                         qos: QosPriority::None,
                                     })
                                 },
-                                net::ResponseKind::ValuesFound(service_id, _pages) => {
+                                net::ResponseBody::ValuesFound(service_id, _pages) => {
                                     Some(SubscriptionInfo {
                                         service_id: service_id.clone(),
                                         kind: SubscriptionKind::Peer(peer_id.clone()),

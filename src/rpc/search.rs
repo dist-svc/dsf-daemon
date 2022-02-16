@@ -27,7 +27,7 @@ use super::ops::{RpcKind, OpKind, Engine};
 
 #[async_trait::async_trait]
 pub trait NameService {
-    /// Search for a service by name or hash
+    /// Search for a service or block by hashed value
     async fn ns_search(&self, opts: NsSearchOptions) -> Result<Vec<Container>, DsfError>;
 
     /// Register a service by name
@@ -70,8 +70,8 @@ impl <T: Engine> NameService for T {
 
         info!("NS query for {} via {}", lookup, ns.id());
 
-        // Issue query
-        let pages = match self.dht_search(lookup).await {
+        // Issue query for tertiary pages
+        let tertiary_pages = match self.dht_search(lookup).await {
             Ok(p) => p,
             Err(e) => {
                 error!("DHT lookup failed: {:?}", e);
@@ -79,49 +79,68 @@ impl <T: Engine> NameService for T {
             }
         };
 
-        debug!("Located pages: {:?}", pages);
+        debug!("Located tertiary pages: {:?}", tertiary_pages);
+
+        // TODO: should we reduce the response pages here?
+        // Really there should only ever be one tertiary page at a given location...
+        // _if_ there was a collision, how would this be handled?
+        // should we just check .len() == 1 and abort here?
 
         // Collapse resolved pages
-        let matches = pages.iter().filter_map(|p| {
-            // Check page is of tertiary kind
-            let i = match p.info() {
-                Ok(PageInfo::Tertiary(t)) => t,
-                _ => return None,
-            };
+        let mut resolved = vec![];
 
-            // Check page issuer matches nameserver ID
-            if i.peer_id != ns.id() {
-                return None
-            }
+        for p in tertiary_pages {
+            // Check page is of tertiary kind
+            let mut r = match p.info() {
+                // Fetch information for linked service
+                Ok(PageInfo::ServiceLink(s)) if s.peer_id == ns.id() => {
+
+                    // Lookup service pages
+                    let pages = match self.dht_search(s.target_id.clone()).await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            error!("Failed to find pages for service {}: {:?}", s.target_id, e);
+                            continue;
+                        }
+                    };
+
+                    // Update service using pages
+                    let i = match self.service_register(s.target_id.clone(), pages.clone()).await {
+                        Ok(i) => i,
+                        Err(e) => {
+                            error!("Failed to register new service {}: {:?}", s.target_id, e);
+                            continue;
+                        }
+                    };
+
+                    debug!("Located service: {:?}", i);
+
+                    pages
+                },
+                // Fetch linked block
+                Ok(PageInfo::BlockLink(b)) if b.peer_id == ns.id() => {
+
+                    // Lookup data blocks
+                    todo!()
+
+                    // TODO: Check discovered block name matches link ID
+                    // (ie. make sure a tertiary page cannot link to a block that is not named to match)
+                    // TODO: are there cases in which this will not work?
+
+                }
+                // TODO: log rejection of pages at wrong ID?
+                _ => continue,
+            };
 
             // TODO: check response matches query
 
-            Some(i)
-        });
+            // Store response object
+            resolved.append(&mut r);
+        };
 
-        // TODO: this should be an operation shared between components
-
-
-        let mut matched_services = vec![];
-
-        // Perform service lookup(s)
-        for m in matches {
-            // Lookup service pages
-            let locate_opts = LocateOptions{id: m.target_id.clone(), local_only: false};
-            let service = match self.service_locate(locate_opts).await {
-                Ok(s) => s,
-                Err(e) => {
-                    error!("Failed to locate service for id {}: {:?}", m.target_id, e);
-                    continue;
-                }
-            };
-
-            if let Some(p) = service.page {
-                matched_services.push(p)
-            }
-        }
-
-        Ok(matched_services)
+        // Return pages / blocks for resolved service
+        // TODO: could we separate these better?
+        Ok(resolved)
     }
 
     async fn ns_register(&self, opts: NsRegisterOptions) -> Result<NsRegisterInfo, DsfError> {
@@ -182,14 +201,14 @@ impl <T: Engine> NameService for T {
 
             // Create page for name if provided
             if let Some(n) = &name {
-                if let Some(p) = s.publish_tertiary::<256, _>(t.id(), Default::default(), &Name::new(&n)).ok() {
+                if let Some((_n, p)) = s.publish_tertiary_buff::<256, _>(t.id().into(), Default::default(), &Name::new(&n)).ok() {
                     pages.push(p.to_owned());
                 }
             }
 
             // Create pages for provided hashes
             for h in &hashes {
-                if let Some(p) = s.publish_tertiary::<256, _>(t.id(), Default::default(), h.clone()).ok() {
+                if let Some((_n, p)) = s.publish_tertiary_buff::<256, _>(t.id().into(), Default::default(), h.clone()).ok() {
                     pages.push(p.to_owned());
                 }
             }
@@ -223,7 +242,6 @@ impl <T: Engine> NameService for T {
 }
 
 
-
 #[cfg(test)]
 mod test {
     use std::collections::hash_map::Entry;
@@ -232,7 +250,8 @@ mod test {
     use std::collections::{HashMap, VecDeque};
 
     use dsf_core::options::{PeerId, Filters};
-    use dsf_core::page::Tertiary;
+    use dsf_core::page::ServiceLink;
+    use dsf_rpc::ServiceInfo;
     use futures::future;
 
     use dsf_core::prelude::*;
@@ -335,7 +354,7 @@ mod test {
                         let n = t.public_options().iter().name().unwrap();
 
                         assert_eq!(p.id(), ns.resolve(&n).unwrap());
-                        assert_eq!(p.info(), Ok(PageInfo::Tertiary(Tertiary{target_id: t.id(), peer_id: ns.id() })));
+                        assert_eq!(p.info(), Ok(PageInfo::ServiceLink(ServiceLink{target_id: t.id(), peer_id: ns.id() })));
 
                         Ok(Res::Ids(vec![]))
                     },
@@ -351,13 +370,15 @@ mod test {
     async fn test_search() {
         let (e, ns_id, target_id) = MockEngine::setup();
 
+        let target_info = ServiceInfo::from(&e.inner.lock().unwrap().target);
+
         // Pre-generate registration page
         let (name, primary, tertiary) = e.with(|ns, t| {
 
             let (_n, primary) = t.publish_primary_buff(Default::default()).unwrap();
 
             let name = t.public_options().iter().name().unwrap();
-            let tertiary = ns.publish_tertiary::<256, _>(t.id(), Default::default(), &name).unwrap();
+            let (_, tertiary) = ns.publish_tertiary_buff::<256, _>(t.id().into(), Default::default(), &name).unwrap();
 
             (name, primary.to_owned(), tertiary.to_owned())
         });
@@ -375,20 +396,28 @@ mod test {
             Box::new(move |op, ns, _t| {
                 match op {
                     OpKind::DhtSearch(_id) => Ok(Res::Pages(vec![tertiary.clone()])),
-                    _ => panic!("Unexpected operation: {:?}, expected update {}", op, ns.id()),
+                    _ => panic!("Unexpected operation: {:?}, expected DhtSearch for tertiary page{}", op, ns.id()),
                 }
             }),
-            // Lookup primary pages in dht
+            // Lookup primary pages for linked service
             Box::new(move |op, ns, _t| {
                 match op {
                     OpKind::DhtSearch(id) if id == target_id => Ok(Res::Pages(vec![primary.clone()])),
-                    _ => panic!("Unexpected operation: {:?}, expected update {}", op, ns.id()),
+                    _ => panic!("Unexpected operation: {:?}, expected DhtSearch for primary page {}", op, ns.id()),
+                }
+            }),
+            // Register newly discovered service
+            Box::new(move |op, _ns, t| {
+                match op {
+                    OpKind::ServiceCreate(id, p) if id == t.id() =>Ok(Res::ServiceInfo(target_info.clone())),
+                    _ => panic!("Unexpected operation: {:?}, expected ServiceCreate {}", op, t.id()),
                 }
             }),
         ]);
 
         let r = e.ns_search(NsSearchOptions{ns: ServiceIdentifier::id(ns_id), name: Some(name.value), hash: None }).await.unwrap();
 
+        // Returns pages for located service
         assert_eq!(&r, &[p]);
     }
 }

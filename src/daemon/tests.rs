@@ -20,7 +20,7 @@ use kad::store::Datastore;
 
 //use rr_mux::mock::{MockConnector, MockTransaction};
 
-use dsf_core::net::{Request, RequestKind, Response, ResponseKind};
+use dsf_core::net::{Request, RequestBody, Response, ResponseBody};
 use dsf_core::prelude::*;
 use dsf_core::service::{Publisher, ServiceBuilder};
 use dsf_core::types::Flags;
@@ -76,7 +76,7 @@ fn test_manager() {
             Request::new(
                 s2.id(),
                 rand::random(),
-                RequestKind::Ping,
+                RequestBody::Ping,
                 Flags::ADDRESS_REQUEST
             ),
             tx,
@@ -88,7 +88,7 @@ fn test_manager() {
             Some(Response::new(
                 id1.clone(),
                 rand::random(),
-                ResponseKind::NoResult,
+                ResponseBody::NoResult,
                 Flags::default()
             )),
         );
@@ -107,14 +107,14 @@ fn disabled() {
                 Request::new(
                     id1.clone(),
                     rand::random(),
-                    RequestKind::FindNode(id1.clone()),
+                    RequestBody::FindNode(id1.clone()),
                     Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST,
                 )
                 .with_public_key(dsf.pub_key()),
                 Ok(Response::new(
                     s2.id(),
                     rand::random(),
-                    ResponseKind::NodesFound(
+                    ResponseBody::NodesFound(
                         id1.clone(),
                         vec![(s3.id(), a3.into(), s3.public_key())],
                     ),
@@ -128,14 +128,14 @@ fn disabled() {
                 Request::new(
                     id1.clone(),
                     rand::random(),
-                    RequestKind::FindNode(id1.clone()),
+                    RequestBody::FindNode(id1.clone()),
                     Flags::ADDRESS_REQUEST | Flags::PUB_KEY_REQUEST,
                 )
                 .with_public_key(dsf.pub_key()),
                 Ok(Response::new(
                     s3.id(),
                     rand::random(),
-                    ResponseKind::NodesFound(id1.clone(), vec![]),
+                    ResponseBody::NodesFound(id1.clone(), vec![]),
                     Flags::default(),
                 )),
             ),
@@ -177,7 +177,7 @@ fn disabled() {
                 Request::new(
                     s2.id().clone(),
                     rand::random(),
-                    RequestKind::FindNode(s4.id().clone()),
+                    RequestBody::FindNode(s4.id().clone()),
                     Flags::default()
                 )
             )
@@ -186,7 +186,7 @@ fn disabled() {
             Response::new(
                 id1.clone(),
                 rand::random(),
-                ResponseKind::NodesFound(s4.id().clone(), nodes),
+                ResponseBody::NodesFound(s4.id().clone(), nodes),
                 Flags::default()
             ),
         );
@@ -201,7 +201,7 @@ fn disabled() {
                 Request::new(
                     s4.id().clone(),
                     rand::random(),
-                    RequestKind::Store(s4.id().clone(), vec![p4.clone()]),
+                    RequestBody::Store(s4.id().clone(), vec![p4.clone()]),
                     Flags::default()
                 )
             )
@@ -210,7 +210,7 @@ fn disabled() {
             Response::new(
                 id1.clone(),
                 rand::random(),
-                ResponseKind::ValuesFound(s4.id().clone(), vec![p4.clone()]),
+                ResponseBody::ValuesFound(s4.id().clone(), vec![p4.clone()]),
                 Flags::default()
             ),
         );
@@ -223,7 +223,7 @@ fn disabled() {
                 Request::new(
                     s4.id().clone(),
                     rand::random(),
-                    RequestKind::FindValue(s4.id().clone()),
+                    RequestBody::FindValue(s4.id().clone()),
                     Flags::default()
                 )
             )
@@ -232,7 +232,7 @@ fn disabled() {
             Response::new(
                 id1.clone(),
                 rand::random(),
-                ResponseKind::ValuesFound(s4.id().clone(), vec![p4.clone()]),
+                ResponseBody::ValuesFound(s4.id().clone(), vec![p4.clone()]),
                 Flags::default()
             ),
         );
@@ -258,14 +258,14 @@ fn disabled() {
                     Request::new(
                         id1.clone(),
                         rand::random(),
-                        RequestKind::FindNode(id1.clone()),
+                        RequestBody::FindNode(id1.clone()),
                         Flags::PUB_KEY_REQUEST,
                     )
                     .with_public_key(dsf.pub_key()),
                     Ok(Response::new(
                         id.clone(),
                         rand::random(),
-                        ResponseKind::NoResult,
+                        ResponseBody::NoResult,
                         Flags::default(),
                     )),
                 )
@@ -280,14 +280,14 @@ fn disabled() {
                     Request::new(
                         id1.clone(),
                         rand::random(),
-                        RequestKind::Store(id1.clone(), vec![p1.clone()]),
+                        RequestBody::Store(id1.clone(), vec![p1.clone()]),
                         Flags::PUB_KEY_REQUEST,
                     )
                     .with_public_key(dsf.pub_key()),
                     Ok(Response::new(
                         id.clone(),
                         rand::random(),
-                        ResponseKind::ValuesFound(id1.clone(), vec![p1.clone()]),
+                        ResponseBody::ValuesFound(id1.clone(), vec![p1.clone()]),
                         Flags::default(),
                     )
                     .with_public_key(pk.clone())),
@@ -336,14 +336,14 @@ fn disabled() {
                     Request::new(
                         id1.clone(),
                         rand::random(),
-                        RequestKind::FindNode(info.id.clone()),
+                        RequestBody::FindNode(info.id.clone()),
                         Flags::PUB_KEY_REQUEST,
                     )
                     .with_public_key(dsf.pub_key()),
                     Ok(Response::new(
                         id.clone(),
                         rand::random(),
-                        ResponseKind::NoResult,
+                        ResponseBody::NoResult,
                         Flags::default(),
                     )),
                 )
@@ -358,14 +358,14 @@ fn disabled() {
                     Request::new(
                         id1.clone(),
                         rand::random(),
-                        RequestKind::Store(info.id.clone(), vec![page.clone()]),
+                        RequestBody::Store(info.id.clone(), vec![page.clone()]),
                         Flags::PUB_KEY_REQUEST,
                     )
                     .with_public_key(dsf.pub_key()),
                     Ok(Response::new(
                         id.clone(),
                         rand::random(),
-                        ResponseKind::ValuesFound(id1.clone(), vec![page.clone()]),
+                        ResponseBody::ValuesFound(id1.clone(), vec![page.clone()]),
                         Flags::default(),
                     )
                     .with_public_key(pk.clone())),
@@ -402,7 +402,7 @@ fn disabled() {
                 Request::new(
                     s4.id().clone(),
                     rand::random(),
-                    RequestKind::Subscribe(info.id.clone()),
+                    RequestBody::Subscribe(info.id.clone()),
                     Flags::default()
                 )
             )
@@ -411,7 +411,7 @@ fn disabled() {
             Response::new(
                 id1.clone(),
                 rand::random(),
-                ResponseKind::ValuesFound(info.id.clone(), vec![page.clone()]),
+                ResponseBody::ValuesFound(info.id.clone(), vec![page.clone()]),
                 Flags::default()
             ),
         );
@@ -431,14 +431,14 @@ fn disabled() {
             Request::new(
                 s4.id().clone(),
                 rand::random(),
-                RequestKind::PushData(info.id.clone(), vec![page.clone()]),
+                RequestBody::PushData(info.id.clone(), vec![page.clone()]),
                 Flags::PUB_KEY_REQUEST,
             )
             .with_public_key(dsf.pub_key()),
             Ok(Response::new(
                 id1.clone(),
                 rand::random(),
-                ResponseKind::ValuesFound(id1.clone(), vec![page.clone()]),
+                ResponseBody::ValuesFound(id1.clone(), vec![page.clone()]),
                 Flags::default(),
             )),
         )]);

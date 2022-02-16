@@ -245,7 +245,7 @@ impl Dsf {
 
         match search.await {
             Ok(d) => {
-                let data = dht_reducer(&d);
+                let data = dht_reducer(id, &d);
 
                 info!("Search complete ({} entries found)", data.len());
                 // TODO: use search results

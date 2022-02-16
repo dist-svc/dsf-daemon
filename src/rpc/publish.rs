@@ -170,7 +170,7 @@ impl Dsf {
                 let req = net::Request::new(
                     self.id(),
                     rand::random(),
-                    net::RequestKind::PushData(id.clone(), vec![page]),
+                    net::RequestBody::PushData(id.clone(), vec![page]),
                     Flags::default(),
                 );
 
