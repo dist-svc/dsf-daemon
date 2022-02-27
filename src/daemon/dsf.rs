@@ -29,7 +29,7 @@ use crate::core::replicas::ReplicaManager;
 use crate::core::services::{ServiceInfo, ServiceManager, ServiceState};
 use crate::core::subscribers::SubscriberManager;
 
-use super::net::NetOp;
+use super::net::{NetOp, NetSink, NetIf, ByteSink};
 use crate::rpc::ops::{RpcOperation, RpcKind};
 
 use crate::error::Error;
@@ -41,7 +41,7 @@ use super::Options;
 /// Re-export of Dht type used for DSF
 pub type DsfDht = Dht<Id, Peer, Data, RequestId>;
 
-pub struct Dsf {
+pub struct Dsf<Net=NetSink> {
     /// Inernal storage for daemon service
     service: Service,
 
@@ -81,20 +81,24 @@ pub struct Dsf {
     /// Tracking for individual outgoing network requests
     pub(crate) net_requests: HashMap<(Address, RequestId), mpsc::Sender<NetResponse>>,
 
-    pub(crate) net_sink: mpsc::Sender<(Address, Option<Id>, NetMessage)>,
+    pub(crate) net_sink: Net,
+
+    pub(crate) net_resp_tx: mpsc::UnboundedSender<(Address, Option<Id>, NetMessage)>,
+    pub(crate) net_resp_rx: mpsc::UnboundedReceiver<(Address, Option<Id>, NetMessage)>,
+
     //pub(crate) net_source: Arc<Mutex<mpsc::Receiver<(Address, NetMessage)>>>,
     pub(crate) waker: Option<Waker>,
 
     pub(super) key_cache: HashMap<Id, Keys>,
 }
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     /// Create a new daemon
     pub fn new(
         config: Options,
         service: Service,
         store: Store,
-        net_sink: mpsc::Sender<(Address, Option<Id>, NetMessage)>,
+        net_sink: Net,
     ) -> Result<Self, Error> {
         debug!("Creating new DSF instance");
 
@@ -114,6 +118,8 @@ impl Dsf {
         let dht = Dht::<Id, Peer, Data, RequestId>::standard(id, config.dht, dht_sink);
 
         let (op_tx, op_rx) = mpsc::unbounded();
+
+        let (net_resp_tx, net_resp_rx) = mpsc::unbounded();
 
         // Create DSF object
         let s = Self {
@@ -137,6 +143,8 @@ impl Dsf {
             net_sink,
             net_requests: HashMap::new(),
             net_ops: HashMap::new(),
+            net_resp_rx,
+            net_resp_tx,
 
             waker: None,
             key_cache: HashMap::new(),
@@ -450,7 +458,7 @@ impl Dsf {
     }
 }
 
-impl dsf_core::keys::KeySource for Dsf {
+impl <Net> dsf_core::keys::KeySource for Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     fn keys(&self, id: &Id) -> Option<dsf_core::keys::Keys> {
         // Short circuit if looking for our own keys
         if *id == self.id() {
@@ -497,16 +505,11 @@ impl dsf_core::keys::KeySource for Dsf {
     }
 }
 
-impl futures::future::FusedFuture for Dsf {
-    fn is_terminated(&self) -> bool {
-        false
-    }
-}
 
-impl Future for Dsf {
-    type Output = Result<(), DsfError>;
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
 
-    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll_base(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(), DsfError>> {
+
         // Poll for outgoing DHT messages
         if let Poll::Ready(Some((req_id, target, body))) = self.dht_source.poll_next_unpin(ctx) {
             let addr = target.info().address();
@@ -541,11 +544,20 @@ impl Future for Dsf {
 
             // Encode and enqueue them
             if let Err(e) = self
-                .net_sink
-                .try_send((addr, Some(id), NetMessage::Request(req)))
+                .net_send(&[(addr, Some(id))], NetMessage::Request(req))
             {
                 error!("Error sending outgoing DHT message: {:?}", e);
                 return Poll::Ready(Err(DsfError::Unknown));
+            }
+        }
+
+        // Poll on pending outgoing responses
+        // (we need a channel or _something_ to make async responses viable, but, this is a bit grim)
+        if let Poll::Ready(Some((addr, id, msg))) = self.net_resp_rx.poll_next_unpin(ctx) {
+            if let Err(e) = self
+                .net_send(&[(addr, id)], msg)
+            {
+                error!("Error sending outgoing response message: {:?}", e);
             }
         }
 
@@ -583,5 +595,35 @@ impl Future for Dsf {
 
         // Indicate we're still running
         Poll::Pending
+    }
+}
+
+
+impl Future for Dsf<ByteSink> {
+    type Output = Result<(), DsfError>;
+
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.poll_base(ctx)
+    }
+}
+
+impl futures::future::FusedFuture for Dsf<ByteSink>  {
+    fn is_terminated(&self) -> bool {
+        false
+    }
+}
+
+
+impl Future for Dsf<NetSink> {
+    type Output = Result<(), DsfError>;
+
+    fn poll(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.poll_base(ctx)
+    }
+}
+
+impl futures::future::FusedFuture for Dsf<NetSink>  {
+    fn is_terminated(&self) -> bool {
+        false
     }
 }

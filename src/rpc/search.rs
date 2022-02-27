@@ -82,9 +82,9 @@ impl <T: Engine> NameService for T {
         debug!("Located tertiary pages: {:?}", tertiary_pages);
 
         // TODO: should we reduce the response pages here?
-        // Really there should only ever be one tertiary page at a given location...
-        // _if_ there was a collision, how would this be handled?
-        // should we just check .len() == 1 and abort here?
+        // Possible to have > 1 service link pages where target services are different
+        // Only ever 1 data link page at a given location
+        // (except collisions... what're the odds?)
 
         // Collapse resolved pages
         let mut resolved = vec![];

@@ -26,6 +26,7 @@ use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
 use kad::Config as DhtConfig;
 
 use crate::daemon::*;
+use crate::daemon::net::NetIf;
 use crate::error::Error;
 use crate::io::*;
 use crate::store::*;
@@ -112,12 +113,12 @@ impl Options {
 
 pub struct Engine {
     id: Id,
-    dsf: Dsf,
+    dsf: Dsf<mpsc::Sender<(Address, Vec<u8>)>>,
 
     unix: Unix,
     net: Net,
 
-    net_source: mpsc::Receiver<(Address, Option<Id>, dsf_core::net::Message)>,
+    net_source: mpsc::Receiver<(Address, Vec<u8>)>,
 
     options: Options,
 }
@@ -176,7 +177,7 @@ impl Engine {
             }
         };
 
-        let (net_sink, net_source) = mpsc::channel(1000);
+        let (net_sink, net_source) = mpsc::channel::<(Address, Vec<u8>)>(1000);
 
         // Create new DSF instance
         let dsf = Dsf::new(options.daemon_options.clone(), service, store, net_sink)?;
@@ -304,16 +305,8 @@ impl Engine {
                     },
                     // Outgoing network _requests_
                     net_tx = net_source.next().fuse() => {
-                        if let Some((addr, id, msg)) = net_tx {
-                            let enc = match dsf.net_encode(id.as_ref(), msg).await {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    error!("error encoding outgoing DSF message: {:?}", e);
-                                    continue;
-                                }
-                            };
-
-                            if let Err(e) = net_out_tx.send((addr.into(), enc)).await {
+                        if let Some((addr, data)) = net_tx {
+                            if let Err(e) = net_out_tx.send((addr.into(), Bytes::from(data))).await {
                                 error!("error forwarding outgoing network message: {:?}", e);
                                 return Err(Error::Unknown);
                             }
@@ -364,7 +357,10 @@ impl Engine {
         })
     }
 
-    async fn handle_rpc(dsf: &mut Dsf, unix_req: UnixMessage) -> Result<(), Error> {
+    async fn handle_rpc<Net>(dsf: &mut Dsf<Net>, unix_req: UnixMessage) -> Result<(), Error> 
+    where
+        Dsf<Net>: NetIf<Interface=Net>
+    {
         // Parse out message
         let req: RpcRequest = serde_json::from_slice(&unix_req.data).unwrap();
 

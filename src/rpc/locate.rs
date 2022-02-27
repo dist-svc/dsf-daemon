@@ -13,7 +13,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 use dsf_rpc::{self as rpc, LocateInfo, LocateOptions};
 
-use crate::daemon::Dsf;
+use crate::daemon::{Dsf, net::NetIf};
 use crate::error::Error;
 
 use crate::core::peers::Peer;
@@ -54,7 +54,7 @@ impl Future for LocateFuture {
     }
 }
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     pub fn locate(&mut self, options: LocateOptions) -> Result<LocateFuture, Error> {
         let req_id = rand::random();
 

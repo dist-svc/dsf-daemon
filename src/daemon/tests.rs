@@ -44,7 +44,7 @@ fn test_manager() {
     let db_file = format!("{}/dsf-test.db", d.path().to_str().unwrap());
     let store = Store::new(&db_file).unwrap();
 
-    let (net_sink_tx, _net_sink_rx) = mpsc::channel(10);
+    let (net_sink_tx, _net_sink_rx) = mpsc::channel::<(Address, Option<Id>, NetMessage)>(10);
 
     let service = Service::default();
     let mut dsf = Dsf::new(config, service, store, net_sink_tx).unwrap();

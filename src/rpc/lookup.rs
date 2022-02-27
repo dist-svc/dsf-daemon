@@ -12,7 +12,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 use dsf_rpc::{self as rpc, peer::SearchOptions as LookupOptions, PeerInfo};
 
-use crate::daemon::Dsf;
+use crate::daemon::{Dsf, net::NetIf};
 use crate::error::Error;
 
 use crate::core::peers::Peer;
@@ -53,7 +53,7 @@ impl Future for LookupFuture {
     }
 }
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     /// Look-up a peer via the database
     pub fn lookup2(&mut self, options: LookupOptions) -> Result<LookupFuture, Error> {
         let req_id = rand::random();

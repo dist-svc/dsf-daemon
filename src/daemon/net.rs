@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::future::Future;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, IpAddr};
 use std::ops::Add;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -31,6 +31,70 @@ use crate::error::Error as DaemonError;
 
 use crate::core::data::DataInfo;
 use crate::core::peers::{Peer, PeerAddress, PeerFlags, PeerState};
+
+
+/// Network interface abstraction, allows [`Dsf`] instance to be generic over interfaces
+pub trait NetIf {
+    /// Interface for sending
+    type Interface;
+
+    /// Send a message to the specified targets
+    fn net_send(&mut self, targets: &[(Address, Option<Id>)], msg: NetMessage) -> Result<(), DaemonError>;
+}
+
+
+pub type NetSink = mpsc::Sender<(Address, Option<Id>, NetMessage)>;
+
+pub type ByteSink = mpsc::Sender<(Address, Vec<u8>)>;
+
+/// Network implementation for abstract message channel (encode/decode externally, primarily used for testing)
+impl NetIf for Dsf<NetSink> {
+    type Interface = NetSink;
+
+    fn net_send(&mut self, targets: &[(Address, Option<Id>)], msg: NetMessage) -> Result<(), DaemonError> {
+        // Fan out message to each target
+        for t in targets {
+            if let Err(e) = self.net_sink.try_send((t.0, t.1.clone(), msg.clone())) {
+                error!("Failed to send message to sink: {:?}", e);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Network implementation for encoded message channel (encode/decode internally, used with actual networking)
+impl NetIf for Dsf<ByteSink> {
+    type Interface = ByteSink;
+
+    fn net_send(&mut self, targets: &[(Address, Option<Id>)], msg: NetMessage) -> Result<(), DaemonError> {
+        // Encode message
+
+        // TODO: this _should_ probably depend on message types / flags
+        // (and only use asymmetric mode on request..?)
+        let encoded = match targets.len() {
+            0 => return Ok(()),
+            // If we have one target, use symmetric or asymmetric mode as suits
+            1 => {
+                let t = &targets[0];
+                self.net_encode(t.1.as_ref(), msg)?
+            },
+            // If we have multiple targets, use asymmetric encoding to share objects
+            // (note this improves performance but drops p2p message privacy)
+            _ => {
+                self.net_encode(None, msg)?
+            },
+        };
+
+        // Fan-out encoded message to each target
+        for t in targets {
+            if let Err(e) = self.net_sink.try_send((t.0, encoded.to_vec())) {
+                error!("Failed to send message to sink: {:?}", e);
+            }
+        }
+
+        Ok(())
+    }
+}
 
 /// Network operation for management by network module
 pub struct NetOp {
@@ -122,7 +186,8 @@ impl Future for NetFuture {
     }
 }
 
-impl Dsf {
+/// Generic network helper for [`Dsf`] implementation
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     pub async fn handle_net_raw(&mut self, msg: crate::io::NetMessage) -> Result<(), DaemonError> {
         // Decode message
         let decoded = match self.net_decode(&msg.data).await {
@@ -146,9 +211,11 @@ impl Dsf {
                 self.handle_net_req(msg.address, req, tx).await?;
 
                 let a = msg.address.into();
-                let mut o = self.net_sink.clone();
+                let mut o = self.net_resp_tx.clone();
 
                 // Spawn a task to forward completed response to outgoing messages
+                // TODO: this _should_ use the response channel in the io::NetMessage, however,
+                // we need to re-encode the message prior to doing this which requires the daemon...
                 async_std::task::spawn(async move {
                     if let Some(r) = rx.next().await {
                         let _ = o.send((a, None, NetMessage::Response(r))).await;
@@ -183,7 +250,7 @@ impl Dsf {
         if message.flags().contains(Flags::SYMMETRIC_MODE) {
             self.peers().update(&message.from(), |p| {
                 if !p.flags.contains(PeerFlags::SYMMETRIC_ENABLED) {
-                    warn!("Enabling symmetricy crypto for peer: {}", message.from());
+                    warn!("Enabling symmetric message crypto for peer: {}", message.from());
                     p.flags |= PeerFlags::SYMMETRIC_ENABLED;
                 }
             });
@@ -192,7 +259,7 @@ impl Dsf {
         Ok(message)
     }
 
-    pub async fn net_encode(
+    pub fn net_encode(
         &mut self,
         id: Option<&Id>,
         mut msg: net::Message,
@@ -228,19 +295,27 @@ impl Dsf {
     pub fn net_op(&mut self, peers: Vec<Peer>, req: net::Request) -> NetFuture {
         let req_id = req.id;
 
-        // Generate requests
-        let reqs: HashMap<_, _> = peers
-            .iter()
-            .map(|p| {
-                let peer_rx = self.issue_net_req(p.address().into(), req.clone()).unwrap();
-                (p.id(), peer_rx)
-            })
-            .collect();
+        // Setup response channels
+        let mut reqs = HashMap::with_capacity(peers.len());
+        let mut targets = Vec::with_capacity(peers.len());
+        
+        // Add individual requests to tracking
+        for p in peers {
+            // Create response channel
+            let (tx, rx) = mpsc::channel(1);
+            self.net_requests.insert((p.address().into(), req_id), tx);
+
+            // Add to operation object
+            reqs.insert(p.id(), rx);
+
+            // Add as target for sending
+            targets.push((p.address(), Some(p.id())));
+        }
 
         // Create net operation
         let (tx, rx) = mpsc::channel(1);
         let op = NetOp {
-            req,
+            req: req.clone(),
             reqs,
             resps: HashMap::new(),
             done: tx,
@@ -249,6 +324,11 @@ impl Dsf {
 
         // Register operation
         self.net_ops.insert(req_id, op);
+
+        // Issue request
+        if let Err(e) = self.net_send(&targets, net::Message::Request(req)) {
+            error!("FATAL network send error: {:?}", e);
+        }
 
         // Return future
         NetFuture { rx }
@@ -269,35 +349,6 @@ impl Dsf {
         for req_id in completed {
             self.net_ops.remove(&req_id);
         }
-    }
-
-    pub fn issue_net_req(
-        &mut self,
-        addr: SocketAddr,
-        req: net::Request,
-    ) -> Result<mpsc::Receiver<NetResponse>, DaemonError> {
-        debug!("issuing {} request id: {} to: {:?}", req.data, req.id, addr,);
-
-        let req_id = req.id;
-
-        // Add message to internal tracking
-        let (tx, rx) = mpsc::channel(1);
-        self.net_requests.insert((addr.into(), req_id), tx);
-
-        // Pass message to sink for transmission
-        // TODO: deadlock appears when this line is enabled
-        // TODO: pass ID into this
-        //#[cfg(deadlock)]
-        if let Err(e) = self
-            .net_sink
-            .try_send((addr.into(), None, NetMessage::Request(req)))
-        {
-            error!("Request send error: {:?}", e);
-            return Err(DaemonError::Unknown);
-        }
-
-        // Return future channel
-        Ok(rx)
     }
 
     /// Handle a received response message and generate an (optional) response
@@ -413,7 +464,7 @@ impl Dsf {
         trace!("returning response (to: {:?})\n {:?}", from, &resp);
 
         if let Err(_e) = tx.send(resp).await {
-            error!("Error forwarding net response");
+            error!("Error forwarding net response: {:?}", ());
         }
 
         Ok(())
@@ -631,6 +682,8 @@ impl Dsf {
                         };
                     }
                 }
+
+                // TODO: check this is _new_ data, otherwise ignore (avoid)
 
                 // Generate data push message
                 let req_id = rand::random();

@@ -21,7 +21,7 @@ use dsf_rpc::{self as rpc, ConnectInfo, ConnectOptions};
 
 use super::ops::{RpcKind, RpcOperation};
 use crate::core::peers::{Peer, PeerAddress, PeerFlags};
-use crate::daemon::Dsf;
+use crate::daemon::{Dsf, net::NetIf};
 use crate::error::Error as DsfError;
 
 pub enum ConnectState {
@@ -58,7 +58,7 @@ impl Future for ConnectFuture {
     }
 }
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     pub fn connect(&mut self, options: ConnectOptions) -> Result<ConnectFuture, DsfError> {
         let req_id = rand::random();
 
@@ -121,12 +121,10 @@ impl Dsf {
                 // Send message
                 // This bypasses DSF state tracking as it is managed by the DHT
                 // TODO: this precludes _retries_ and state tracking... find a better solution
-                self.net_sink
-                    .try_send((
-                        opts.address.clone().into(),
-                        None,
+                self.net_send(
+                    &[(opts.address.clone().into(), None)],
                         NetMessage::Request(net_req),
-                    ))
+                    )
                     .unwrap();
 
                 *state = ConnectState::Pending(connect);

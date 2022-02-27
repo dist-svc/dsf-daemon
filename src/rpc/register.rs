@@ -17,7 +17,7 @@ use crate::core::peers::Peer;
 use crate::core::services::ServiceState;
 
 use super::ops::*;
-use crate::daemon::Dsf;
+use crate::daemon::{Dsf, net::NetIf};
 use crate::error::Error as DsfError;
 
 pub enum RegisterState {
@@ -55,7 +55,7 @@ impl Future for RegisterFuture {
     }
 }
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     /// Register a locally known service
     pub fn register(&mut self, options: RegisterOptions) -> Result<RegisterFuture, DsfError> {
         let req_id = rand::random();

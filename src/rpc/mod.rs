@@ -13,7 +13,7 @@ use dsf_core::prelude::*;
 use dsf_rpc::*;
 
 use crate::core::peers::Peer;
-use crate::daemon::Dsf;
+use crate::daemon::{Dsf, net::NetIf};
 use crate::error::{CoreError, Error};
 use crate::rpc::lookup::PeerRegistry;
 use crate::rpc::search::NameService;
@@ -58,7 +58,7 @@ pub mod search;
 // Debug commands
 pub mod debug;
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     // Create a new RPC operation
     pub fn start_rpc(&mut self, req: Request, done: RpcSender) -> Result<(), Error> {
         let req_id = req.req_id();

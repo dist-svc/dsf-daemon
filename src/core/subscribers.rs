@@ -156,13 +156,15 @@ impl SubscriberManager {
         trace!("remove sub lock");
         let subscribers = self.subs.entry(service_id.clone()).or_insert(vec![]);
 
-        for i in 0..subscribers.len() {
-            match &subscribers[i].info.kind {
-                SubscriptionKind::Peer(id) if id == peer_id => {
-                    subscribers.remove(i);
-                }
-                _ => (),
+        let remove = subscribers.iter().enumerate().find_map(|(i, s)| {
+            match &s.info.kind {
+                SubscriptionKind::Peer(id) if id == peer_id => Some(i),
+                _ => None,
             }
+        });
+
+        if let Some(i) = remove {
+            subscribers.remove(i);
         }
 
         Ok(())

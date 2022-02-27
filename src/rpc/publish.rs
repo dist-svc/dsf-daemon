@@ -17,7 +17,7 @@ use dsf_core::service::{Publisher, DataOptions};
 use dsf_rpc::{self as rpc, DataInfo, PublishInfo, PublishOptions};
 
 use crate::core::peers::Peer;
-use crate::daemon::net::NetFuture;
+use crate::daemon::net::{NetFuture, NetIf};
 use crate::daemon::Dsf;
 use crate::error::Error;
 
@@ -56,7 +56,7 @@ impl Future for PublishFuture {
     }
 }
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     /// Publish a locally known service
     pub async fn publish(&mut self, options: PublishOptions) -> Result<PublishFuture, Error> {
         let req_id = rand::random();

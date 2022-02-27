@@ -11,7 +11,7 @@ use dsf_core::net::{RequestBody, ResponseBody};
 use dsf_core::prelude::*;
 use dsf_core::types::{Data, Id, RequestId};
 
-use super::Dsf;
+use super::{Dsf, net::NetIf};
 
 use crate::core::peers::{Peer, PeerAddress, PeerFlags};
 use crate::error::Error;
@@ -28,7 +28,7 @@ pub struct DsfDhtMessage {
     pub(crate) resp_sink: mpsc::Sender<DhtResponse<Id, Peer, Data>>,
 }
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     /// Handle a DHT request message
     pub(crate) fn handle_dht_req(
         &mut self,

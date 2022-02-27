@@ -18,7 +18,7 @@ use dsf_rpc::{self as rpc, SubscribeOptions, SubscriptionInfo, SubscriptionKind}
 
 use crate::core::peers::Peer;
 use crate::core::services::ServiceState;
-use crate::daemon::net::NetFuture;
+use crate::daemon::net::{NetFuture, NetIf};
 use crate::daemon::Dsf;
 use crate::error::Error;
 
@@ -61,7 +61,7 @@ impl Future for SubscribeFuture {
     }
 }
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     // Subscribe to data from a given service
     pub fn subscribe(
         &mut self,

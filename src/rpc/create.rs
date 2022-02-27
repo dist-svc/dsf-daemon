@@ -16,7 +16,7 @@ use dsf_core::service::Publisher;
 
 use dsf_rpc::{self as rpc, CreateOptions, RegisterOptions, ServiceIdentifier};
 
-use crate::daemon::Dsf;
+use crate::daemon::{Dsf, net::NetIf};
 use crate::error::Error;
 
 use crate::core::peers::Peer;
@@ -59,7 +59,7 @@ impl Future for CreateFuture {
     }
 }
 
-impl Dsf {
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     /// Create (and publish) a new CreateOptions
     pub fn create(&mut self, options: CreateOptions) -> Result<CreateFuture, DsfError> {
         let req_id = rand::random();

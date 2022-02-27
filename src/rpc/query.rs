@@ -1,3 +1,5 @@
-use crate::daemon::Dsf;
+use crate::daemon::{Dsf, net::NetIf};
 
-impl Dsf {}
+impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+
+}
