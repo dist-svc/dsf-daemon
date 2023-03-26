@@ -137,8 +137,8 @@ mod test {
 
     use super::Store;
 
-    use dsf_core::base::Body;
-    use dsf_core::crypto::{hash, new_pk, new_sk, pk_sign};
+    use dsf_core::{types::Id, base::Body};
+    use dsf_core::crypto::{Crypto, PubKey, Hash, SecKey};
     use dsf_rpc::DataInfo;
 
     #[test]
@@ -152,10 +152,10 @@ mod test {
         store.drop_tables().unwrap();
         store.create_tables().unwrap();
 
-        let (public_key, private_key) = new_pk().unwrap();
-        let _secret_key = new_sk().unwrap();
-        let id = hash(&public_key).unwrap();
-        let sig = pk_sign(&private_key, &[0xaa, 0xaa, 0xaa, 0xaa]).unwrap();
+        let (public_key, private_key) = Crypto::new_pk().unwrap();
+        let _secret_key = Crypto::new_sk().unwrap();
+        let id: Id = Crypto::hash(&public_key).unwrap().into();
+        let sig = Crypto::pk_sign(&private_key, &[0xaa, 0xaa, 0xaa, 0xaa]).unwrap();
 
         let d = DataInfo {
             service: id.clone(),

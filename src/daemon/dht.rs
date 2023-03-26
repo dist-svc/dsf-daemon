@@ -244,7 +244,7 @@ pub(crate) fn dht_reducer(id: &Id, pages: &[Container]) -> Vec<Container> {
 mod test {
     use std::{time::{SystemTime, Duration}, ops::Add};
 
-    use dsf_core::{prelude::*, service::{TertiaryOptions, Registry}, options::Name, types::DateTime};
+    use dsf_core::{prelude::*, service::{TertiaryOptions, Registry}, types::DateTime};
     use super::*;
 
     fn setup() -> Service {
@@ -304,7 +304,7 @@ mod test {
         let mut ns1 = setup();
         let mut ns2 = setup();
 
-        let name = Name::new("test-name");
+        let name = Options::name("test-name");
         let id = ns1.resolve(&name).unwrap();
 
 

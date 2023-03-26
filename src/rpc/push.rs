@@ -110,7 +110,8 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                 };
 
                 // Parse out / validate incoming data
-                let _base = match Container::parse(&opts.data, self) {
+                let mut data = opts.data.to_vec();
+                let _base = match Container::parse(&mut data, self) {
                     Ok(v) => v,
                     Err(e) => {
                         error!("Invalid data for push");

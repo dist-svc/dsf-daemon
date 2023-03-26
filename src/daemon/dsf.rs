@@ -197,7 +197,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         }
     }
 
-    pub(crate) fn primary<T: AsRef<[u8]> + AsMut<[u8]>>(
+    pub(crate) fn primary<T: MutableData>(
         &mut self,
         buff: T,
     ) -> Result<(usize, Container<T>), Error> {

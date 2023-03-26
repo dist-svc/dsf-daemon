@@ -13,7 +13,7 @@ use dsf_core::prelude::{Options, PageInfo, DsfError};
 use dsf_core::types::{Id, CryptoHash, Flags, PageKind};
 use dsf_core::error::{Error as CoreError};
 use dsf_core::service::Registry;
-use dsf_core::options::{self, Filters, Name};
+use dsf_core::options::{self, Filters};
 
 use dsf_rpc::{ServiceIdentifier, Response, NsRegisterInfo, NsRegisterOptions, NsSearchOptions, LocateOptions};
 
@@ -58,7 +58,7 @@ impl <T: Engine> NameService for T {
         // Generate search query
         let lookup = match (opts.name, opts.hash) {
             (Some(n), _) => {
-                ns.resolve(&options::Name::new(&n))?
+                ns.resolve(&Options::name(&n))?
             },
             (_, Some(h)) => {
                 todo!("Hash based searching not yet implemented");
@@ -175,7 +175,7 @@ impl <T: Engine> NameService for T {
         // Lookup prefix for NS
         let prefix = ns.public_options().iter().find_map(|o| {
             match o {
-                Options::Name(n) => Some(n.value.clone()),
+                Options::Name(n) => Some(n.to_string()),
                  _ => None,
             }
         });
@@ -201,7 +201,7 @@ impl <T: Engine> NameService for T {
 
             // Create page for name if provided
             if let Some(n) = &name {
-                if let Some((_n, p)) = s.publish_tertiary_buff::<256, _>(t.id().into(), Default::default(), &Name::new(&n)).ok() {
+                if let Some((_n, p)) = s.publish_tertiary_buff::<256, _>(t.id().into(), Default::default(), &Options::name(&n)).ok() {
                     pages.push(p.to_owned());
                 }
             }
@@ -249,7 +249,7 @@ mod test {
     use std::sync::{Arc, Mutex};
     use std::collections::{HashMap, VecDeque};
 
-    use dsf_core::options::{PeerId, Filters};
+    use dsf_core::options::{Options, Filters};
     use dsf_core::page::ServiceLink;
     use dsf_rpc::ServiceInfo;
     use futures::future;
@@ -353,7 +353,7 @@ mod test {
                         let p = &pages[0];
                         let n = t.public_options().iter().name().unwrap();
 
-                        assert_eq!(p.id(), ns.resolve(&n).unwrap());
+                        assert_eq!(p.id(), ns.resolve(&Options::name(&n)).unwrap());
                         assert_eq!(p.info(), Ok(PageInfo::ServiceLink(ServiceLink{target_id: t.id(), peer_id: ns.id() })));
 
                         Ok(Res::Ids(vec![]))
@@ -378,7 +378,7 @@ mod test {
             let (_n, primary) = t.publish_primary_buff(Default::default()).unwrap();
 
             let name = t.public_options().iter().name().unwrap();
-            let (_, tertiary) = ns.publish_tertiary_buff::<256, _>(t.id().into(), Default::default(), &name).unwrap();
+            let (_, tertiary) = ns.publish_tertiary_buff::<256, _>(t.id().into(), Default::default(), Options::name(&name)).unwrap();
 
             (name, primary.to_owned(), tertiary.to_owned())
         });
@@ -415,7 +415,7 @@ mod test {
             }),
         ]);
 
-        let r = e.ns_search(NsSearchOptions{ns: ServiceIdentifier::id(ns_id), name: Some(name.value), hash: None }).await.unwrap();
+        let r = e.ns_search(NsSearchOptions{ns: ServiceIdentifier::id(ns_id), name: Some(name.to_string()), hash: None }).await.unwrap();
 
         // Returns pages for located service
         assert_eq!(&r, &[p]);

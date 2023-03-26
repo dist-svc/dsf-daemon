@@ -102,7 +102,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                 if let Some(body) = &opts.body {
                     sb = sb.body(body.clone());
                 } else {
-                    sb = sb.body(Body::None);
+                    sb = sb.body(vec![]);
                 }
 
                 // Append supplied public and private options

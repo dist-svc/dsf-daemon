@@ -195,7 +195,7 @@ mod test {
 
     use super::Store;
 
-    use dsf_core::crypto::{hash, new_pk, new_sk};
+    use dsf_core::{ types::Id, crypto::{Crypto, Hash, PubKey, SecKey} };
     use dsf_rpc::{PeerAddress, PeerInfo, PeerState};
 
     #[test]
@@ -210,9 +210,9 @@ mod test {
 
         store.create_tables().unwrap();
 
-        let (public_key, _private_key) = new_pk().unwrap();
-        let _secret_key = new_sk().unwrap();
-        let id = hash(&public_key).unwrap();
+        let (public_key, _private_key) = Crypto::new_pk().unwrap();
+        let _secret_key = Crypto::new_sk().unwrap();
+        let id: Id = Crypto::hash(&public_key).unwrap().into();
 
         let mut p = PeerInfo {
             id,

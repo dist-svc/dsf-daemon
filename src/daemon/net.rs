@@ -232,9 +232,11 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         let (container, _n) = Container::from(&data);
         let _id: Id = container.id().into();
 
+        let mut data = data.to_vec();
+
         // Parse out message object
         // TODO: pass secret keys for encode / decode here
-        let (message, _n) = match net::Message::parse(&data, self) {
+        let (message, _n) = match net::Message::parse(&mut data, self) {
             Ok(v) => v,
             Err(e) => {
                 error!("Error decoding base message: {:?}", e);

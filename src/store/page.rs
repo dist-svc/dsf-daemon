@@ -112,7 +112,7 @@ mod test {
         store.drop_tables().unwrap();
         store.create_tables().unwrap();
 
-        let mut s = Service::default();
+        let mut s = Service::<Vec<u8>>::default();
         let keys = s.keys();
 
         let (_n, page) = s.publish_primary_buff( Default::default()).expect("Error creating page");
