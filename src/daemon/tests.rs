@@ -77,11 +77,12 @@ fn test_manager() {
                 s2.id(),
                 rand::random(),
                 RequestBody::Ping,
-                Flags::ADDRESS_REQUEST
+                Flags::ADDRESS_REQUEST,
             ),
             tx,
         )
-        .await.unwrap();
+        .await
+        .unwrap();
 
         assert_eq!(
             rx.next().await,

@@ -12,7 +12,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 use dsf_rpc::{self as rpc, peer::SearchOptions as LookupOptions, PeerInfo};
 
-use crate::daemon::{Dsf, net::NetIf};
+use crate::daemon::{net::NetIf, Dsf};
 use crate::error::Error;
 
 use crate::core::peers::Peer;
@@ -53,7 +53,10 @@ impl Future for LookupFuture {
     }
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     /// Look-up a peer via the database
     pub fn lookup2(&mut self, options: LookupOptions) -> Result<LookupFuture, Error> {
         let req_id = rand::random();
@@ -146,7 +149,7 @@ pub trait PeerRegistry {
 }
 
 #[async_trait::async_trait]
-impl <T: Engine> PeerRegistry for T {
+impl<T: Engine> PeerRegistry for T {
     async fn peer_lookup(&mut self, options: LookupOptions) -> Result<PeerInfo, DsfError> {
         debug!("Performing peer lookup by ID: {}", options.id);
 
@@ -157,8 +160,8 @@ impl <T: Engine> PeerRegistry for T {
             Ok(p) => p,
             Err(e) => {
                 error!("DHT lookup failed: {:?}", e);
-                return Err(e.into())
-            },
+                return Err(e.into());
+            }
         };
 
         debug!("Located peer: {:?}", peer);

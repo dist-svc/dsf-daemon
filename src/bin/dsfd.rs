@@ -2,7 +2,7 @@ use async_std::task;
 
 use futures::prelude::*;
 
-use log::{info};
+use log::info;
 
 use structopt::StructOpt;
 
@@ -32,7 +32,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Initialise logging
     let _ = FmtSubscriber::builder()
-        .with_max_level(opts.log_level.clone())
+        .with_max_level(opts.log_level)
         .try_init();
 
     // Bind exit handler

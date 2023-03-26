@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::future::Future;
-use std::net::{SocketAddr, IpAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::ops::Add;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 use std::time::{Duration, SystemTime};
 
-use dsf_rpc::{LocateOptions, RegisterOptions, ServiceIdentifier, SubscribeOptions, QosPriority};
+use dsf_rpc::{LocateOptions, QosPriority, RegisterOptions, ServiceIdentifier, SubscribeOptions};
 use kad::common::message;
 use log::{debug, error, info, trace, warn};
 
@@ -32,16 +32,18 @@ use crate::error::Error as DaemonError;
 use crate::core::data::DataInfo;
 use crate::core::peers::{Peer, PeerAddress, PeerFlags, PeerState};
 
-
 /// Network interface abstraction, allows [`Dsf`] instance to be generic over interfaces
 pub trait NetIf {
     /// Interface for sending
     type Interface;
 
     /// Send a message to the specified targets
-    fn net_send(&mut self, targets: &[(Address, Option<Id>)], msg: NetMessage) -> Result<(), DaemonError>;
+    fn net_send(
+        &mut self,
+        targets: &[(Address, Option<Id>)],
+        msg: NetMessage,
+    ) -> Result<(), DaemonError>;
 }
-
 
 pub type NetSink = mpsc::Sender<(Address, Option<Id>, NetMessage)>;
 
@@ -51,7 +53,11 @@ pub type ByteSink = mpsc::Sender<(Address, Vec<u8>)>;
 impl NetIf for Dsf<NetSink> {
     type Interface = NetSink;
 
-    fn net_send(&mut self, targets: &[(Address, Option<Id>)], msg: NetMessage) -> Result<(), DaemonError> {
+    fn net_send(
+        &mut self,
+        targets: &[(Address, Option<Id>)],
+        msg: NetMessage,
+    ) -> Result<(), DaemonError> {
         // Fan out message to each target
         for t in targets {
             if let Err(e) = self.net_sink.try_send((t.0, t.1.clone(), msg.clone())) {
@@ -66,7 +72,11 @@ impl NetIf for Dsf<NetSink> {
 impl NetIf for Dsf<ByteSink> {
     type Interface = ByteSink;
 
-    fn net_send(&mut self, targets: &[(Address, Option<Id>)], msg: NetMessage) -> Result<(), DaemonError> {
+    fn net_send(
+        &mut self,
+        targets: &[(Address, Option<Id>)],
+        msg: NetMessage,
+    ) -> Result<(), DaemonError> {
         // Encode message
 
         // TODO: this _should_ probably depend on message types / flags
@@ -77,12 +87,10 @@ impl NetIf for Dsf<ByteSink> {
             1 => {
                 let t = &targets[0];
                 self.net_encode(t.1.as_ref(), msg)?
-            },
+            }
             // If we have multiple targets, use asymmetric encoding to share objects
             // (note this improves performance but drops p2p message privacy)
-            _ => {
-                self.net_encode(None, msg)?
-            },
+            _ => self.net_encode(None, msg)?,
         };
 
         // Fan-out encoded message to each target
@@ -187,7 +195,10 @@ impl Future for NetFuture {
 }
 
 /// Generic network helper for [`Dsf`] implementation
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     pub async fn handle_net_raw(&mut self, msg: crate::io::NetMessage) -> Result<(), DaemonError> {
         // Decode message
         let decoded = match self.net_decode(&msg.data).await {
@@ -204,7 +215,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         match decoded {
             NetMessage::Response(resp) => {
                 self.handle_net_resp(msg.address, resp)?;
-            },
+            }
             NetMessage::Request(req) => {
                 let (tx, mut rx) = mpsc::channel(1);
 
@@ -221,7 +232,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                         let _ = o.send((a, None, NetMessage::Response(r))).await;
                     }
                 });
-            },
+            }
         };
 
         Ok(())
@@ -252,7 +263,10 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         if message.flags().contains(Flags::SYMMETRIC_MODE) {
             self.peers().update(&message.from(), |p| {
                 if !p.flags.contains(PeerFlags::SYMMETRIC_ENABLED) {
-                    warn!("Enabling symmetric message crypto for peer: {}", message.from());
+                    warn!(
+                        "Enabling symmetric message crypto for peer: {}",
+                        message.from()
+                    );
                     p.flags |= PeerFlags::SYMMETRIC_ENABLED;
                 }
             });
@@ -300,7 +314,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         // Setup response channels
         let mut reqs = HashMap::with_capacity(peers.len());
         let mut targets = Vec::with_capacity(peers.len());
-        
+
         // Add individual requests to tracking
         for p in peers {
             // Create response channel
@@ -434,23 +448,34 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
 
             let net_resp = self.dht_to_net_response(dht_resp);
 
-            Some(net::Response::new(own_id, req_id, net_resp, Flags::default()))
+            Some(net::Response::new(
+                own_id,
+                req_id,
+                net_resp,
+                Flags::default(),
+            ))
 
         // Handle delegated messages
-        } else if req.flags.contains(Flags::CONSTRAINED) 
-                && self.handle_dsf_delegated(&peer, req_id, &req, tx.clone())? {
+        } else if req.flags.contains(Flags::CONSTRAINED)
+            && self.handle_dsf_delegated(&peer, req_id, &req, tx.clone())?
+        {
             None
 
         // Handle normal DSF messages
         } else {
             let dsf_resp = self.handle_dsf(from.clone(), peer, req.data)?;
-            Some(net::Response::new(own_id, req_id, dsf_resp, Flags::default()))
+            Some(net::Response::new(
+                own_id,
+                req_id,
+                dsf_resp,
+                Flags::default(),
+            ))
         };
 
         // Skip processing if we've already got a response
         let mut resp = match resp {
             Some(r) => r,
-            None => return Ok(())
+            None => return Ok(()),
         };
 
         // Generic response processing here
@@ -723,7 +748,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         }
     }
 
-    fn handle_dsf_delegated<T: 'static + Sink<NetResponse> + Unpin + Send> (
+    fn handle_dsf_delegated<T: 'static + Sink<NetResponse> + Unpin + Send>(
         &mut self,
         peer: &Peer,
         req_id: RequestId,
@@ -740,16 +765,16 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
             net::RequestBody::Locate(service_id) => {
                 info!(
                     "Delegated locate request from: {} for service: {}",
-                    peer.id(), service_id
+                    peer.id(),
+                    service_id
                 );
 
-                let opts = LocateOptions{
+                let opts = LocateOptions {
                     id: service_id.clone(),
                     local_only: false,
                 };
                 let service_id = service_id.clone();
                 let loc = self.locate(opts)?;
-
 
                 async_std::task::spawn(async move {
                     let resp = match loc.await {
@@ -761,11 +786,11 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                                 error!("Locate failed, no page found");
                                 net::ResponseBody::Status(Status::Failed)
                             }
-                        },
+                        }
                         Err(e) => {
                             error!("Locate failed: {:?}", e);
                             net::ResponseBody::Status(Status::Failed)
-                        },
+                        }
                     };
 
                     let mut resp = net::Response::new(own_id, req_id, resp, Flags::default());
@@ -780,11 +805,12 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                 });
 
                 Ok(true)
-            },
+            }
             net::RequestBody::Subscribe(service_id) => {
                 info!(
                     "Delegated subscribe request from: {} for service: {}",
-                    peer.id(), service_id
+                    peer.id(),
+                    service_id
                 );
 
                 // Add subscriber to tracking
@@ -800,9 +826,8 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                     .unwrap();
 
                 // Issue subscribe request to replicas
-                let opts = SubscribeOptions{
+                let opts = SubscribeOptions {
                     service: ServiceIdentifier::id(service_id.clone()),
-
                 };
                 let sub = self.subscribe(opts)?;
 
@@ -813,7 +838,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                         Err(e) => {
                             error!("Subscription failed: {:?}", e);
                             net::ResponseBody::Status(Status::Failed)
-                        },
+                        }
                     };
 
                     let mut resp = net::Response::new(own_id, req_id, resp, Flags::default());
@@ -827,18 +852,19 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                 });
 
                 Ok(true)
-            },
+            }
             net::RequestBody::Register(service_id, pages) => {
                 info!(
                     "Delegated register request from: {} for service: {}",
-                    peer.id(), service_id
+                    peer.id(),
+                    service_id
                 );
 
                 // Add to local service registry
                 self.service_register(&service_id, pages.clone())?;
 
                 // Perform global registration
-                let opts = RegisterOptions{
+                let opts = RegisterOptions {
                     service: ServiceIdentifier::id(service_id.clone()),
                     no_replica: false,
                 };
@@ -851,7 +877,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                         Err(e) => {
                             error!("Registration failed: {:?}", e);
                             net::ResponseBody::Status(Status::Failed)
-                        },
+                        }
                     };
 
                     let mut resp = net::Response::new(own_id, req_id, resp, Flags::default());
@@ -865,10 +891,8 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                 });
 
                 Ok(true)
-            },
-            _ => {
-                Ok(false)
             }
+            _ => Ok(false),
         }
     }
 }

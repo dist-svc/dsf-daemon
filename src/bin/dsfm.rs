@@ -42,7 +42,7 @@ fn main() {
 
     // Initialise logging
     let _ = FmtSubscriber::builder()
-        .with_max_level(opts.level.clone())
+        .with_max_level(opts.level)
         .try_init();
 
     // Bind exit handler

@@ -3,7 +3,7 @@ use std::task::{Context, Poll};
 use async_std::channel::Receiver;
 use dsf_core::wire::Container;
 use kad::store::Datastore;
-use log::{debug, warn, error, info};
+use log::{debug, error, info, warn};
 use tracing::{span, Level};
 
 use futures::channel::mpsc;
@@ -13,7 +13,7 @@ use dsf_core::prelude::*;
 use dsf_rpc::*;
 
 use crate::core::peers::Peer;
-use crate::daemon::{Dsf, net::NetIf};
+use crate::daemon::{net::NetIf, Dsf};
 use crate::error::{CoreError, Error};
 use crate::rpc::lookup::PeerRegistry;
 use crate::rpc::search::NameService;
@@ -58,7 +58,10 @@ pub mod search;
 // Debug commands
 pub mod debug;
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     // Create a new RPC operation
     pub fn start_rpc(&mut self, req: Request, done: RpcSender) -> Result<(), Error> {
         let req_id = req.req_id();
@@ -188,8 +191,8 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                     warn!("Async response sent");
                 });
 
-                return Ok(())
-            },
+                return Ok(());
+            }
             RequestKind::Service(ServiceCommands::Create(opts)) => RpcKind::create(opts),
             RequestKind::Service(ServiceCommands::Register(opts)) => RpcKind::register(opts),
             RequestKind::Service(ServiceCommands::Locate(opts)) => RpcKind::locate(opts),
@@ -209,10 +212,10 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                     if let Err(e) = done.clone().try_send(Response::new(req_id, i)) {
                         error!("Failed to send RPC response: {:?}", e);
                     }
-                        warn!("Async ns register response sent");
+                    warn!("Async ns register response sent");
                 });
                 return Ok(());
-            },
+            }
             RequestKind::Ns(NsCommands::Search(opts)) => {
                 let exec = self.exec();
                 async_std::task::spawn(async move {
@@ -225,10 +228,10 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                     if let Err(e) = done.clone().try_send(Response::new(req_id, i)) {
                         error!("Failed to send RPC response: {:?}", e);
                     }
-                        warn!("Async ns search response sent");
+                    warn!("Async ns search response sent");
                 });
                 return Ok(());
-            },
+            }
             RequestKind::Debug(DebugCommands::Bootstrap) => RpcKind::bootstrap(()),
             _ => {
                 error!("RPC operation {:?} unimplemented", req.kind());
@@ -353,7 +356,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     }
 
     pub(crate) fn exec(&self) -> ExecHandle {
-        ExecHandle{
+        ExecHandle {
             req_id: rand::random(),
             tx: self.op_tx.clone(),
             waker: self.waker.as_ref().map(|w| w.clone()),
@@ -369,23 +372,30 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
 
             match op.kind {
                 OpKind::ServiceResolve(i) => {
-                    let r = self.resolve_identifier(&i).map(|id| self.services().find_copy(&id).unwrap() )
-                        .map(|s| Ok(Res::Service(s)) ).unwrap_or(Err(CoreError::NotFound));
+                    let r = self
+                        .resolve_identifier(&i)
+                        .map(|id| self.services().find_copy(&id).unwrap())
+                        .map(|s| Ok(Res::Service(s)))
+                        .unwrap_or(Err(CoreError::NotFound));
 
                     if let Err(e) = op.done.try_send(r) {
                         error!("Failed to send operation response: {:?}", e);
                     };
-                },
+                }
                 OpKind::ServiceGet(id) => {
-                    let r =  self.services().find_copy(&id)
-                        .map(|s| Ok(Res::Service(s)) ).unwrap_or(Err(CoreError::NotFound));
+                    let r = self
+                        .services()
+                        .find_copy(&id)
+                        .map(|s| Ok(Res::Service(s)))
+                        .unwrap_or(Err(CoreError::NotFound));
 
                     if let Err(e) = op.done.try_send(r) {
                         error!("Failed to send operation response: {:?}", e);
                     };
-                },
+                }
                 OpKind::ServiceCreate(id, pages) => {
-                    let r = self.service_register(&id, pages)
+                    let r = self
+                        .service_register(&id, pages)
                         .map(|i| Ok(Res::ServiceInfo(i)))
                         // TODO: fix this error type
                         .unwrap_or(Err(CoreError::Unknown));
@@ -393,35 +403,33 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                     if let Err(e) = op.done.try_send(r) {
                         error!("Failed to send operation response: {:?}", e);
                     }
-                },
+                }
                 OpKind::ServiceUpdate(id, f) => {
-                    let r = self.services().with(&id, |inst| f(&mut inst.service) )
+                    let r = self
+                        .services()
+                        .with(&id, |inst| f(&mut inst.service))
                         .unwrap_or(Err(CoreError::NotFound));
 
                     if let Err(e) = op.done.try_send(r) {
                         error!("Failed to send operation response: {:?}", e);
                     }
-                },
-                OpKind::DhtLocate(ref id) => {
-                    match self.dht_mut().locate(id.clone()) {
-                        Ok((s, _id)) => {
-                            op.state = OpState::DhtLocate(s);
-                            self.ops.insert(op_id, op);
-                        },
-                        Err(e) => {
-                            error!("Failed to create search operation: {:?}", e);
-                        }
+                }
+                OpKind::DhtLocate(ref id) => match self.dht_mut().locate(id.clone()) {
+                    Ok((s, _id)) => {
+                        op.state = OpState::DhtLocate(s);
+                        self.ops.insert(op_id, op);
+                    }
+                    Err(e) => {
+                        error!("Failed to create search operation: {:?}", e);
                     }
                 },
-                OpKind::DhtSearch(ref id) => {
-                    match self.dht_mut().search(id.clone()) {
-                        Ok((s, _id)) => {
-                            op.state = OpState::DhtSearch(s);
-                            self.ops.insert(op_id, op);
-                        },
-                        Err(e) => {
-                            error!("Failed to create search operation: {:?}", e);
-                        }
+                OpKind::DhtSearch(ref id) => match self.dht_mut().search(id.clone()) {
+                    Ok((s, _id)) => {
+                        op.state = OpState::DhtSearch(s);
+                        self.ops.insert(op_id, op);
+                    }
+                    Err(e) => {
+                        error!("Failed to create search operation: {:?}", e);
                     }
                 },
                 OpKind::DhtPut(ref id, ref pages) => {
@@ -429,30 +437,40 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                         Ok((p, _id)) => {
                             op.state = OpState::DhtPut(p);
                             self.ops.insert(op_id, op);
-                        },
+                        }
                         Err(e) => {
                             error!("Failed to create search operation: {:?}", e);
                         }
                     }
-                },
+                }
                 OpKind::PeerGet(ref id) => {
-                    let r = self.peers().find(id)
-                        .map(|p| Ok(Res::Peers(vec![p])) )
+                    let r = self
+                        .peers()
+                        .find(id)
+                        .map(|p| Ok(Res::Peers(vec![p])))
                         .unwrap_or(Err(CoreError::NotFound));
-                    
+
                     if let Err(e) = op.done.try_send(r) {
                         error!("Failed to send operation response: {:?}", e);
                     };
-                },
+                }
                 OpKind::ObjectGet(ref id, sig) => {
                     let mut page = None;
 
                     // Attempt to fetch from services in memory
-                    match self.services().with(id, |s| s.primary_page.clone() ).flatten() {
+                    match self
+                        .services()
+                        .with(id, |s| s.primary_page.clone())
+                        .flatten()
+                    {
                         Some(p) if p.signature() == sig => page = Some(p),
                         _ => (),
                     }
-                    match self.services().with(id, |s| s.replica_page.clone() ).flatten() {
+                    match self
+                        .services()
+                        .with(id, |s| s.replica_page.clone())
+                        .flatten()
+                    {
                         Some(p) if p.signature() == sig => page = Some(p),
                         _ => (),
                     }
@@ -471,18 +489,16 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                     if let Err(e) = op.done.try_send(r) {
                         error!("Failed to send operation response: {:?}", e);
                     };
-                },
-                
+                }
             }
         }
 
         // Poll on currently executing operations
         let mut ops_done = vec![];
-        for (op_id, Op{state, done, ..}) in self.ops.iter_mut() {
-
+        for (op_id, Op { state, done, .. }) in self.ops.iter_mut() {
             if let Poll::Ready(r) = state.poll_unpin(ctx) {
                 debug!("Op: {} complete with result: {:?}", op_id, r);
-                
+
                 if let Err(_e) = done.try_send(r) {
                     error!("Error sending result to op: {}", op_id);
                 }
@@ -495,7 +511,6 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         for op_id in &ops_done {
             let _ = self.ops.remove(op_id);
         }
-
 
         Ok(())
     }
@@ -537,29 +552,23 @@ impl Future for OpState {
     fn poll(self: std::pin::Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
         let r = match self.get_mut() {
             OpState::None => unreachable!(),
-            OpState::DhtLocate(locate) => {
-                match locate.poll_unpin(ctx) {
-                    Poll::Ready(Ok(peer)) =>  Ok(Res::Peers(vec![peer.info().clone()])),
-                    Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
-                    _ => return Poll::Pending,
-                }
+            OpState::DhtLocate(locate) => match locate.poll_unpin(ctx) {
+                Poll::Ready(Ok(peer)) => Ok(Res::Peers(vec![peer.info().clone()])),
+                Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
+                _ => return Poll::Pending,
             },
-            OpState::DhtSearch(get) => {
-                match get.poll_unpin(ctx) {
-                    Poll::Ready(Ok(pages)) =>  Ok(Res::Pages(pages)),
-                    Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
-                    _ => return Poll::Pending,
-                }
+            OpState::DhtSearch(get) => match get.poll_unpin(ctx) {
+                Poll::Ready(Ok(pages)) => Ok(Res::Pages(pages)),
+                Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
+                _ => return Poll::Pending,
             },
-            OpState::DhtPut(put) => {
-                match put.poll_unpin(ctx) {
-                    Poll::Ready(Ok(peers)) => {
-                        let peers = peers.iter().map(|e| e.info().clone() ).collect();
-                        Ok(Res::Peers(peers))
-                    },
-                    Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
-                    _ => return Poll::Pending,
+            OpState::DhtPut(put) => match put.poll_unpin(ctx) {
+                Poll::Ready(Ok(peers)) => {
+                    let peers = peers.iter().map(|e| e.info().clone()).collect();
+                    Ok(Res::Peers(peers))
                 }
+                Poll::Ready(Err(_e)) => Err(CoreError::Unknown),
+                _ => return Poll::Pending,
             },
         };
 
@@ -580,7 +589,7 @@ impl core::fmt::Debug for OpState {
 
 #[async_trait::async_trait]
 impl Engine for ExecHandle {
-    async fn exec(&self, kind: OpKind) -> Result<Res, CoreError>{
+    async fn exec(&self, kind: OpKind) -> Result<Res, CoreError> {
         let (done_tx, mut done_rx) = mpsc::channel(1);
         let mut tx = self.tx.clone();
 
@@ -595,7 +604,7 @@ impl Engine for ExecHandle {
         if let Err(_e) = tx.send(req).await {
             // TODO: Cancelled
             error!("RPC exec channel closed");
-            return Err(CoreError::Unknown)
+            return Err(CoreError::Unknown);
         }
 
         // Trigger waker if available (not sure why this isn't happening automatically..?)
@@ -611,7 +620,7 @@ impl Engine for ExecHandle {
             None => {
                 warn!("RPC response channel closed");
                 Err(CoreError::Unknown)
-            },
+            }
         }
     }
 }

@@ -16,7 +16,7 @@ use dsf_core::service::Publisher;
 
 use dsf_rpc::{self as rpc, CreateOptions, RegisterOptions, ServiceIdentifier};
 
-use crate::daemon::{Dsf, net::NetIf};
+use crate::daemon::{net::NetIf, Dsf};
 use crate::error::Error;
 
 use crate::core::peers::Peer;
@@ -59,7 +59,10 @@ impl Future for CreateFuture {
     }
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     /// Create (and publish) a new CreateOptions
     pub fn create(&mut self, options: CreateOptions) -> Result<CreateFuture, DsfError> {
         let req_id = rand::random();
@@ -93,7 +96,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
             CreateState::Init => {
                 info!("Creating service: {:?}", opts);
                 let mut sb = ServiceBuilder::generic();
-                
+
                 if let Some(kind) = opts.page_kind {
                     sb = sb.kind(kind);
                 }
@@ -164,8 +167,9 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                 } else {
                     // Return info for newly created service
                     let info = self
-                            .services()
-                            .update_inst(id.as_ref().unwrap(), |s| () ).unwrap();
+                        .services()
+                        .update_inst(id.as_ref().unwrap(), |s| ())
+                        .unwrap();
 
                     let resp = rpc::Response::new(req_id, rpc::ResponseKind::Service(info));
                     done.try_send(resp).unwrap();
@@ -200,7 +204,10 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                     Poll::Ready(Err(kad::prelude::DhtError::NoPeers)) => {
                         warn!("No peers for registration");
 
-                        let info = self.services().update_inst(id.as_ref().unwrap(), |s| () ).unwrap();
+                        let info = self
+                            .services()
+                            .update_inst(id.as_ref().unwrap(), |s| ())
+                            .unwrap();
 
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Service(info));
                         done.try_send(resp).unwrap();
@@ -208,7 +215,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                         *state = CreateState::Done;
 
                         Ok(false)
-                    },
+                    }
                     Poll::Ready(Err(e)) => {
                         warn!("DHT store error: {:?}", e);
 

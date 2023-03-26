@@ -13,7 +13,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 
 use dsf_core::net;
-use dsf_core::service::{Publisher, DataOptions};
+use dsf_core::service::{DataOptions, Publisher};
 use dsf_rpc::{self as rpc, DataInfo, PublishInfo, PublishOptions};
 
 use crate::core::peers::Peer;
@@ -56,7 +56,10 @@ impl Future for PublishFuture {
     }
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     /// Publish a locally known service
     pub async fn publish(&mut self, options: PublishOptions) -> Result<PublishFuture, Error> {
         let req_id = rand::random();

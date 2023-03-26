@@ -1,4 +1,4 @@
-use crate::rpc::{Op};
+use crate::rpc::Op;
 use crate::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -29,8 +29,8 @@ use crate::core::replicas::ReplicaManager;
 use crate::core::services::{ServiceInfo, ServiceManager, ServiceState};
 use crate::core::subscribers::SubscriberManager;
 
-use super::net::{NetOp, NetSink, NetIf, ByteSink};
-use crate::rpc::ops::{RpcOperation, RpcKind};
+use super::net::{ByteSink, NetIf, NetOp, NetSink};
+use crate::rpc::ops::{RpcKind, RpcOperation};
 
 use crate::error::Error;
 use crate::store::Store;
@@ -41,7 +41,7 @@ use super::Options;
 /// Re-export of Dht type used for DSF
 pub type DsfDht = Dht<Id, Peer, Data, RequestId>;
 
-pub struct Dsf<Net=NetSink> {
+pub struct Dsf<Net = NetSink> {
     /// Inernal storage for daemon service
     service: Service,
 
@@ -92,7 +92,10 @@ pub struct Dsf<Net=NetSink> {
     pub(super) key_cache: HashMap<Id, Keys>,
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     /// Create a new daemon
     pub fn new(
         config: Options,
@@ -137,7 +140,9 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
 
             store,
 
-            op_tx, op_rx, ops: HashMap::new(),
+            op_tx,
+            op_rx,
+            ops: HashMap::new(),
             rpc_ops: HashMap::new(),
 
             net_sink,
@@ -202,7 +207,10 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         buff: T,
     ) -> Result<(usize, Container<T>), Error> {
         // TODO: this should generate a peer page / contain peer contact info
-        let (n, c) = self.service.publish_primary(Default::default(), buff).map_err(Error::Core)?;
+        let (n, c) = self
+            .service
+            .publish_primary(Default::default(), buff)
+            .map_err(Error::Core)?;
         Ok((n, c))
     }
 
@@ -369,7 +377,11 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         None
     }
 
-    pub fn service_register(&mut self, id: &Id, pages: Vec<Container>) -> Result<ServiceInfo, Error> {
+    pub fn service_register(
+        &mut self,
+        id: &Id,
+        pages: Vec<Container>,
+    ) -> Result<ServiceInfo, Error> {
         debug!("Registering service: {}", id);
 
         debug!("found {} pages", pages.len());
@@ -458,7 +470,10 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     }
 }
 
-impl <Net> dsf_core::keys::KeySource for Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> dsf_core::keys::KeySource for Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     fn keys(&self, id: &Id) -> Option<dsf_core::keys::Keys> {
         // Short circuit if looking for our own keys
         if *id == self.id() {
@@ -473,21 +488,18 @@ impl <Net> dsf_core::keys::KeySource for Dsf<Net> where Dsf<Net>: NetIf<Interfac
         // Find public key from source
         let (pub_key, sec_key) = if let Some(s) = self.services.find(id) {
             (Some(s.public_key), s.secret_key)
-
         } else if let Some(p) = self.peers.find(id) {
             if let PeerState::Known(pk) = p.state() {
                 (Some(pk), None)
             } else {
                 (None, None)
             }
-            
         } else if let Some(e) = self.dht.nodetable().contains(id) {
             if let PeerState::Known(pk) = e.info().state() {
                 (Some(pk), None)
             } else {
                 (None, None)
             }
-
         } else {
             (None, None)
         };
@@ -505,11 +517,11 @@ impl <Net> dsf_core::keys::KeySource for Dsf<Net> where Dsf<Net>: NetIf<Interfac
     }
 }
 
-
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
-
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     fn poll_base(&mut self, ctx: &mut Context<'_>) -> Poll<Result<(), DsfError>> {
-
         // Poll for outgoing DHT messages
         if let Poll::Ready(Some((req_id, target, body))) = self.dht_source.poll_next_unpin(ctx) {
             let addr = target.info().address();
@@ -543,9 +555,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
             };
 
             // Encode and enqueue them
-            if let Err(e) = self
-                .net_send(&[(addr, Some(id))], NetMessage::Request(req))
-            {
+            if let Err(e) = self.net_send(&[(addr, Some(id))], NetMessage::Request(req)) {
                 error!("Error sending outgoing DHT message: {:?}", e);
                 return Poll::Ready(Err(DsfError::Unknown));
             }
@@ -554,9 +564,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
         // Poll on pending outgoing responses
         // (we need a channel or _something_ to make async responses viable, but, this is a bit grim)
         if let Poll::Ready(Some((addr, id, msg))) = self.net_resp_rx.poll_next_unpin(ctx) {
-            if let Err(e) = self
-                .net_send(&[(addr, id)], msg)
-            {
+            if let Err(e) = self.net_send(&[(addr, id)], msg) {
                 error!("Error sending outgoing response message: {:?}", e);
             }
         }
@@ -578,7 +586,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
             Ok(true) => ctx.waker().clone().wake(),
             Err(e) => {
                 error!("DHT error: {:?}", e);
-            },
+            }
             _ => (),
         }
 
@@ -598,7 +606,6 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     }
 }
 
-
 impl Future for Dsf<ByteSink> {
     type Output = Result<(), DsfError>;
 
@@ -607,12 +614,11 @@ impl Future for Dsf<ByteSink> {
     }
 }
 
-impl futures::future::FusedFuture for Dsf<ByteSink>  {
+impl futures::future::FusedFuture for Dsf<ByteSink> {
     fn is_terminated(&self) -> bool {
         false
     }
 }
-
 
 impl Future for Dsf<NetSink> {
     type Output = Result<(), DsfError>;
@@ -622,7 +628,7 @@ impl Future for Dsf<NetSink> {
     }
 }
 
-impl futures::future::FusedFuture for Dsf<NetSink>  {
+impl futures::future::FusedFuture for Dsf<NetSink> {
     fn is_terminated(&self) -> bool {
         false
     }

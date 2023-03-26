@@ -61,12 +61,12 @@ impl Future for SubscribeFuture {
     }
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     // Subscribe to data from a given service
-    pub fn subscribe(
-        &mut self,
-        options: SubscribeOptions,
-    ) -> Result<SubscribeFuture, Error> {
+    pub fn subscribe(&mut self, options: SubscribeOptions) -> Result<SubscribeFuture, Error> {
         let span = span!(Level::DEBUG, "subscribe");
         let _enter = span.enter();
 
@@ -129,7 +129,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                     done.try_send(resp).unwrap();
 
                     *state = SubscribeState::Done;
-                    return Ok(true)
+                    return Ok(true);
                 }
 
                 // Search for viable replicas in the database
@@ -170,7 +170,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                         let our_id = self.id();
                         let lookups: Vec<_> = replica_peers
                             .iter()
-                            .filter(|peer_id| *peer_id != &our_id )
+                            .filter(|peer_id| *peer_id != &our_id)
                             .filter_map(|peer_id| match self.dht_mut().locate(peer_id.clone()) {
                                 Ok(v) => Some(v.0),
                                 Err(e) => {
@@ -257,7 +257,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                                         expiry: None,
                                         qos: QosPriority::None,
                                     })
-                                },
+                                }
                                 net::ResponseBody::ValuesFound(service_id, _pages) => {
                                     Some(SubscriptionInfo {
                                         service_id: service_id.clone(),

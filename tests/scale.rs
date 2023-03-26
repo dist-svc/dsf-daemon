@@ -6,9 +6,8 @@ use rand::random;
 
 use async_std::task;
 
-use tracing_subscriber::{FmtSubscriber};
-use tracing_subscriber::filter::{LevelFilter, EnvFilter};
-
+use tracing_subscriber::filter::{EnvFilter, LevelFilter};
+use tracing_subscriber::FmtSubscriber;
 
 use indicatif::ProgressBar;
 use tempdir::TempDir;
@@ -38,8 +37,7 @@ fn scale(n: usize, level: LevelFilter) {
     let d = TempDir::new("dsf-scale").unwrap();
     let d = d.path().to_str().unwrap().to_string();
 
-    let filter = EnvFilter::from_default_env()
-        .add_directive(level.into());
+    let filter = EnvFilter::from_default_env().add_directive(level.into());
     let _ = FmtSubscriber::builder().with_env_filter(filter).try_init();
 
     let mut daemons = vec![];
@@ -66,7 +64,7 @@ fn scale(n: usize, level: LevelFilter) {
             let _ = std::fs::remove_file(c.database_file);
 
             let addr = c.daemon_socket.clone();
-            let net_addr = c.bind_addresses[0].clone();
+            let net_addr = c.bind_addresses[0];
             let e = Engine::new(c1).await.expect("Error creating engine");
 
             // Build and run daemon

@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 
 use log::{debug, error, info, trace};
 
-use dsf_core::types::{ImmutableData, Id};
+use dsf_core::types::{Id, ImmutableData};
 use dsf_core::{keys::Keys, wire::Container};
 
 pub use dsf_rpc::data::DataInfo;
@@ -79,7 +79,11 @@ impl DataManager {
     }
 
     /// Store data for a given service
-    pub fn store_data<T: ImmutableData>(&self, info: &DataInfo, page: &Container<T>) -> Result<(), Error> {
+    pub fn store_data<T: ImmutableData>(
+        &self,
+        info: &DataInfo,
+        page: &Container<T>,
+    ) -> Result<(), Error> {
         // Store data object
         #[cfg(feature = "store")]
         self.store.save_data(info)?;

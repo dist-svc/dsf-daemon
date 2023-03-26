@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
+use std::collections::HashMap;
 use std::iter::FromIterator;
 
 use dsf_core::wire::Container;
@@ -11,7 +11,7 @@ use dsf_core::net::{RequestBody, ResponseBody};
 use dsf_core::prelude::*;
 use dsf_core::types::{Data, Id, RequestId};
 
-use super::{Dsf, net::NetIf};
+use super::{net::NetIf, Dsf};
 
 use crate::core::peers::{Peer, PeerAddress, PeerFlags};
 use crate::error::Error;
@@ -28,7 +28,10 @@ pub struct DsfDhtMessage {
     pub(crate) resp_sink: mpsc::Sender<DhtResponse<Id, Peer, Data>>,
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     /// Handle a DHT request message
     pub(crate) fn handle_dht_req(
         &mut self,
@@ -194,7 +197,9 @@ pub(crate) fn dht_reducer(id: &Id, pages: &[Container]) -> Vec<Container> {
     for c in &ordered {
         let h = c.header();
         match c.info() {
-            Ok(PageInfo::Primary(_)) if &c.id() == id && h.index() > index => primary = Some(c.clone()),
+            Ok(PageInfo::Primary(_)) if &c.id() == id && h.index() > index => {
+                primary = Some(c.clone())
+            }
             _ => (),
         }
     }
@@ -203,32 +208,25 @@ pub(crate) fn dht_reducer(id: &Id, pages: &[Container]) -> Vec<Container> {
         filtered.push(pri.clone());
     }
 
-
     // Reduce secondary pages by peer_id (via a hashmap to get only the latest value)
-    let secondaries = ordered.iter().filter_map(|c| {
-        match c.info() {
-            Ok(PageInfo::Secondary(s)) if &c.id() == id => Some((s.peer_id, c.clone())),
-            _ => None, 
-        }
+    let secondaries = ordered.iter().filter_map(|c| match c.info() {
+        Ok(PageInfo::Secondary(s)) if &c.id() == id => Some((s.peer_id, c.clone())),
+        _ => None,
     });
     let mut map = HashMap::<_, _, RandomState>::from_iter(secondaries);
-    filtered.extend(map.drain().map(|(_k, v)| v.clone() ) );
+    filtered.extend(map.drain().map(|(_k, v)| v.clone()));
 
     // TODO: if there is no primary page, can we reject secondary pages?
 
-
     // Reduce tertiary pages by publisher (via a hashmap to leave only the latest value)
-    let tertiary = ordered.iter().filter_map(|c| {
-        match c.info() {
-            Ok(PageInfo::ServiceLink(s)) if &c.id() == id => Some((s.peer_id, c.clone())),
-            Ok(PageInfo::BlockLink(s)) if &c.id() == id => Some((s.peer_id, c.clone())),
+    let tertiary = ordered.iter().filter_map(|c| match c.info() {
+        Ok(PageInfo::ServiceLink(s)) if &c.id() == id => Some((s.peer_id, c.clone())),
+        Ok(PageInfo::BlockLink(s)) if &c.id() == id => Some((s.peer_id, c.clone())),
 
-            _ => None, 
-        }
+        _ => None,
     });
     let mut map = HashMap::<_, _, RandomState>::from_iter(tertiary);
-    filtered.extend(map.drain().map(|(_k, v)| v.clone() ));
-
+    filtered.extend(map.drain().map(|(_k, v)| v.clone()));
 
     // TODO: should we be checking page sigs here or can we depend on these being validated earlier?
     // pretty sure it should be earlier...
@@ -242,13 +240,22 @@ pub(crate) fn dht_reducer(id: &Id, pages: &[Container]) -> Vec<Container> {
 
 #[cfg(test)]
 mod test {
-    use std::{time::{SystemTime, Duration}, ops::Add};
+    use std::{
+        ops::Add,
+        time::{Duration, SystemTime},
+    };
 
-    use dsf_core::{prelude::*, service::{TertiaryOptions, Registry}, types::DateTime};
     use super::*;
+    use dsf_core::{
+        prelude::*,
+        service::{Registry, TertiaryOptions},
+        types::DateTime,
+    };
 
     fn setup() -> Service {
-        ServiceBuilder::generic().build().expect("Failed to build service")
+        ServiceBuilder::generic()
+            .build()
+            .expect("Failed to build service")
     }
 
     #[test]
@@ -270,11 +277,19 @@ mod test {
 
         let (_, svc_page) = svc.publish_primary_buff(Default::default()).unwrap();
 
-        let (_, p1a) = peer1.publish_secondary_buff(&svc.id(), Default::default()).unwrap();
-        let (_, p1b) = peer1.publish_secondary_buff(&svc.id(), Default::default()).unwrap();
+        let (_, p1a) = peer1
+            .publish_secondary_buff(&svc.id(), Default::default())
+            .unwrap();
+        let (_, p1b) = peer1
+            .publish_secondary_buff(&svc.id(), Default::default())
+            .unwrap();
 
-        let (_, p2a) = peer2.publish_secondary_buff(&svc.id(), Default::default()).unwrap();
-        let (_, p2b) = peer2.publish_secondary_buff(&svc.id(), Default::default()).unwrap();
+        let (_, p2a) = peer2
+            .publish_secondary_buff(&svc.id(), Default::default())
+            .unwrap();
+        let (_, p2b) = peer2
+            .publish_secondary_buff(&svc.id(), Default::default())
+            .unwrap();
 
         let pages = vec![
             svc_page.to_owned(),
@@ -286,57 +301,49 @@ mod test {
 
         let mut r = dht_reducer(&svc.id(), &pages);
 
-        let mut e = vec![
-            svc_page.to_owned(),
-            p1b.to_owned(),
-            p2b.to_owned(),
-        ];
+        let mut e = vec![svc_page.to_owned(), p1b.to_owned(), p2b.to_owned()];
 
-        r.sort_by_key(|p| p.signature() );
-        e.sort_by_key(|p| p.signature() );
+        r.sort_by_key(|p| p.signature());
+        e.sort_by_key(|p| p.signature());
 
         assert_eq!(r, e);
     }
 
     #[test]
     fn test_reduce_tertiary() {
-
         let mut ns1 = setup();
         let mut ns2 = setup();
 
         let name = Options::name("test-name");
         let id = ns1.resolve(&name).unwrap();
 
-
-        let mut tertiary_opts = TertiaryOptions{
+        let mut tertiary_opts = TertiaryOptions {
             index: 0,
             issued: DateTime::now(),
             expiry: DateTime::now().add(Duration::from_secs(60 * 60)),
         };
 
         // Generate two pages
-        let (_, t1a) = ns1.publish_tertiary_buff::<256, _>(id.clone().into(), tertiary_opts.clone(), &name).unwrap();
+        let (_, t1a) = ns1
+            .publish_tertiary_buff::<256, _>(id.clone().into(), tertiary_opts.clone(), &name)
+            .unwrap();
 
         tertiary_opts.index = 1;
-        let (_, t1b) = ns1.publish_tertiary_buff::<256, _>(id.clone().into(), tertiary_opts.clone(), &name).unwrap();
+        let (_, t1b) = ns1
+            .publish_tertiary_buff::<256, _>(id.clone().into(), tertiary_opts.clone(), &name)
+            .unwrap();
 
-        let pages = vec![
-            t1a.to_owned(),
-            t1b.to_owned(),
-        ];
+        let pages = vec![t1a.to_owned(), t1b.to_owned()];
 
         // Reduce should leave only the _later_ tertiary page
         // TODO: could sort by time equally as well as index?
         let mut r = dht_reducer(&id, &pages);
 
-        let mut e = vec![
-            t1b.to_owned(),
-        ];
+        let mut e = vec![t1b.to_owned()];
 
-        r.sort_by_key(|p| p.signature() );
-        e.sort_by_key(|p| p.signature() );
+        r.sort_by_key(|p| p.signature());
+        e.sort_by_key(|p| p.signature());
 
         assert_eq!(r, e);
     }
-
 }

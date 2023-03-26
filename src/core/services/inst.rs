@@ -8,9 +8,9 @@ use log::{debug, error, warn};
 use diesel::Queryable;
 use serde::{Deserialize, Serialize};
 
-use dsf_core::options::{Options, Filters};
+use dsf_core::options::{Filters, Options};
 use dsf_core::prelude::*;
-use dsf_core::service::{Publisher, Subscriber, SecondaryOptions};
+use dsf_core::service::{Publisher, SecondaryOptions, Subscriber};
 
 use dsf_rpc::service::{ServiceInfo, ServiceState};
 
@@ -101,7 +101,10 @@ impl ServiceInst {
 
         // Generate actual page
         debug!("Generating new service page");
-        let (_n, container) = self.service.publish_primary_buff(Default::default()).unwrap();
+        let (_n, container) = self
+            .service
+            .publish_primary_buff(Default::default())
+            .unwrap();
 
         // Update local page version
         self.primary_page = Some(container.to_owned());

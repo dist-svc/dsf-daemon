@@ -1,6 +1,8 @@
 use diesel::prelude::*;
 
-use dsf_core::{prelude::*, keys::KeySource, wire::Container, types::ImmutableData, options::Filters};
+use dsf_core::{
+    keys::KeySource, options::Filters, prelude::*, types::ImmutableData, wire::Container,
+};
 
 use super::{Store, StoreError};
 
@@ -17,7 +19,8 @@ impl Store {
         let raw = raw_data.eq(page.raw());
 
         let prev = page
-            .public_options_iter().prev_sig()
+            .public_options_iter()
+            .prev_sig()
             .as_ref()
             .map(|v| previous.eq(v.to_string()));
         let values = (service_id.eq(page.id().to_string()), raw, prev, sig.clone());
@@ -115,7 +118,9 @@ mod test {
         let mut s = Service::<Vec<u8>>::default();
         let keys = s.keys();
 
-        let (_n, page) = s.publish_primary_buff( Default::default()).expect("Error creating page");
+        let (_n, page) = s
+            .publish_primary_buff(Default::default())
+            .expect("Error creating page");
         let sig = page.signature();
 
         // Check no matching service exists
@@ -123,7 +128,10 @@ mod test {
 
         // Store data
         store.save_page(&page).unwrap();
-        assert_eq!(Some(&page.to_owned()), store.load_page(&sig, &keys).unwrap().as_ref());
+        assert_eq!(
+            Some(&page.to_owned()),
+            store.load_page(&sig, &keys).unwrap().as_ref()
+        );
         assert_eq!(
             vec![page.to_owned()],
             store.find_pages(&s.id(), &keys).unwrap()

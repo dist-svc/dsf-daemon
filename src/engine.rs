@@ -25,8 +25,8 @@ use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
 
 use kad::Config as DhtConfig;
 
-use crate::daemon::*;
 use crate::daemon::net::NetIf;
+use crate::daemon::*;
 use crate::error::Error;
 use crate::io::*;
 use crate::store::*;
@@ -94,7 +94,8 @@ impl Options {
             .iter()
             .map(|a| {
                 let mut a = a.clone();
-                a.set_port(a.port() + suffix as u16);
+                let p = portpicker::pick_unused_port().unwrap();
+                a.set_port(p);
                 a
             })
             .collect();
@@ -357,9 +358,9 @@ impl Engine {
         })
     }
 
-    async fn handle_rpc<Net>(dsf: &mut Dsf<Net>, unix_req: UnixMessage) -> Result<(), Error> 
+    async fn handle_rpc<Net>(dsf: &mut Dsf<Net>, unix_req: UnixMessage) -> Result<(), Error>
     where
-        Dsf<Net>: NetIf<Interface=Net>
+        Dsf<Net>: NetIf<Interface = Net>,
     {
         // Parse out message
         let req: RpcRequest = serde_json::from_slice(&unix_req.data).unwrap();

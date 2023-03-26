@@ -6,7 +6,7 @@ use std::time::SystemTime;
 
 use futures::channel::mpsc;
 use futures::prelude::*;
-use log::{debug, warn, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use tracing::{span, Level};
 
 use dsf_core::options::Options;
@@ -17,7 +17,7 @@ use crate::core::peers::Peer;
 use crate::core::services::ServiceState;
 
 use super::ops::*;
-use crate::daemon::{Dsf, net::NetIf};
+use crate::daemon::{net::NetIf, Dsf};
 use crate::error::Error as DsfError;
 
 pub enum RegisterState {
@@ -55,7 +55,10 @@ impl Future for RegisterFuture {
     }
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     /// Register a locally known service
     pub fn register(&mut self, options: RegisterOptions) -> Result<RegisterFuture, DsfError> {
         let req_id = rand::random();
@@ -150,18 +153,14 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                             let opts = SecondaryOptions {
                                 page_kind: PageKind::Replica.into(),
                                 version: last_version + 1,
-                                public_options: &[Options::public_key(
-                                    self.service().public_key(),
-                                )],
+                                public_options: &[Options::public_key(self.service().public_key())],
                                 ..Default::default()
                             };
 
                             // Encode / sign page so this is valid for future propagation
                             let buff = vec![0u8; 1024];
-                            let (_n, rp) = self
-                                .service()
-                                .publish_secondary(&id, opts, buff)
-                                .unwrap();
+                            let (_n, rp) =
+                                self.service().publish_secondary(&id, opts, buff).unwrap();
 
                             // Update service instance
                             self.services().update_inst(&id, |s| {
@@ -198,7 +197,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                     done.try_send(resp).unwrap();
 
                     *state = RegisterState::Done;
-                    return Ok(true)
+                    return Ok(true);
                 }
 
                 // Store pages

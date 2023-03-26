@@ -1,6 +1,6 @@
 use crate::sync::{Arc, Mutex};
-use std::{collections::HashMap, convert::TryFrom};
 use std::time::SystemTime;
+use std::{collections::HashMap, convert::TryFrom};
 
 use dsf_core::options::Filters;
 use log::{debug, error, trace};
@@ -62,7 +62,12 @@ impl ReplicaManager {
     }
 
     /// Create or update a given replica instance
-    pub fn create_or_update(&mut self, service_id: &Id, peer_id: &Id, page: &Container) -> Result<(), DsfError> {
+    pub fn create_or_update(
+        &mut self,
+        service_id: &Id,
+        peer_id: &Id,
+        page: &Container,
+    ) -> Result<(), DsfError> {
         let replicas = self.replicas.entry(service_id.clone()).or_insert(vec![]);
         let replica = replicas.iter_mut().find(|r| &r.info.peer_id == peer_id);
 

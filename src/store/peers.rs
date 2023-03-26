@@ -195,7 +195,10 @@ mod test {
 
     use super::Store;
 
-    use dsf_core::{ types::Id, crypto::{Crypto, Hash, PubKey, SecKey} };
+    use dsf_core::{
+        crypto::{Crypto, Hash, PubKey, SecKey},
+        types::Id,
+    };
     use dsf_rpc::{PeerAddress, PeerInfo, PeerState};
 
     #[test]

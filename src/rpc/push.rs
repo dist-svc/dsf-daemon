@@ -18,7 +18,7 @@ use dsf_rpc::{self as rpc, DataInfo, PublishInfo, PushOptions};
 
 use super::ops::*;
 use crate::core::peers::Peer;
-use crate::daemon::net::{NetIf, NetFuture};
+use crate::daemon::net::{NetFuture, NetIf};
 use crate::daemon::Dsf;
 use crate::error::Error;
 
@@ -55,7 +55,10 @@ impl Future for PushFuture {
     }
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     /// Push pre-signed data for a locally known service
     pub fn push(&mut self, options: PushOptions) -> Result<PushFuture, Error> {
         let req_id = rand::random();

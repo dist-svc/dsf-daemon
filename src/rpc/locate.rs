@@ -13,7 +13,7 @@ use tracing::{span, Level};
 use dsf_core::prelude::*;
 use dsf_rpc::{self as rpc, LocateInfo, LocateOptions};
 
-use crate::daemon::{Dsf, net::NetIf};
+use crate::daemon::{net::NetIf, Dsf};
 use crate::error::Error;
 
 use crate::core::peers::Peer;
@@ -54,7 +54,10 @@ impl Future for LocateFuture {
     }
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     pub fn locate(&mut self, options: LocateOptions) -> Result<LocateFuture, Error> {
         let req_id = rand::random();
 
@@ -92,7 +95,10 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                             origin: true,
                             updated: false,
                             page_version: service_info.index as u16,
-                            page: self.services().filter(&opts.id, |s| s.primary_page.clone() ).flatten()
+                            page: self
+                                .services()
+                                .filter(&opts.id, |s| s.primary_page.clone())
+                                .flatten(),
                         };
 
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Located(i));
@@ -137,7 +143,10 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                             origin: false,
                             updated: true,
                             page_version: service_info.index as u16,
-                            page: self.services().filter(&opts.id, |s| s.primary_page.clone() ).flatten()
+                            page: self
+                                .services()
+                                .filter(&opts.id, |s| s.primary_page.clone())
+                                .flatten(),
                         };
                         let resp = rpc::Response::new(req_id, rpc::ResponseKind::Located(info));
                         done.try_send(resp).unwrap();
@@ -156,7 +165,10 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                                 origin: false,
                                 updated: false,
                                 page_version: i.index as u16,
-                                page: self.services().filter(&opts.id, |s| s.primary_page.clone() ).flatten()
+                                page: self
+                                    .services()
+                                    .filter(&opts.id, |s| s.primary_page.clone())
+                                    .flatten(),
                             };
                             let resp = rpc::Response::new(req_id, rpc::ResponseKind::Located(info));
                             done.try_send(resp).unwrap();
@@ -185,7 +197,6 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
     }
 }
 
-
 #[async_trait::async_trait]
 pub trait ServiceRegistry {
     /// Lookup a peer
@@ -193,7 +204,7 @@ pub trait ServiceRegistry {
 }
 
 #[async_trait::async_trait]
-impl <T: Engine> ServiceRegistry for T {
+impl<T: Engine> ServiceRegistry for T {
     async fn service_locate(&self, opts: LocateOptions) -> Result<LocateInfo, DsfError> {
         info!("Locating service: {:?}", opts);
 
@@ -201,7 +212,6 @@ impl <T: Engine> ServiceRegistry for T {
         let local = self.service_get(opts.id.clone()).await;
         let local = match local {
             Ok(i) => {
-
                 let page = match i.primary_page {
                     Some(sig) => Some(self.object_get(opts.id.clone(), sig).await?),
                     None => None,
@@ -213,7 +223,7 @@ impl <T: Engine> ServiceRegistry for T {
                     page_version: i.index as u16,
                     page,
                 })
-            },
+            }
             _ => None,
         };
 
@@ -233,8 +243,8 @@ impl <T: Engine> ServiceRegistry for T {
             }
             (Err(e), _) => {
                 error!("DHT search failed: {:?}", e);
-                return Err(e.into())
-            },
+                return Err(e.into());
+            }
         };
 
         debug!("Found pages: {:?}", pages);

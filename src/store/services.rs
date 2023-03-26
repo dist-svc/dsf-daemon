@@ -209,8 +209,8 @@ mod test {
 
     use super::Store;
 
-    use dsf_core::{types::Id, base::Body};
     use dsf_core::crypto::{Crypto, Hash, PubKey, SecKey};
+    use dsf_core::{base::Body, types::Id};
     use dsf_rpc::{ServiceInfo, ServiceState};
 
     #[test]

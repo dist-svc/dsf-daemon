@@ -11,8 +11,8 @@ use log::{debug, error, info, warn};
 use futures::channel::mpsc;
 use futures::prelude::*;
 
-use kad::prelude::*;
 use kad::common::Entry;
+use kad::prelude::*;
 
 use dsf_core::net;
 use dsf_core::prelude::*;
@@ -21,7 +21,7 @@ use dsf_rpc::{self as rpc, ConnectInfo, ConnectOptions};
 
 use super::ops::{RpcKind, RpcOperation};
 use crate::core::peers::{Peer, PeerAddress, PeerFlags};
-use crate::daemon::{Dsf, net::NetIf};
+use crate::daemon::{net::NetIf, Dsf};
 use crate::error::Error as DsfError;
 
 pub enum ConnectState {
@@ -58,7 +58,10 @@ impl Future for ConnectFuture {
     }
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     pub fn connect(&mut self, options: ConnectOptions) -> Result<ConnectFuture, DsfError> {
         let req_id = rand::random();
 
@@ -123,9 +126,9 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                 // TODO: this precludes _retries_ and state tracking... find a better solution
                 self.net_send(
                     &[(opts.address.clone().into(), None)],
-                        NetMessage::Request(net_req),
-                    )
-                    .unwrap();
+                    NetMessage::Request(net_req),
+                )
+                .unwrap();
 
                 *state = ConnectState::Pending(connect);
                 ctx.waker().clone().wake();
@@ -155,7 +158,11 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                         let (n, mut primary_page) = self.primary(&mut buff).unwrap();
 
                         let our_id = self.id();
-                        let (store, _req_id) = match self.dht_mut().store_peers(our_id, vec![primary_page.to_owned()], v.iter()) {
+                        let (store, _req_id) = match self.dht_mut().store_peers(
+                            our_id,
+                            vec![primary_page.to_owned()],
+                            v.iter(),
+                        ) {
                             Ok(r) => r,
                             Err(e) => {
                                 error!("DHT store error: {:?}", e);
@@ -206,7 +213,7 @@ impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
                         ctx.waker().clone().wake();
 
                         Ok(true)
-                    },
+                    }
                     Poll::Ready(Err(e)) => {
                         error!("DHT store error: {:?}", e);
 

@@ -1,11 +1,12 @@
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    time::Duration,
+};
 
-use std::{net::{SocketAddr, Ipv4Addr, IpAddr}, time::Duration};
-
-use dsf_core::{types::PageKind, options::Options, prelude::{ServiceBuilder, MaybeEncrypted}};
-use rpc::{CreateOptions, ServiceIdentifier, NsRegisterOptions, NsSearchOptions};
+use dsf_core::types::PageKind;
+use rpc::{CreateOptions, NsRegisterOptions, NsSearchOptions, ServiceIdentifier};
 use tempdir::TempDir;
 use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
-
 
 use dsf_client::{Client, Options as ClientOptions};
 use dsf_daemon::engine::{Engine, Options as EngineOptions};
@@ -13,7 +14,6 @@ use dsf_rpc::{self as rpc};
 
 #[async_std::test]
 async fn test_nameserver() {
-
     let _ = FmtSubscriber::builder()
         .with_max_level(LevelFilter::DEBUG)
         .try_init();
@@ -22,10 +22,10 @@ async fn test_nameserver() {
     let d = d.path().to_str().unwrap().to_string();
 
     let daemon_socket = format!("{}/dsf.sock", d);
-    let ns_name = "com.test.ns";
+    let _ns_name = "com.test.ns";
 
     // Setup daemon
-    let config = EngineOptions{
+    let config = EngineOptions {
         database_file: format!("{}/dsf-e2e.db", d),
         bind_addresses: vec![SocketAddr::new(
             IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
@@ -39,44 +39,55 @@ async fn test_nameserver() {
 
     // Setup client connector
     let mut client = Client::new(&ClientOptions::new(&daemon_socket, Duration::from_secs(5)))
-                .expect("Error creating client");
+        .expect("Error creating client");
 
     // Create a new service for name registration
-    let s = client.create(CreateOptions{
-        register: true,
-        ..Default::default()
-    }).await.unwrap();
+    let s = client
+        .create(CreateOptions {
+            register: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
 
     // Create new name service
-    let ns = client.create(CreateOptions{
-        page_kind: Some(PageKind::Name),
-        public: true,
-        ..Default::default()
-    }).await.unwrap();
+    let ns = client
+        .create(CreateOptions {
+            page_kind: Some(PageKind::Name),
+            public: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
 
     // TODO: List known name services
-
 
     let n = "test-service";
 
     println!("Registering service {}", s.id);
 
     // Register service using NS
-    client.ns_register(NsRegisterOptions{
-        ns: ServiceIdentifier::from(ns.id.clone()),
-        target: s.id.clone(),
-        name: Some(n.to_string()),
-        hash: vec![],
-    }).await.unwrap();
+    client
+        .ns_register(NsRegisterOptions {
+            ns: ServiceIdentifier::from(ns.id.clone()),
+            target: s.id.clone(),
+            name: Some(n.to_string()),
+            hash: vec![],
+        })
+        .await
+        .unwrap();
 
     println!("Searching for service {}", s.id);
 
     // Lookup using NS
-    let found = client.ns_search(NsSearchOptions{
-        ns: ServiceIdentifier::from(ns.id),
-        name: Some(n.to_string()),
-        hash: None,
-    }).await.unwrap();
+    let found = client
+        .ns_search(NsSearchOptions {
+            ns: ServiceIdentifier::from(ns.id),
+            name: Some(n.to_string()),
+            hash: None,
+        })
+        .await
+        .unwrap();
 
     println!("Found service(s) {:?}", found);
 

@@ -44,35 +44,55 @@ fn from_dt(n: &NaiveDateTime) -> SystemTime {
 #[async_trait::async_trait]
 pub trait DataStore {
     /// Store a peer, updating the object if existing
-    fn peer_update(&self, info: &PeerInfo) -> Result<(), StoreError>{ todo!() }
+    fn peer_update(&self, info: &PeerInfo) -> Result<(), StoreError> {
+        todo!()
+    }
 
     /// Fetch a peer by ID
-    fn peer_get(&self, id: &Id) -> Result<PeerInfo, StoreError>{ todo!() }
+    fn peer_get(&self, id: &Id) -> Result<PeerInfo, StoreError> {
+        todo!()
+    }
 
     /// Delete a peer by ID
-    fn peer_del(&self, id: &Id) -> Result<(), StoreError>{ todo!() }
-
+    fn peer_del(&self, id: &Id) -> Result<(), StoreError> {
+        todo!()
+    }
 
     /// Store a service, updating the object if existing
-    fn service_update(&self, info: &ServiceInfo) -> Result<(), StoreError>{ todo!() }
+    fn service_update(&self, info: &ServiceInfo) -> Result<(), StoreError> {
+        todo!()
+    }
 
     /// Fetch a service by ID
-    fn service_get(&self, id: &Id) -> Result<ServiceInfo, StoreError>{ todo!() }
+    fn service_get(&self, id: &Id) -> Result<ServiceInfo, StoreError> {
+        todo!()
+    }
 
     /// Delete a service by ID
-    fn service_del(&self, id: &Id) -> Result<(), StoreError>{ todo!() }
-
+    fn service_del(&self, id: &Id) -> Result<(), StoreError> {
+        todo!()
+    }
 
     /// Store an object, linked to a service ID and signature
-    fn object_put<T: ImmutableData>(&self, id: &Id, sig: &Signature, page: Container<T>) -> Result<(), StoreError>{ todo!() }
+    fn object_put<T: ImmutableData>(
+        &self,
+        id: &Id,
+        sig: &Signature,
+        page: Container<T>,
+    ) -> Result<(), StoreError> {
+        todo!()
+    }
 
     /// Fetch an object by signature
-    fn object_get(&self, sig: &Signature) -> Result<Container, StoreError>{ todo!() }
+    fn object_get(&self, sig: &Signature) -> Result<Container, StoreError> {
+        todo!()
+    }
 
     /// Delete an object by signature
-    fn object_del(&self, sig: &Signature) -> Result<(), StoreError>{ todo!() }
+    fn object_del(&self, sig: &Signature) -> Result<(), StoreError> {
+        todo!()
+    }
 }
-
 
 impl Store {
     /// Create or connect to a store with the provided filename
@@ -228,7 +248,11 @@ impl Store {
         Ok(Some(service))
     }
 
-    pub fn set_peer_service<T: ImmutableData>(&self, service: &Service, page: &Container<T>) -> Result<(), StoreError> {
+    pub fn set_peer_service<T: ImmutableData>(
+        &self,
+        service: &Service,
+        page: &Container<T>,
+    ) -> Result<(), StoreError> {
         use crate::store::schema::identity::dsl::*;
 
         let pub_key = public_key.eq(service.public_key().to_string());

@@ -12,9 +12,9 @@ default-run = "dsfd"
 
 [features]
 profile = []
-jemalloc = [ "jemallocator" ]
+jemalloc = ["jemallocator"]
 store = []
-default = [ "store", "no_deadlocks", "libsqlite3-sys/bundled" ] 
+default = ["store", "no_deadlocks", "libsqlite3-sys/bundled"] 
 
 # Debian packaging metadata (for cargo-deb)
 [package.metadata.deb]
@@ -30,107 +30,101 @@ conf-files = [
 ]
 maintainer-scripts = "scripts/"
 
-
 [dependencies]
-futures = "0.3.4"
-colored = "1.9.0"
-
-futures_codec = "0.3.4"
-async-trait = "0.1.21"
-bytes = "1.0.1"
-serde_json = "1.0.44"
-chrono-humanize = "0.0.11"
-tempdir = "0.3.7"
-bitflags = "1.2.1"
-get_if_addrs = "0.5.3"
-libmdns = "0.2.4"
-mdns = "1.0.0"
-strum = "0.23.0"
-flame = "0.2.2"
-flamer = "0.4.0"
-ctrlc = "3.1.3"
-rand = "0.7.3"
-base64 = { version = "0.12.3", features = [ "alloc", "std" ] }
-tokio = "0.3.0"
-no_deadlocks = { version = "1.1.1", optional = true }
 anyhow = "1.0.34"
 async-signals = "0.3.1"
-libc = "0.2.80"
-strum_macros = "0.20.1"
+async-trait = "0.1.21"
+base64 = { version = "0.12.3", features = [ "alloc", "std" ] }
+bitflags = "1.2.1"
+bytes = "1.0.1"
+chrono-humanize = "0.0.11"
 color-backtrace = "0.5.1"
-
+colored = "1.9.0"
+ctor = "0.1.21"
+ctrlc = "3.1.3"
+derivative = "2.2.0"
+flame = "0.2.2"
+flamer = "0.4.0"
+futures = "0.3.4"
+futures_codec = "0.3.4"
+get_if_addrs = "0.5.3"
+jemallocator = { version = "0.3.2", optional = true }
+libc = "0.2.80"
+libmdns = "0.2.4"
+mdns = "1.0.0"
+no_deadlocks = { version = "1.1.1", optional = true }
+portpicker = "0.1.1"
+rand = "0.7.3"
+serde_json = "1.0.44"
+strum = "0.23.0"
+strum_macros = "0.20.1"
+tempdir = "0.3.7"
+tokio = "0.3.0"
 tracing-futures = "0.2.4"
 tracing-subscriber = "0.2.15"
-jemallocator = { version = "0.3.2", optional = true }
-derivative = "2.2.0"
-ctor = "0.1.21"
-
-
-[dependencies.dsf-core]
-version = "0.2.0"
-features = [ "serde", "std" ]
-
-[dependencies.dsf-rpc]
-version = "0.2.0"
-features = [ "std" ]
-
-[dependencies.kad]
-version = "0.6.0"
 
 [dependencies.async-std]
 version = "1.9.0"
-features = [ "unstable", "attributes" ]
-
-[dependencies.log]
-features = ["max_level_trace", "release_max_level_trace"]
-version = "0.4.6"
-
-[dependencies.tracing]
-features = ["max_level_trace", "release_max_level_trace"]
-version = "0.1.22"
-
-[dependencies.diesel]
-features = [ "sqlite", "extras", "chrono", "r2d2" ]
-version = "1.4.5"
-
-[dependencies.libsqlite3-sys]
-version = "0.9.1"
-
-[dependencies.serde]
-features = ["derive"]
-version = "1.0"
+features = ["unstable", "attributes"]
 
 [dependencies.chrono]
 features = ["serde"]
 version = "0.4.6"
 
-[dependencies.igd]
-version = "0.10.0"
-features = [ "aio" ]
+[dependencies.diesel]
+features = ["sqlite", "extras", "chrono", "r2d2"]
+version = "1.4.5"
 
-[dependencies.structopt]
-version = "0.3.5"
+[dependencies.dsf-core]
+version = "0.2.0"
+features = ["serde", "std"]
+
+[dependencies.dsf-rpc]
+version = "0.2.0"
+features = ["std"]
 
 [dependencies.humantime]
 version = "2.0.0"
 
+[dependencies.igd]
+version = "0.10.0"
+features = ["aio"]
+
+[dependencies.kad]
+version = "0.6.0"
+
+[dependencies.libsqlite3-sys]
+version = "0.9.1"
+
+[dependencies.log]
+features = ["max_level_trace", "release_max_level_trace"]
+version = "0.4.6"
+
+[dependencies.serde]
+features = ["derive"]
+version = "1.0"
+
+[dependencies.structopt]
+version = "0.3.5"
+
+[dependencies.tracing]
+features = ["max_level_trace", "release_max_level_trace"]
+version = "0.1.22"
 
 [dev-dependencies]
-tempdir = "0.3.7"
-rr-mux = "0.10.1"
-rand = "0.7.3"
-indicatif = "0.16.2"
 dsf-client = "0.2.0"
+indicatif = "0.16.2"
+rand = "0.7.3"
+rr-mux = "0.10.1"
 simplelog = "0.11.1"
+tempdir = "0.3.7"
 
 [profile.release]
 debug = true
 
-
 [[bin]]
 name = "dsfd"
 path = "src/bin/dsfd.rs"
-
 
 [[bin]]
 name = "dsfm"

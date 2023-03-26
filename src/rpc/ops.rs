@@ -1,9 +1,8 @@
 use dsf_core::wire::Container;
-use futures::Future;
 use futures::channel::mpsc;
+use futures::Future;
 
-
-use dsf_core::prelude::{Id, DsfError as CoreError, Service};
+use dsf_core::prelude::{DsfError as CoreError, Id, Service};
 use dsf_core::types::{CryptoHash, Signature};
 
 use dsf_rpc::*;
@@ -135,12 +134,12 @@ impl core::fmt::Debug for OpKind {
             Self::DhtLocate(id) => f.debug_tuple("DhtLocate").field(id).finish(),
             Self::DhtSearch(id) => f.debug_tuple("DhtSearch").field(id).finish(),
             Self::DhtPut(id, pages) => f.debug_tuple("DhtPut").field(id).field(pages).finish(),
-            
+
             Self::ServiceResolve(arg0) => f.debug_tuple("ServiceResolve").field(arg0).finish(),
             Self::ServiceGet(id) => f.debug_tuple("ServiceGet").field(id).finish(),
             Self::ServiceCreate(id, _pages) => f.debug_tuple("ServiceCreate").field(id).finish(),
             Self::ServiceUpdate(id, _f) => f.debug_tuple("ServiceUpdate").field(id).finish(),
-            
+
             Self::PeerGet(id) => f.debug_tuple("PeerGet").field(id).finish(),
 
             Self::ObjectGet(id, sig) => f.debug_tuple("ObjectGet").field(id).field(sig).finish(),
@@ -158,7 +157,7 @@ pub enum Res {
     ServiceInfo(ServiceInfo),
     Pages(Vec<Container>),
     Peers(Vec<Peer>),
-    Ids(Vec<Id>,)
+    Ids(Vec<Id>),
 }
 
 #[async_trait::async_trait]
@@ -193,7 +192,6 @@ pub trait Engine: Sync + Send {
         }
     }
 
-
     /// Fetch peer information
     async fn peer_get(&self, id: Id) -> Result<Peer, CoreError> {
         match self.exec(OpKind::PeerGet(id)).await? {
@@ -201,7 +199,6 @@ pub trait Engine: Sync + Send {
             _ => Err(CoreError::Unknown),
         }
     }
-
 
     /// Resolve a service index to ID
     async fn service_resolve(&self, identifier: ServiceIdentifier) -> Result<Service, CoreError> {
@@ -220,7 +217,11 @@ pub trait Engine: Sync + Send {
     }
 
     /// Register a newly discovered service from the provided pages
-    async fn service_register(&self, service: Id, pages: Vec<Container>) -> Result<ServiceInfo, CoreError> {
+    async fn service_register(
+        &self,
+        service: Id,
+        pages: Vec<Container>,
+    ) -> Result<ServiceInfo, CoreError> {
         match self.exec(OpKind::ServiceCreate(service, pages)).await? {
             Res::ServiceInfo(s) => Ok(s),
             _ => Err(CoreError::Unknown),

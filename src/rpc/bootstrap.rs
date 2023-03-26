@@ -19,7 +19,7 @@ use dsf_core::prelude::*;
 use dsf_rpc::{self as rpc}; //, BootstrapInfo, BootstrapOptions};
 
 use crate::core::peers::{Peer, PeerAddress};
-use crate::daemon::{Dsf, net::NetIf};
+use crate::daemon::{net::NetIf, Dsf};
 use crate::error::Error as DsfError;
 
 use super::connect::ConnectFuture;
@@ -63,7 +63,10 @@ impl Future for BootstrapFuture {
     }
 }
 
-impl <Net> Dsf<Net> where Dsf<Net>: NetIf<Interface=Net> {
+impl<Net> Dsf<Net>
+where
+    Dsf<Net>: NetIf<Interface = Net>,
+{
     /// Perform bootstrapping operation.
     /// This connects to known peers to bootstrap communication with the network,
     /// updates any watched services, and re-establishes subscriptions etc.
