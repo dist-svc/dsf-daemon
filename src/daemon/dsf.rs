@@ -15,7 +15,7 @@ use tracing::{span, Level};
 use futures::channel::mpsc;
 use futures::prelude::*;
 
-use async_std::future::timeout;
+use tokio::time::timeout;
 
 use dsf_core::prelude::*;
 use dsf_core::service::Publisher;

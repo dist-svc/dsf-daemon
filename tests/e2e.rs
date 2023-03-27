@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use log::info;
 
-use async_std::task;
+use tokio::task;
 
 use tracing_subscriber::{filter::LevelFilter, FmtSubscriber};
 

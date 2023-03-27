@@ -1,5 +1,3 @@
-use async_std::future::TimeoutError;
-use futures::channel::mpsc::SendError;
 
 pub use dsf_core::error::Error as CoreError;
 
@@ -11,7 +9,7 @@ pub enum Error {
     Net(NetError),
     Unix(UnixError),
     Store(StoreError),
-    Channel(SendError),
+    Channel(futures::channel::mpsc::SendError),
     Core(CoreError),
 
     Timeout,
@@ -42,8 +40,8 @@ impl From<StoreError> for Error {
     }
 }
 
-impl From<SendError> for Error {
-    fn from(e: SendError) -> Self {
+impl From<futures::channel::mpsc::SendError> for Error {
+    fn from(e: futures::channel::mpsc::SendError) -> Self {
         Self::Channel(e)
     }
 }
@@ -54,8 +52,14 @@ impl From<CoreError> for Error {
     }
 }
 
-impl From<TimeoutError> for Error {
-    fn from(_e: TimeoutError) -> Self {
+impl From<tokio::time::error::Error> for Error {
+    fn from(_e: tokio::time::error::Error) -> Self {
         Self::Timeout
+    }
+}
+
+impl From<tokio::task::JoinError> for Error {
+    fn from(_e: tokio::task::JoinError) -> Self {
+        Self::Unknown
     }
 }

@@ -14,7 +14,7 @@ use log::{debug, error, info, trace, warn};
 
 use bytes::Bytes;
 
-use async_std::future::timeout;
+use tokio::time::timeout;
 
 use futures::channel::mpsc;
 use futures::prelude::*;
@@ -227,7 +227,7 @@ where
                 // Spawn a task to forward completed response to outgoing messages
                 // TODO: this _should_ use the response channel in the io::NetMessage, however,
                 // we need to re-encode the message prior to doing this which requires the daemon...
-                async_std::task::spawn(async move {
+                tokio::task::spawn(async move {
                     if let Some(r) = rx.next().await {
                         let _ = o.send((a, None, NetMessage::Response(r))).await;
                     }
@@ -776,7 +776,7 @@ where
                 let service_id = service_id.clone();
                 let loc = self.locate(opts)?;
 
-                async_std::task::spawn(async move {
+                tokio::task::spawn(async move {
                     let resp = match loc.await {
                         Ok(v) => {
                             if let Some(p) = v.page {
@@ -832,7 +832,7 @@ where
                 let sub = self.subscribe(opts)?;
 
                 // Await subscription response
-                async_std::task::spawn(async move {
+                tokio::task::spawn(async move {
                     let resp = match sub.await {
                         Ok(_v) => net::ResponseBody::Status(Status::Ok),
                         Err(e) => {
@@ -871,7 +871,7 @@ where
                 let reg = self.register(opts)?;
 
                 // Task to await registration completion
-                async_std::task::spawn(async move {
+                tokio::task::spawn(async move {
                     let resp = match reg.await {
                         Ok(_v) => net::ResponseBody::Status(Status::Ok),
                         Err(e) => {

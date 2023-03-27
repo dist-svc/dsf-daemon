@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use log::{debug, error, info, trace, warn};
 
-use async_std::task;
+use tokio::task;
 
 use futures::channel::mpsc;
 use futures::StreamExt;

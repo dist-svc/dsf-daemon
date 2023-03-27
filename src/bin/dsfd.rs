@@ -1,4 +1,4 @@
-use async_std::task;
+use tokio::task;
 
 use futures::prelude::*;
 
@@ -25,7 +25,7 @@ struct Config {
     log_level: LevelFilter,
 }
 
-#[async_std::main]
+#[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Fetch arguments
     let opts = Config::from_args();

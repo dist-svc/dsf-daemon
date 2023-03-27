@@ -1,7 +1,7 @@
-use futures::future::try_join_all;
+use futures::{future::try_join_all, executor::block_on};
 use futures::prelude::*;
 
-use async_std::task;
+use tokio::task;
 
 use log::error;
 
@@ -49,7 +49,7 @@ fn main() {
     let mut exit_rx = Signals::new(vec![libc::SIGINT]).expect("Error setting Ctrl-C handler");
 
     // Create async task
-    let res = task::block_on(async move {
+    let res = block_on(async move {
         let mut handles = vec![];
 
         for i in opts.offset..opts.count + opts.offset {

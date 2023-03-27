@@ -8,7 +8,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
-use async_std::task::{self, JoinHandle};
+use tokio::task::{self, JoinHandle};
 use futures::prelude::*;
 use log::debug;
 use mdns::RecordKind;

@@ -1,6 +1,5 @@
 use std::task::{Context, Poll};
 
-use async_std::channel::Receiver;
 use dsf_core::wire::Container;
 use kad::store::Datastore;
 use log::{debug, error, info, warn};
@@ -178,7 +177,7 @@ where
             RequestKind::Peer(PeerCommands::Search(opts)) => {
                 let mut exec = self.exec();
 
-                async_std::task::spawn(async move {
+                tokio::task::spawn(async move {
                     debug!("Starting async lookup");
                     let i = match exec.peer_lookup(opts).await {
                         Ok(p) => ResponseKind::Peer(p),
@@ -202,7 +201,7 @@ where
             //RequestKind::Debug(DebugCommands::Update) => self.update(true).await.map(|_| ResponseKind::None)?,
             RequestKind::Ns(NsCommands::Register(opts)) => {
                 let exec = self.exec();
-                async_std::task::spawn(async move {
+                tokio::task::spawn(async move {
                     debug!("Starting async ns register");
                     let i = match exec.ns_register(opts).await {
                         Ok(i) => ResponseKind::Ns(i),
@@ -218,7 +217,7 @@ where
             }
             RequestKind::Ns(NsCommands::Search(opts)) => {
                 let exec = self.exec();
-                async_std::task::spawn(async move {
+                tokio::task::spawn(async move {
                     debug!("Starting async ns search");
                     let i = match exec.ns_search(opts).await {
                         Ok(p) => ResponseKind::Pages(p),

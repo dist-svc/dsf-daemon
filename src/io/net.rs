@@ -13,8 +13,8 @@ use futures::prelude::*;
 use futures::task::{Context, Poll};
 use futures::{select, Stream};
 
-use async_std::net::UdpSocket;
-use async_std::task::{self, JoinHandle};
+use tokio::net::UdpSocket;
+use tokio::task::{self, JoinHandle};
 
 use tracing::{span, Level};
 use tracing_futures::Instrument;

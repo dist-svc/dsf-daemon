@@ -3,26 +3,17 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
 use log::{debug, error, info, trace, warn};
-
 use structopt::StructOpt;
-
-use async_std::channel::bounded as channel;
-use async_std::stream;
-use async_std::task::{self, JoinHandle};
-
+use tokio::{sync::mpsc::channel, time::interval};
+use tokio::task::{self, JoinHandle};
 use futures::channel::mpsc;
-use futures::prelude::*;
-use futures::select;
-
+use futures::{prelude::*, StreamExt, select};
 use tracing::{span, Level};
-
 use bytes::Bytes;
 
 use dsf_core::service::{Publisher, ServiceBuilder};
 use dsf_core::types::{Address, Id};
-
 use dsf_rpc::{Request as RpcRequest, Response as RpcResponse};
-
 use kad::Config as DhtConfig;
 
 use crate::daemon::net::NetIf;
@@ -219,14 +210,14 @@ impl Engine {
 
             // Await on this in the future
             task::spawn(async move {
-                task::sleep(Duration::from_secs(2)).await;
+                tokio::time::sleep(Duration::from_secs(2)).await;
                 let _ = b.await;
             });
         }
 
         // Create periodic timer
-        let mut update_timer = stream::interval(Duration::from_secs(30));
-        let mut tick_timer = stream::interval(Duration::from_millis(200));
+        let mut update_timer = interval(Duration::from_secs(30));
+        let mut tick_timer = interval(Duration::from_millis(200));
 
         let (mut net_in_tx, mut net_in_rx) = mpsc::channel(1000);
         let (mut net_out_tx, mut net_out_rx) = mpsc::channel(1000);
@@ -322,10 +313,10 @@ impl Engine {
                         }
                     },
                     // TODO: periodic update
-                    interval = update_timer.next().fuse() => {
+                    interval = update_timer.tick().fuse() => {
                         trace!("engine::update");
 
-                        if let Some(_i) = interval {
+                        if let _i = interval {
                             // TODO: prompt dsf service updates?
                             // Maybe this should just use time internally?
                         }
@@ -335,7 +326,7 @@ impl Engine {
                         // TODO: handle results / errors here?
                     },
                     // Tick timer for process reactivity
-                    _tick = tick_timer.next().fuse() => {
+                    _tick = tick_timer.tick().fuse() => {
                         trace!("engine::tick");
 
                         // Prompt DSF poll

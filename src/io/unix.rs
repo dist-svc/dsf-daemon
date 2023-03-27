@@ -4,14 +4,16 @@ use std::io;
 use std::pin::Pin;
 
 use log::{debug, error, trace};
-
 use futures::channel::mpsc;
 use futures::prelude::*;
 use futures::select;
 use futures::task::{Context, Poll};
 
-use async_std::os::unix::net::{UnixListener, UnixStream};
-use async_std::task::{self, JoinHandle};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{UnixListener, UnixStream},
+    task::{self, JoinHandle},
+};
 
 use tracing::{span, Level};
 use tracing_futures::Instrument;
@@ -111,7 +113,7 @@ impl Unix {
         debug!("Creating UnixActor with path: {}", path);
 
         let _ = std::fs::remove_file(&path);
-        let listener = UnixListener::bind(&path).await?;
+        let listener = UnixListener::bind(&path)?;
         let mut index = 0;
 
         let connections = Arc::new(Mutex::new(HashMap::new()));
@@ -121,10 +123,7 @@ impl Unix {
         // Create listening task
         let handle = task::spawn(
             async move {
-                let mut incoming = listener.incoming();
-
-                while let Some(stream) = incoming.next().await {
-                    let stream = stream?;
+                while let Ok((stream, addr)) = listener.accept().await {
 
                     let conn = Connection::new(stream, index, rx_sink.clone());
 
@@ -199,7 +198,7 @@ impl Drop for Connection {
 }
 
 impl Connection {
-    fn new(unix_stream: UnixStream, index: u32, rx_sink: mpsc::Sender<UnixMessage>) -> Connection {
+    fn new(mut unix_stream: UnixStream, index: u32, rx_sink: mpsc::Sender<UnixMessage>) -> Connection {
         let mut rx_sink = rx_sink;
 
         let (tx_sink, tx_stream) = mpsc::channel::<UnixMessage>(0);
@@ -208,10 +207,10 @@ impl Connection {
         let (exit_sink, mut exit_stream) = mpsc::channel::<()>(0);
         let exit = Some(exit_sink.clone());
 
-        let (mut unix_rx, mut unix_tx) = unix_stream.split();
-
         let handle: JoinHandle<Result<(), UnixError>> = task::spawn(async move {
             debug!("new UNIX task {}", index);
+
+            let (mut unix_rx, mut unix_tx) = unix_stream.split();
 
             let mut buff = vec![0u8; UNIX_BUFF_LEN];
             let mut tx_stream = tx_stream.fuse();
