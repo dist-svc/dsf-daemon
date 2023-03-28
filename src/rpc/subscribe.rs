@@ -134,7 +134,7 @@ where
 
                 // Search for viable replicas in the database
                 let (query, _) = match self.dht_mut().search(id) {
-                    Ok(v) => (v),
+                    Ok(v) => v,
                     Err(e) => {
                         error!("Error starting DHT search: {:?}", e);
                         return Err(DsfError::Unknown);

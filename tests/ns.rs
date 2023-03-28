@@ -12,7 +12,7 @@ use dsf_client::{Client, Options as ClientOptions};
 use dsf_daemon::engine::{Engine, Options as EngineOptions};
 use dsf_rpc::{self as rpc};
 
-#[async_std::test]
+#[tokio::test]
 async fn test_nameserver() {
     let _ = FmtSubscriber::builder()
         .with_max_level(LevelFilter::DEBUG)
@@ -39,7 +39,7 @@ async fn test_nameserver() {
 
     // Setup client connector
     let mut client = Client::new(&ClientOptions::new(&daemon_socket, Duration::from_secs(5)))
-        .expect("Error creating client");
+        .await.expect("Error creating client");
 
     // Create a new service for name registration
     let s = client

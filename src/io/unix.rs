@@ -275,42 +275,40 @@ mod test {
 
     use tracing_subscriber::FmtSubscriber;
 
-    #[test]
-    fn test_unix() {
+    #[tokio::test]
+    async fn test_unix() {
         let _ = FmtSubscriber::builder()
             .with_max_level(Level::DEBUG)
             .try_init();
 
-        task::block_on(async {
-            let mut unix = Unix::new("/tmp/dsf-unix-test")
-                .await
-                .expect("Error creating unix socket listener");
+        let mut unix = Unix::new("/tmp/dsf-unix-test")
+            .await
+            .expect("Error creating unix socket listener");
 
-            let mut stream = UnixStream::connect("/tmp/dsf-unix-test")
-                .await
-                .expect("Error connecting to unix socket");
+        let mut stream = UnixStream::connect("/tmp/dsf-unix-test")
+            .await
+            .expect("Error connecting to unix socket");
 
-            let data = Bytes::copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
-            let mut buff = vec![0u8; UNIX_BUFF_LEN];
+        let data = Bytes::copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
+        let mut buff = vec![0u8; UNIX_BUFF_LEN];
 
-            // Client to server
-            stream.write(&data).await.expect("Error writing data");
+        // Client to server
+        stream.write(&data).await.expect("Error writing data");
 
-            let res = unix.next().await.expect("Error awaiting unix message");
+        let res = unix.next().await.expect("Error awaiting unix message");
 
-            assert_eq!(res, UnixMessage::new(0, data.clone()));
+        assert_eq!(res, UnixMessage::new(0, data.clone()));
 
-            // Server to client
-            unix.send(UnixMessage::new(0, data.clone()), false)
-                .await
-                .expect("Error sending message to client");
+        // Server to client
+        unix.send(UnixMessage::new(0, data.clone()), false)
+            .await
+            .expect("Error sending message to client");
 
-            let n = stream
-                .read(&mut buff)
-                .await
-                .expect("Error reading from client");
+        let n = stream
+            .read(&mut buff)
+            .await
+            .expect("Error reading from client");
 
-            assert_eq!(&buff[..n], &data);
-        })
+        assert_eq!(&buff[..n], &data);
     }
 }

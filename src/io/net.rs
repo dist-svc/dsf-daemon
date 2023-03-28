@@ -336,8 +336,8 @@ mod test {
 
     use tracing_subscriber::FmtSubscriber;
 
-    #[test]
-    fn test_udp() {
+    #[tokio::test]
+    async fn test_udp() {
         let addr_a = "127.0.0.1:19993".parse().unwrap();
         let addr_b = "127.0.0.1:19994".parse().unwrap();
 
@@ -345,44 +345,43 @@ mod test {
             .with_max_level(Level::DEBUG)
             .try_init();
 
-        task::block_on(async {
-            let mut net = Net::new();
-            assert_eq!(net.list().len(), 0);
+        let mut net = Net::new();
+        assert_eq!(net.list().len(), 0);
 
-            // Bind to a UDP port
-            net.bind(NetKind::Udp, addr_a)
-                .await
-                .expect("error binding udp interface 1");
-            assert_eq!(net.list().len(), 1);
+        // Bind to a UDP port
+        net.bind(NetKind::Udp, addr_a)
+            .await
+            .expect("error binding udp interface 1");
+        assert_eq!(net.list().len(), 1);
 
-            net.bind(NetKind::Udp, addr_b)
-                .await
-                .expect("error binding udp interface 2");
-            assert_eq!(net.list().len(), 2);
+        net.bind(NetKind::Udp, addr_b)
+            .await
+            .expect("error binding udp interface 2");
+        assert_eq!(net.list().len(), 2);
 
-            // Send some messages
-            let data = Bytes::copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
+        // Send some messages
+        let data = Bytes::copy_from_slice(&[0x11, 0x22, 0x33, 0x44]);
 
-            net.send(addr_b, Some(0), data.clone())
-                .await
-                .expect("Error sending net message");
+        net.send(addr_b, Some(0), data.clone())
+            .await
+            .expect("Error sending net message");
 
-            let res = net.next().await.expect("Error awaiting net message");
+        let res = net.next().await.expect("Error awaiting net message");
 
-            assert_eq!(res, NetMessage::new(Some(1), addr_a, data.clone()));
+        assert_eq!(res, NetMessage::new(Some(1), addr_a, data.clone()));
 
-            net.send(addr_a, Some(1), data.clone())
-                .await
-                .expect("Error sending net message");
+        net.send(addr_a, Some(1), data.clone())
+            .await
+            .expect("Error sending net message");
 
-            let res = net.next().await.expect("Error awaiting net message");
+        let res = net.next().await.expect("Error awaiting net message");
 
-            assert_eq!(res, NetMessage::new(Some(0), addr_b, data.clone()));
+        assert_eq!(res, NetMessage::new(Some(0), addr_b, data.clone()));
 
-            // Unbind from UDP port
-            net.unbind(0).await.unwrap();
-            net.unbind(1).await.unwrap();
-            assert_eq!(net.list().len(), 0);
-        })
+        // Unbind from UDP port
+        net.unbind(0).await.unwrap();
+        net.unbind(1).await.unwrap();
+        assert_eq!(net.list().len(), 0);
+
     }
 }

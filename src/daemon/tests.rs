@@ -31,8 +31,8 @@ use crate::core::peers::PeerState;
 use crate::io::mock::{MockConnector, MockTransaction};
 use crate::store::Store;
 
-#[test]
-fn test_manager() {
+#[tokio::test]
+async fn test_manager() {
     // Initialise logging
     let _ = FmtSubscriber::builder()
         .with_max_level(LevelFilter::INFO)
@@ -66,39 +66,38 @@ fn test_manager() {
     let mut peers = vec![(&a2, &s2), (&a3, &s3), (&a4, &s4)];
     peers.sort_by_key(|(_, s)| DhtDatabaseId::xor(&id1.clone(), &s.id()));
 
-    task::block_on(async {
-        info!("Responds to pings");
+    info!("Responds to pings");
 
-        let (tx, mut rx) = mpsc::channel(1);
+    let (tx, mut rx) = mpsc::channel(1);
 
-        dsf.handle_net_req(
-            a2,
-            Request::new(
-                s2.id(),
-                rand::random(),
-                RequestBody::Ping,
-                Flags::ADDRESS_REQUEST,
-            ),
-            tx,
-        )
-        .await
-        .unwrap();
+    dsf.handle_net_req(
+        a2,
+        Request::new(
+            s2.id(),
+            rand::random(),
+            RequestBody::Ping,
+            Flags::ADDRESS_REQUEST,
+        ),
+        tx,
+    )
+    .await
+    .unwrap();
 
-        assert_eq!(
-            rx.next().await,
-            Some(Response::new(
-                id1.clone(),
-                rand::random(),
-                ResponseBody::NoResult,
-                Flags::default()
-            )),
-        );
-    });
+    assert_eq!(
+        rx.next().await,
+        Some(Response::new(
+            id1.clone(),
+            rand::random(),
+            ResponseBody::NoResult,
+            Flags::default()
+        )),
+    );
 }
-#[cfg(nope)]
 
+
+#[cfg(nope)]
 fn disabled() {
-    task::block_on(async {
+    block_on(async {
         info!("Connect function");
 
         mux.expect(vec![
