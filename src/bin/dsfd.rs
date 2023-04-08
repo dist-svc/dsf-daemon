@@ -1,26 +1,25 @@
+//! DSF Daemon (dsfd)
+//! 
+//! 
+
+use clap::Parser;
 use tokio::task;
-
 use futures::prelude::*;
-
 use log::info;
-
-use structopt::StructOpt;
-
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::FmtSubscriber;
-
 use async_signals::Signals;
 
 use dsf_daemon::engine::{Engine, Options};
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "DSF Daemon")]
+#[derive(Debug, Parser)]
+#[clap(name = "DSF Daemon")]
 /// Distributed Service Framework (DSF) daemon
 struct Config {
-    #[structopt(flatten)]
+    #[clap(flatten)]
     daemon_opts: Options,
 
-    #[structopt(long = "log-level", default_value = "debug", env = "LOG_LEVEL")]
+    #[clap(long, default_value = "debug", env = "LOG_LEVEL")]
     /// Enable verbose logging
     log_level: LevelFilter,
 }
@@ -28,7 +27,7 @@ struct Config {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Fetch arguments
-    let opts = Config::from_args();
+    let opts = Config::parse();
 
     // Initialise logging
     let _ = FmtSubscriber::builder()

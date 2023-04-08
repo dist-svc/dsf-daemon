@@ -1,4 +1,4 @@
-use structopt::StructOpt;
+use clap::Parser;
 
 use kad::prelude::*;
 
@@ -13,9 +13,9 @@ pub use dsf::*;
 mod tests;
 
 /// DSF Instance Configuration Options
-#[derive(Clone, Debug, PartialEq, StructOpt)]
+#[derive(Clone, Debug, PartialEq, Parser)]
 pub struct Options {
-    #[structopt(flatten)]
+    #[clap(flatten)]
     pub dht: DhtConfig,
 }
 

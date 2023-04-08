@@ -94,7 +94,6 @@ async fn test_manager() {
     );
 }
 
-
 #[cfg(nope)]
 fn disabled() {
     block_on(async {

@@ -52,7 +52,8 @@ async fn end_to_end() {
 
         // Create client
         let mut client = Client::new(&ClientOptions::new(&addr, Duration::from_secs(1)))
-            .await.expect("Error creating client");
+            .await
+            .expect("Error creating client");
 
         // Fetch client status and ID
         let status = client.status().await.expect("Error fetching daemon status");
@@ -124,5 +125,4 @@ async fn end_to_end() {
     info!("test complete, exiting");
 
     // TODO: shutdown daemon instances
- 
 }

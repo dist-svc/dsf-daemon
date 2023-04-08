@@ -29,12 +29,6 @@ impl From<DieselError> for StoreError {
     }
 }
 
-impl From<StrumError> for StoreError {
-    fn from(e: StrumError) -> Self {
-        Self::Strum(e)
-    }
-}
-
 impl From<base64::DecodeError> for StoreError {
     fn from(e: base64::DecodeError) -> Self {
         Self::B64(e)
@@ -44,5 +38,11 @@ impl From<base64::DecodeError> for StoreError {
 impl From<AddrParseError> for StoreError {
     fn from(e: AddrParseError) -> Self {
         Self::Addr(e)
+    }
+}
+
+impl From<strum::ParseError> for StoreError {
+    fn from(value: strum::ParseError) -> Self {
+        Self::Strum(value)
     }
 }

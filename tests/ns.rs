@@ -39,7 +39,8 @@ async fn test_nameserver() {
 
     // Setup client connector
     let mut client = Client::new(&ClientOptions::new(&daemon_socket, Duration::from_secs(5)))
-        .await.expect("Error creating client");
+        .await
+        .expect("Error creating client");
 
     // Create a new service for name registration
     let s = client

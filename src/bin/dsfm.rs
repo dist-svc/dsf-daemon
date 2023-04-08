@@ -1,44 +1,38 @@
-use futures::{future::try_join_all, executor::block_on};
 use futures::prelude::*;
-
-use tokio::task;
+use futures::{executor::block_on, future::try_join_all};
 
 use log::error;
-
-use structopt::StructOpt;
-
+use clap::Parser;
 use tracing_futures::Instrument;
-
 use async_signals::Signals;
-
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::FmtSubscriber;
 
 use dsf_daemon::engine::{Engine, Options};
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "DSF Daemon Multi-runner")]
+#[derive(Debug, Parser)]
+#[clap(name = "DSF Daemon Multi-runner")]
 /// Distributed Service Framework (DSF) daemon multi-runner
 struct Config {
-    #[structopt(long = "count", default_value = "3")]
+    #[clap(long, default_value = "3")]
     /// Number of instances to run
     count: usize,
 
-    #[structopt(long = "offset", default_value = "0")]
+    #[clap(long, default_value = "0")]
     /// Offset for instance indexing
     offset: usize,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     daemon_opts: Options,
 
-    #[structopt(long = "log-level", default_value = "debug")]
+    #[clap(long, default_value = "debug")]
     /// Enable verbose logging
     level: LevelFilter,
 }
 
 fn main() {
     // Fetch arguments
-    let opts = Config::from_args();
+    let opts = Config::parse();
 
     // Initialise logging
     let _ = FmtSubscriber::builder()

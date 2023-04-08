@@ -2,14 +2,14 @@ use std::convert::TryFrom;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use log::{debug, error, info, trace, warn};
-use structopt::StructOpt;
-use tokio::{sync::mpsc::channel, time::interval};
-use tokio::task::{self, JoinHandle};
-use futures::channel::mpsc;
-use futures::{prelude::*, StreamExt, select};
-use tracing::{span, Level};
 use bytes::Bytes;
+use clap::Parser;
+use futures::channel::mpsc;
+use futures::{prelude::*, select, StreamExt};
+use log::{debug, error, info, trace, warn};
+use tokio::task::{self, JoinHandle};
+use tokio::{sync::mpsc::channel, time::interval};
+use tracing::{span, Level};
 
 use dsf_core::service::{Publisher, ServiceBuilder};
 use dsf_core::types::{Address, Id};
@@ -28,14 +28,14 @@ pub const DEFAULT_UNIX_SOCKET: &str = "/tmp/dsf.sock";
 pub const DEFAULT_DATABASE_FILE: &str = "/tmp/dsf.db";
 pub const DEFAULT_SERVICE: &str = "/tmp/dsf.svc";
 
-#[derive(StructOpt, Debug, Clone, PartialEq)]
+#[derive(Parser, Debug, Clone, PartialEq)]
 pub struct Options {
-    #[structopt(short = "a", long = "bind-address", default_value = "0.0.0.0:10100")]
+    #[clap(short = 'a', long = "bind-address", default_value = "0.0.0.0:10100")]
     /// Interface(s) to bind DSF daemon
     /// These may be reconfigured at runtime
     pub bind_addresses: Vec<SocketAddr>,
 
-    #[structopt(
+    #[clap(
         long = "database-file",
         default_value = "/var/dsfd/dsf.db",
         env = "DSF_DB_FILE"
@@ -43,8 +43,8 @@ pub struct Options {
     /// Database file for storage by the daemon
     pub database_file: String,
 
-    #[structopt(
-        short = "s",
+    #[clap(
+        short = 's',
         long = "daemon-socket",
         default_value = "/var/run/dsfd/dsf.sock",
         env = "DSF_SOCK"
@@ -52,11 +52,11 @@ pub struct Options {
     /// Unix socket for communication with the daemon
     pub daemon_socket: String,
 
-    #[structopt(long = "no-bootstrap")]
+    #[clap(long = "no-bootstrap")]
     /// Disable automatic bootstrapping
     pub no_bootstrap: bool,
 
-    #[structopt(flatten)]
+    #[clap(flatten)]
     pub daemon_options: DaemonOptions,
 }
 
@@ -140,9 +140,6 @@ impl Engine {
 
         // Store peer service identity for re-use
         store.set_peer_service(&service, &page)?;
-
-        let span = span!(Level::DEBUG, "engine", "{}", service.id());
-        let _enter = span.enter();
 
         info!("Creating new engine");
 

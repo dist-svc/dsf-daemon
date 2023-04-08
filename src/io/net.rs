@@ -382,6 +382,5 @@ mod test {
         net.unbind(0).await.unwrap();
         net.unbind(1).await.unwrap();
         assert_eq!(net.list().len(), 0);
-
     }
 }

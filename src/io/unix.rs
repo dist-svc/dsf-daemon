@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use std::io;
 use std::pin::Pin;
 
-use log::{debug, error, trace};
 use futures::channel::mpsc;
 use futures::prelude::*;
 use futures::select;
 use futures::task::{Context, Poll};
+use log::{debug, error, trace};
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -124,7 +124,6 @@ impl Unix {
         let handle = task::spawn(
             async move {
                 while let Ok((stream, addr)) = listener.accept().await {
-
                     let conn = Connection::new(stream, index, rx_sink.clone());
 
                     c.lock().unwrap().insert(index, conn);
@@ -198,7 +197,11 @@ impl Drop for Connection {
 }
 
 impl Connection {
-    fn new(mut unix_stream: UnixStream, index: u32, rx_sink: mpsc::Sender<UnixMessage>) -> Connection {
+    fn new(
+        mut unix_stream: UnixStream,
+        index: u32,
+        rx_sink: mpsc::Sender<UnixMessage>,
+    ) -> Connection {
         let mut rx_sink = rx_sink;
 
         let (tx_sink, tx_stream) = mpsc::channel::<UnixMessage>(0);
