@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 use std::time::Instant;
 use std::time::{Duration, SystemTime};
 
+use dsf_core::types::address::{IPV4_BROADCAST, IPV6_BROADCAST};
 use dsf_rpc::{LocateOptions, QosPriority, RegisterOptions, ServiceIdentifier, SubscribeOptions};
 use kad::common::message;
 use log::{debug, error, info, trace, warn};
@@ -120,6 +121,9 @@ pub struct NetOp {
 
     /// Operation start timestamp
     ts: Instant,
+
+    /// Broadcast flag
+    broadcast: bool,
 }
 
 impl Future for NetOp {
@@ -143,7 +147,7 @@ impl Future for NetOp {
         }
 
         // Check for completion (no pending requests)
-        let done = if self.reqs.len() == 0 {
+        let done = if self.reqs.len() == 0 && !self.broadcast {
             debug!("Net operation {} complete", self.req.id);
             true
 
@@ -308,6 +312,9 @@ where
         Ok(Bytes::from(c.raw().to_vec()))
     }
 
+    /// Create a network operation for the given request
+    /// 
+    /// This sends the provided request to the listed peers with retries and timeouts.
     pub fn net_op(&mut self, peers: Vec<Peer>, req: net::Request) -> NetFuture {
         let req_id = req.id;
 
@@ -336,12 +343,44 @@ where
             resps: HashMap::new(),
             done: tx,
             ts: Instant::now(),
+            broadcast: false,
         };
 
         // Register operation
         self.net_ops.insert(req_id, op);
 
         // Issue request
+        if let Err(e) = self.net_send(&targets, net::Message::Request(req)) {
+            error!("FATAL network send error: {:?}", e);
+        }
+
+        // Return future
+        NetFuture { rx }
+    }
+
+    pub fn net_broacast(&mut self, req: net::Request) -> NetFuture {
+        let req_id = req.id;
+
+        // Create net operation
+        let (tx, rx) = mpsc::channel(1);
+        let op = NetOp {
+            req: req.clone(),
+            reqs: HashMap::new(),
+            resps: HashMap::new(),
+            done: tx,
+            ts: Instant::now(),
+            broadcast: true,
+        };
+
+        // Register operation
+        self.net_ops.insert(req_id, op);
+
+        // Issue request
+        // TODO: select broadcast address' based on availabile interfaces?
+        let targets = [
+            (IPV4_BROADCAST.into(), None),
+            (IPV6_BROADCAST.into(), None),
+        ];
         if let Err(e) = self.net_send(&targets, net::Message::Request(req)) {
             error!("FATAL network send error: {:?}", e);
         }
@@ -383,30 +422,41 @@ where
                 None => return Ok(()),
             };
 
-        // Parse out DHT responses
+        // Parse out and handle DHT responses
         if let Some(dht_resp) = self.net_to_dht_response(&resp.data) {
             let _ = self.handle_dht_resp(from.clone(), peer, req_id, dht_resp);
 
             return Ok(());
         }
 
-        // Look for matching requests
-        match self.net_requests.remove(&(addr.into(), req_id)) {
-            Some(mut a) => {
-                trace!("Found pending request for id {} address: {}", req_id, addr);
-                if let Err(e) = a.try_send(resp) {
-                    error!(
-                        "Error forwarding message for id {} from {}: {:?}",
-                        req_id, addr, e
-                    );
-                }
+        // Look for matching point-to-point requests
+        if let Some(mut a) = self.net_requests.remove(&(addr.into(), req_id)) {
+            trace!("Found pending request for id {} address: {}", req_id, addr);
+            if let Err(e) = a.try_send(resp) {
+                error!(
+                    "Error forwarding message for id {} from {}: {:?}",
+                    req_id, addr, e
+                );
             }
-            None => {
-                error!("Received response id {} with no pending request", req_id);
-            }
+
+            return Ok(())
         };
 
-        // TODO: three-way-ack support?
+        // Look for matching broadcast requests
+        if let Some(a) = self.net_ops.get_mut(&req_id) {
+            if a.broadcast {
+                trace!("Found pending broadcast request for id {}", req_id);
+                a.resps.insert(from, resp);
+
+                return Ok(())
+            }
+
+            return Ok(())
+        }
+
+        error!("Received response id {} with no pending request", req_id);
+
+        // TODO: handle responses for three-way-ack support?
 
         Ok(())
     }

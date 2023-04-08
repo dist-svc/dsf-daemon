@@ -1,3 +1,6 @@
+//! Push operation, forwards data for a known (and authorised) service.
+//! This is provided for brokering / delegation / gateway operation.
+
 use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;

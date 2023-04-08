@@ -11,11 +11,13 @@ use futures::prelude::*;
 use dsf_core::prelude::*;
 use dsf_rpc::*;
 
-use crate::core::peers::Peer;
-use crate::daemon::{net::NetIf, Dsf};
-use crate::error::{CoreError, Error};
-use crate::rpc::lookup::PeerRegistry;
-use crate::rpc::search::NameService;
+use crate::{
+    core::peers::Peer,
+    daemon::{net::NetIf, Dsf},
+    error::{CoreError, Error},
+    rpc::lookup::PeerRegistry,
+    rpc::search::NameService,
+};
 
 // Generic / shared operation types
 pub mod ops;
@@ -56,6 +58,9 @@ pub mod search;
 
 // Debug commands
 pub mod debug;
+
+// Local discovery
+pub mod discover;
 
 impl<Net> Dsf<Net>
 where
@@ -196,6 +201,7 @@ where
             RequestKind::Service(ServiceCommands::Register(opts)) => RpcKind::register(opts),
             RequestKind::Service(ServiceCommands::Locate(opts)) => RpcKind::locate(opts),
             RequestKind::Service(ServiceCommands::Subscribe(opts)) => RpcKind::subscribe(opts),
+            RequestKind::Service(ServiceCommands::Discover(opts)) => RpcKind::discover(opts),
             RequestKind::Data(DataCommands::Publish(opts)) => RpcKind::publish(opts),
             //RequestKind::Data(DataCommands::Query(options)) => unimplemented!(),
             //RequestKind::Debug(DebugCommands::Update) => self.update(true).await.map(|_| ResponseKind::None)?,
@@ -308,6 +314,7 @@ where
         Ok(())
     }
 
+    /// Shared helper for resolving service identifiers
     pub(super) fn resolve_identifier(
         &mut self,
         identifier: &ServiceIdentifier,
@@ -331,6 +338,7 @@ where
         }
     }
 
+    /// Shared helper for resolving peer identifiers
     pub(super) fn resolve_peer_identifier(
         &mut self,
         identifier: &ServiceIdentifier,
@@ -521,6 +529,7 @@ pub struct ExecHandle {
     waker: Option<core::task::Waker>,
 }
 
+/// Operations used when constructing higher level RPCs
 pub struct Op {
     req_id: u64,
     kind: OpKind,
@@ -538,6 +547,7 @@ impl core::fmt::Debug for Op {
     }
 }
 
+/// Operation state storage for DHT interactions
 enum OpState {
     None,
     DhtLocate(kad::dht::LocateFuture<Id, Peer>),

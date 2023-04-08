@@ -1,3 +1,7 @@
+//! Bootstrap operation
+//! This connects to known peers to bootstrap communication with the network,
+//! updates any watched services, and re-establishes subscriptions etc.
+
 use std::time::Duration;
 
 use std::future::Future;

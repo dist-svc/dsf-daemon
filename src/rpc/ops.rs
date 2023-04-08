@@ -1,3 +1,5 @@
+//! Operations used in the construction of higher-level RPCs
+
 use dsf_core::wire::Container;
 use futures::channel::mpsc;
 use futures::Future;
@@ -20,6 +22,7 @@ use super::register::{RegisterOp, RegisterState};
 use super::publish::{PublishOp, PublishState};
 use super::push::{PushOp, PushState};
 use super::subscribe::{SubscribeOp, SubscribeState};
+use super::discover::{DiscoverOp, DiscoverState};
 
 use super::bootstrap::{BootstrapOp, BootstrapState};
 
@@ -37,12 +40,17 @@ pub struct RpcOperation {
 pub enum RpcKind {
     Connect(ConnectOp),
     Lookup(LookupOp),
+    
     Create(CreateOp),
     Register(RegisterOp),
+    Publish(PublishOp),
+    
+    Discover(DiscoverOp),
     Locate(LocateOp),
     Subscribe(SubscribeOp),
-    Publish(PublishOp),
+
     Push(PushOp),
+   
     Bootstrap(BootstrapOp),
 }
 
@@ -87,6 +95,13 @@ impl RpcKind {
         RpcKind::Publish(PublishOp {
             opts,
             state: PublishState::Init,
+        })
+    }
+
+    pub fn discover(opts: DiscoverOptions) -> Self {
+        RpcKind::Discover(DiscoverOp {
+            opts,
+            state: DiscoverState::Init,
         })
     }
 
@@ -160,6 +175,7 @@ pub enum Res {
     Ids(Vec<Id>),
 }
 
+/// Core engine imeplementation providing primitive operations for the construction of RPCs
 #[async_trait::async_trait]
 pub trait Engine: Sync + Send {
     //type Output: Future<Output=Result<Res, CoreError>> + Send;

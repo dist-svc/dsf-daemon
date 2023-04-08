@@ -1,3 +1,6 @@
+//! Subscribe operation, used to subscribe to a known service, 
+//! optionally creating a service replica
+
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};

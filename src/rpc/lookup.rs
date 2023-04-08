@@ -1,3 +1,5 @@
+//! Lookup operation, locates a peer in the database returning peer info if found
+
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};

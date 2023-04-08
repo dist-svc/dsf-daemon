@@ -1,3 +1,5 @@
+//! Connect operation, sets up a connection with the provided peer
+
 use std::time::Duration;
 
 use std::future::Future;

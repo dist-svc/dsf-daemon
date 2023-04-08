@@ -1,4 +1,4 @@
-//! Registry search implementation for querying from nameservers
+//! Registry register and search operations for interactions with name services
 //!
 //!
 

@@ -1,3 +1,5 @@
+//! Locate operation, looks up a service by ID using the database
+
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};

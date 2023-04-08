@@ -1,3 +1,6 @@
+//! Publish operation, publishes data using a known service, 
+//! distributing updates to any active subscribers
+
 use std::convert::TryFrom;
 use std::future::Future;
 use std::pin::Pin;
