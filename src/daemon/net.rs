@@ -204,53 +204,161 @@ where
     Dsf<Net>: NetIf<Interface = Net>,
 {
     pub async fn handle_net_raw(&mut self, msg: crate::io::NetMessage) -> Result<(), DaemonError> {
-        // Decode message
-        let decoded = match self.net_decode(&msg.data).await {
+        // Decode message to container
+        let container = match Container::parse(msg.data.to_vec(), self) {
             Ok(v) => v,
             Err(e) => {
-                warn!("error decoding message from {:?}: {:?}", msg.address, e);
-                return Ok(());
+                error!("Failed to parse container: {:?}", e);
+                return Err(e.into());
             }
         };
+        let header = container.header();
 
-        trace!("Net message: {:?}", decoded);
+        // Handle request / response messages
+        if header.kind().is_message() {
+            // Convert container to message
+            let m = match NetMessage::convert(container, self) {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("Failed to decode message from {:?}: {:?}", msg.address, e);
+                    return Ok(())
+                }
+            };
 
-        // Route responses as required internally
-        match decoded {
-            NetMessage::Response(resp) => {
-                self.handle_net_resp(msg.address, resp)?;
+            trace!("Net message: {:?}", m);
+
+            match m {
+                NetMessage::Response(resp) => {
+                    self.handle_net_resp(msg.address, resp)?;
+                }
+                NetMessage::Request(req) => {
+                    let (tx, mut rx) = mpsc::channel(1);
+    
+                    self.handle_net_req(msg.address, req, tx).await?;
+    
+                    let a = msg.address.into();
+                    let mut o = self.net_resp_tx.clone();
+    
+                    // Spawn a task to forward completed response to outgoing messages
+                    // TODO: this _should_ use the response channel in the io::NetMessage, however,
+                    // we need to re-encode the message prior to doing this which requires the daemon...
+                    tokio::task::spawn(async move {
+                        if let Some(r) = rx.next().await {
+                            let _ = o.send((a, None, NetMessage::Response(r))).await;
+                        }
+                    });
+                },
             }
-            NetMessage::Request(req) => {
-                let (tx, mut rx) = mpsc::channel(1);
 
-                self.handle_net_req(msg.address, req, tx).await?;
+            return Ok(())
+        }
 
+
+        match self.handle_unwrapped(&container).await {
+            Ok(r) => {
                 let a = msg.address.into();
                 let mut o = self.net_resp_tx.clone();
+                let r = NetResponse::new(self.id(), 0, r, Flags::empty());
 
-                // Spawn a task to forward completed response to outgoing messages
-                // TODO: this _should_ use the response channel in the io::NetMessage, however,
-                // we need to re-encode the message prior to doing this which requires the daemon...
-                tokio::task::spawn(async move {
-                    if let Some(r) = rx.next().await {
-                        let _ = o.send((a, None, NetMessage::Response(r))).await;
-                    }
-                });
+                let _ = o.send((a, None, NetMessage::Response(r))).await;
+
+                return Ok(())
+            },
+            Err(e) => {
+                error!("Failed to handle unwrapped message: {:?}", e);
+                return Err(e.into());
             }
-        };
-
-        Ok(())
+        }
     }
+
+    pub async fn handle_unwrapped(&mut self, container: &Container) -> Result<net::ResponseBody, DaemonError> {
+        let id = container.id();
+        let header = container.header();
+
+        // Locate matching service if available
+        let service = self.services().find(&id);
+
+        // Validate object for known services
+        if service.is_some() {
+            if let Err(e) = self.services().validate_pages(&id, &[container.clone()]) {
+                warn!("Failed to validate page from service {}: {:?}", id, e);
+                return Ok(net::ResponseBody::Status(Status::InvalidRequest));
+            }
+        }
+
+        // Handle unwrapped pages / blocks
+        if header.kind().is_page() {
+            info!("Page push (direct) from service: {}", id);
+
+            match service {
+                // If we're already tracking this service, apply the update
+                Some(_service) => {
+                    self.services().update_inst(&id, |s| {
+                        let _ = s.apply_update(container);
+                    });
+
+                    return Ok(net::ResponseBody::Status(Status::Ok))
+                },
+                // Otherwise check for pending broadcast network ops
+                _ => {
+                    for (_n, r) in self.net_ops.iter_mut() {
+                        // Forward to any matching broadcast ops
+                        // TODO: fix application_ids so we can also filter on this
+                        if r.broadcast {
+                            // Hack to forward pages via network op expecting responses
+                            // TODO: make it possible to pass pages here?
+                            r.resps.insert(
+                                id.clone(),
+                                NetResponse::new(
+                                    container.id(),
+                                    0,
+                                    NetResponseBody::ValuesFound(
+                                        id.clone(),
+                                        vec![container.clone()],
+                                    ),
+                                    Flags::empty(),
+                                )
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        
+        if header.kind().is_data() {
+            info!("Data push (direct) from service: {}", id);
+
+            // Check we're a subscriber to this service
+            match service {
+                // If we're subscribed to the service, apply the update
+                Some(service) if service.subscribed => {
+                    // Store data in local database
+                    if let Ok(info) = DataInfo::try_from(container) {
+                        self.data().store_data(&info, container).unwrap();
+                    };
+
+                    // TODO: update service state?
+
+                    return Ok(net::ResponseBody::Status(Status::Ok))
+                },
+                _ => {
+                    warn!("Received data push from unsubscribed service: {}", id);
+                    return Ok(net::ResponseBody::Status(Status::InvalidRequest))
+                },
+            }
+        }
+
+        Err(DaemonError::Unknown)
+    }
+
 
     pub async fn net_decode(&mut self, data: &[u8]) -> Result<net::Message, DaemonError> {
         // Decode message
         let (container, _n) = Container::from(&data);
         let _id: Id = container.id().into();
 
-        let mut data = data.to_vec();
-
         // Parse out message object
-        // TODO: pass secret keys for encode / decode here
+        let mut data = data.to_vec();
         let (message, _n) = match net::Message::parse(&mut data, self) {
             Ok(v) => v,
             Err(e) => {
